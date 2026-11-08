@@ -1,0 +1,135 @@
+mdl 1;
+
+-- Chat with the support agent: the action microflow Conversational UI runs
+-- on every send, the full-screen chat page, the floating chat button on the
+-- ticket overview. Tool approval and streaming are stored in the agent
+-- document by scripts/patch-agent-documents.py until mxcli writes them.
+
+drop microflow if exists "ServiceDesk"."SUB_ApplyAgentRuntimeSettings";
+drop microflow if exists "ServiceDesk"."ACT_ChatContext_SupportAgent_Action";
+
+/** Conversational UI action microflow: sends the conversation to the support agent and stores its answer. */
+create or modify microflow "ServiceDesk"."ChatContext_SupportAgent_ActionMicroflow" ($ChatContext: ConversationalUI.ChatContext)
+returns Boolean as $Success
+folder 'Chat'
+begin
+  $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext);
+  if $Request = empty then
+    return false;
+  end if;
+  $Response = call java action AgentEditorCommons.Agent_CallDocument_WithHistory(Agent = 'ServiceDesk.SupportAgent', Request = $Request, OptionalContextObject = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Support agent call failed: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  if $Response = empty then
+    return false;
+  end if;
+  retrieve $Message from $Response/GenAICommons.Response_Message;
+  if $Message = empty then
+    return false;
+  end if;
+  call microflow ConversationalUI.ChatContext_UpdateAssistantResponse(ChatContext = $ChatContext, MessageStatus = ConversationalUI.ENUM_MessageStatus.Success, Response = $Response);
+  return true;
+end;
+
+/** A new chat session with the support agent. */
+create or modify microflow "ServiceDesk"."SUB_SupportChat_Create" ()
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Chat'
+begin
+  $ChatContext = call java action AgentEditorCommons.ChatContext_Create_ForAgentDocument(Agent = 'ServiceDesk.SupportAgent', ActionMicroflow = 'ServiceDesk.ChatContext_SupportAgent_ActionMicroflow', ContextObject = empty, OverwritingDeployedModel = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Could not start a chat with the support agent: {1}' with ({1} = $latestError/Message);
+    return empty;
+  end error;
+  return $ChatContext;
+end;
+
+/** Opens the full-screen chat with the support agent. */
+create or modify microflow "ServiceDesk"."ACT_SupportChat_Open" ()
+folder 'Chat'
+begin
+  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  show page ConversationalUI.ConversationalUI_FullScreenChat (ChatContext = $ChatContext);
+end;
+
+/** Data source for the floating chat button on the ticket overview. */
+create or modify microflow "ServiceDesk"."DS_SupportChat" ()
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Chat'
+begin
+  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  return $ChatContext;
+end;
+
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, then seeds demo data. */
+create or modify microflow "ServiceDesk"."ASU_App" ()
+returns Boolean as $Started
+folder 'Setup'
+begin
+  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
+  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  return true;
+end;
+
+alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
+
+grant execute on microflow "ServiceDesk"."ACT_SupportChat_Open" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_SupportChat" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ChatContext_SupportAgent_ActionMicroflow" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Tickets: all of them for staff, only their own for a customer, with the floating chat button. */
+create or modify page "ServiceDesk"."Ticket_Overview" folder 'Tickets'
+(
+  title: 'Tickets',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'tickets'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Tickets', rendermode: H2)
+        actionbutton btnNew (caption: 'New ticket', action: create object "ServiceDesk"."Ticket" then show page "ServiceDesk"."Ticket_NewEdit", buttonstyle: primary)
+        actionbutton btnChat (caption: 'Ask the assistant', action: call microflow "ServiceDesk"."ACT_SupportChat_Open")
+        datagrid dgTickets (
+          datasource: database from "ServiceDesk"."Ticket" sort by "TicketNumber" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "TicketNumber", caption: '#') { numberfilter nfNumber }
+          column (attribute: "Subject", caption: 'Subject') { textfilter tfSubject }
+          column (attribute: Ticket_Customer/"Name", caption: 'Customer')
+          column (attribute: "Category", caption: 'Category') { dropdownfilter ddCategory }
+          column (attribute: "Priority", caption: 'Priority') { dropdownfilter ddPriority }
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."Ticket_NewEdit"("Ticket" = $currentObject))
+          }
+        }
+        dataview dvChat (datasource: microflow "ServiceDesk"."DS_SupportChat") {
+          snippetcall scFloatingChat (snippet: ConversationalUI.Snippet_FloatingChatButton, params: (ChatContext = $currentObject))
+        }
+      }
+    }
+  }
+};
+
+create or modify navigation Responsive
+  app title 'Service Desk Copilot'
+  app icon Atlas_Core.Content.Mendix
+  home page "ServiceDesk"."Home"
+{
+  menu item 'Home' ( OnClick: show page "ServiceDesk"."Home", Icon: Atlas_Core.Atlas.home )
+  menu item 'Assistant' ( OnClick: call microflow "ServiceDesk"."ACT_SupportChat_Open", Icon: Atlas_Core.Atlas."message-bubble" )
+  menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
+  menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
+  menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
+  menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
+  menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )
+  menu item 'Token usage' ( OnClick: call microflow ConversationalUI.NAV_TokenConsumptionMonitor, Icon: Atlas_Core.Atlas.dashboard )
+  menu item 'Traces' ( OnClick: show page ConversationalUI.Trace_Overview, Icon: Atlas_Core.Atlas.search )
+  menu item 'Agents' ( OnClick: show page AgentCommons.Agent_Overview, Icon: Atlas_Core.Atlas.cog )
+};
+
+-- Store traces of model, tool, knowledge-base and MCP calls for the Traces page (off by default).
+alter settings constant @GenAICommons.StoreTraces value 'true' in configuration 'Default';

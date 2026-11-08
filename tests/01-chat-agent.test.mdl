@@ -14,7 +14,7 @@ $Seeded = call microflow ServiceDesk.SUB_SeedDemoData();
  * @expect $CustomerCount = 5
  */
 retrieve $Customers from ServiceDesk.Customer;
-$CustomerCount = count($Customers);
+$CustomerCount = count $Customers;
 /
 
 /**
@@ -22,7 +22,7 @@ $CustomerCount = count($Customers);
  * @expect $OrderCount = 15
  */
 retrieve $Orders from ServiceDesk.Order;
-$OrderCount = count($Orders);
+$OrderCount = count $Orders;
 /
 
 /**
@@ -32,4 +32,56 @@ $OrderCount = count($Orders);
 retrieve $DemoUser from System.User where [Name = 'demo_customer'] first;
 retrieve $Linked from ServiceDesk.Customer where [ServiceDesk.Customer_User = $DemoUser] first;
 declare $LinkedName String = $Linked/Name;
+/
+
+/**
+ * @test Order status tool reports status and carrier of a shipped order
+ * @expect $HasShipped = true
+ */
+$Answer = call microflow ServiceDesk.Tool_GetOrderStatus(OrderNumber = 'SO-10002');
+declare $HasShipped Boolean = contains($Answer, 'Shipped') and contains($Answer, 'DHL');
+/
+
+/**
+ * @test Order status tool says so when an order does not exist
+ * @expect $NotFound = true
+ */
+$Answer = call microflow ServiceDesk.Tool_GetOrderStatus(OrderNumber = 'SO-99999');
+declare $NotFound Boolean = startsWith($Answer, 'No order found');
+/
+
+/**
+ * @test Ticket search finds the double-charge ticket
+ * @expect $Found = true
+ */
+$Answer = call microflow ServiceDesk.Tool_SearchTickets(SearchText = 'Charged twice');
+declare $Found Boolean = contains($Answer, 'Charged twice');
+/
+
+/**
+ * @test Create-ticket tool opens a ticket linked to the order's customer
+ * @expect $LinkedName = 'Bram de Vries'
+ */
+$Answer = call microflow ServiceDesk.Tool_CreateTicket(Subject = 'Test ticket', Description = 'Created by a test', OrderNumber = 'SO-10004');
+retrieve $Created from ServiceDesk.Ticket where [Subject = 'Test ticket'] first;
+retrieve $Customer from $Created/ServiceDesk.Ticket_Customer;
+declare $LinkedName String = $Customer/Name;
+/
+
+/**
+ * @test Refund tool refuses an amount above the order total
+ * @expect $Refused = true
+ */
+$Answer = call microflow ServiceDesk.Tool_IssueRefund(OrderNumber = 'SO-10004', Amount = 1000.00, Reason = 'Too much');
+declare $Refused Boolean = startsWith($Answer, 'Refund not requested');
+/
+
+/**
+ * @test Refund tool creates a request within the order total
+ * @expect $Status = 'Requested'
+ */
+$Answer = call microflow ServiceDesk.Tool_IssueRefund(OrderNumber = 'SO-10012', Amount = 10.00, Reason = 'Late delivery');
+retrieve $Order from ServiceDesk.Order where [OrderNumber = 'SO-10012'] first;
+retrieve $Refund from ServiceDesk.RefundRequest where [ServiceDesk.RefundRequest_Order = $Order] first;
+declare $Status String = getKey($Refund/Status);
 /

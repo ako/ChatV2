@@ -46,10 +46,18 @@ Generate a local encryption key once. The file is git-ignored, and a fresh conta
 python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)), end='')" > .mxcli/encryption.key
 ```
 
-Then start the app:
+Then start the app. The Mendix Cloud GenAI key is read from the `GENAI_TEXT_KEY` environment variable and never written to a file:
 
 ```bash
-./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key
+./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
+```
+
+Change the agents with `scripts/apply-agents.sh`, not by running `mdlsource/06-agents.mdl` on its own. The script also fills in the agent fields mxcli does not write yet; see `FINDINGS.md`.
+
+Live model tests cost GenAI units, so they are kept apart from `tests/`. Start the app as above with `--test-endpoint`, then run:
+
+```bash
+./mxcli test tests-live/ -p ServiceDeskCopilot.mpr --attach
 ```
 
 Demo users:
@@ -58,4 +66,4 @@ Demo users:
 |---|---|---|
 | demo_customer | DemoCustomer1! | Customer, linked to Ada Jansen |
 | demo_agent | DemoAgent1234! | SupportAgent |
-| demo_administrator | (template default) | Administrator |
+| demo_administrator | DemoAdmin1234! | Administrator |

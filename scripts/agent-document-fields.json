@@ -1,0 +1,18 @@
+{
+  "ServiceDesk.SupportAgent": {
+    "selectedModel": { "id": "eu.anthropic.claude-sonnet-5-5", "name": "eu.anthropic.claude-sonnet-5-5" },
+    "enableBackendStreaming": true,
+    "enableUIStreaming": true,
+    "tools": {
+      "GetOrderStatus": { "microflow": "ServiceDesk.Tool_GetOrderStatus", "userAccessApproval": "VisibleForUser" },
+      "SearchTickets": { "microflow": "ServiceDesk.Tool_SearchTickets", "userAccessApproval": "VisibleForUser" },
+      "CreateTicket": { "microflow": "ServiceDesk.Tool_CreateTicket", "userAccessApproval": "UserConfirmationRequired" },
+      "IssueRefund": { "microflow": "ServiceDesk.Tool_IssueRefund", "userAccessApproval": "UserConfirmationRequired" }
+    }
+  },
+  "ServiceDesk.TriageAgent": {
+    "selectedModel": { "id": "eu.anthropic.claude-haiku-5-5", "name": "eu.anthropic.claude-haiku-5-5" },
+    "enableBackendStreaming": true,
+    "enableUIStreaming": false
+  }
+}

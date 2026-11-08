@@ -1,0 +1,122 @@
+mdl 1;
+
+-- Microflow tools for the support agent. Each takes plain values chosen by
+-- the model and returns text the model reads. A customer only ever reaches
+-- their own orders and tickets: the lookups go through the customer linked
+-- to the current user, and only staff (no linked customer) see everything.
+
+/** The customer linked to the signed-in user; empty for staff and for system sessions (tests, background tasks). */
+create or modify microflow "ServiceDesk"."SUB_GetCurrentCustomer" ()
+returns "ServiceDesk"."Customer" as $Customer
+folder 'Agent tools'
+begin
+  if $currentUser = empty then
+    return empty;
+  end if;
+  retrieve $Customer from "ServiceDesk"."Customer" where [ServiceDesk.Customer_User = $currentUser] first;
+  return $Customer;
+end;
+
+/** Finds an order by number. A customer only finds their own orders; staff find any order. */
+create or modify microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" ($OrderNumber: String)
+returns "ServiceDesk"."Order" as $Order
+folder 'Agent tools'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  if $Customer != empty then
+    retrieve $OwnOrder from "ServiceDesk"."Order" where [OrderNumber = $OrderNumber][ServiceDesk.Order_Customer = $Customer] first;
+    return $OwnOrder;
+  end if;
+  retrieve $AnyOrder from "ServiceDesk"."Order" where [OrderNumber = $OrderNumber] first;
+  return $AnyOrder;
+end;
+
+/** Agent tool: status, carrier and tracking code of an order. */
+create or modify microflow "ServiceDesk"."Tool_GetOrderStatus" ($OrderNumber: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'No order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  return 'Order ' + $Order/OrderNumber
+    + ': status ' + getCaption($Order/Status)
+    + ', ordered on ' + formatDateTime($Order/OrderDate, 'yyyy-MM-dd')
+    + ', total EUR ' + formatDecimal($Order/TotalAmount, '#,##0.00')
+    + ', carrier ' + (if $Order/Carrier = empty then 'not assigned yet' else $Order/Carrier)
+    + ', tracking code ' + (if $Order/TrackingCode = empty then 'none yet' else $Order/TrackingCode)
+    + '.';
+end;
+
+/** Tickets matching a search text: the customer's own, or all tickets when the customer is empty (staff). */
+create or modify microflow "ServiceDesk"."SUB_SearchTicketsForCustomer" ($SearchText: String, $Customer: "ServiceDesk"."Customer")
+returns list of "ServiceDesk"."Ticket" as $Tickets
+folder 'Agent tools'
+begin
+  if $Customer != empty then
+    retrieve $OwnTickets from "ServiceDesk"."Ticket"
+      where [contains(Subject, $SearchText) or contains(Description, $SearchText)][ServiceDesk.Ticket_Customer = $Customer]
+      sort by TicketNumber desc limit 10;
+    return $OwnTickets;
+  end if;
+  retrieve $AllTickets from "ServiceDesk"."Ticket"
+    where [contains(Subject, $SearchText) or contains(Description, $SearchText)]
+    sort by TicketNumber desc limit 10;
+  return $AllTickets;
+end;
+
+/** Agent tool: up to ten tickets whose subject or description contains the search text. */
+create or modify microflow "ServiceDesk"."Tool_SearchTickets" ($SearchText: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  $Tickets = call microflow "ServiceDesk"."SUB_SearchTicketsForCustomer" (SearchText = trim($SearchText), Customer = $Customer);
+  $TicketCount = count $Tickets;
+  if $TicketCount = 0 then
+    return 'No tickets match "' + $SearchText + '".';
+  end if;
+  declare $Lines String = '';
+  loop $Ticket in $Tickets begin
+    set $Lines = $Lines + '#' + toString($Ticket/TicketNumber) + ' ' + $Ticket/Subject
+      + ' (status ' + getCaption($Ticket/Status)
+      + ', priority ' + (if $Ticket/Priority = empty then 'not set' else getCaption($Ticket/Priority))
+      + ')' + '\n';
+  end loop;
+  return $Lines;
+end;
+
+/** Agent tool: opens a ticket for an order. Requires the user's approval in the chat. */
+create or modify microflow "ServiceDesk"."Tool_CreateTicket" ($Subject: String, $Description: String, $OrderNumber: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'Ticket not created: no order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
+  $Ticket = create "ServiceDesk"."Ticket" ("Subject" = $Subject, "Description" = $Description, "ServiceDesk"."Ticket_Order" = $Order, "ServiceDesk"."Ticket_Customer" = $Customer) commit;
+  return 'Created ticket #' + toString($Ticket/TicketNumber) + ' for order ' + $Order/OrderNumber + '.';
+end;
+
+/** Agent tool: requests a refund for an order, up to the order total. Requires the user's approval in the chat. */
+create or modify microflow "ServiceDesk"."Tool_IssueRefund" ($OrderNumber: String, $Amount: Decimal, $Reason: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'Refund not requested: no order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  if $Amount <= 0 or $Amount > $Order/TotalAmount then
+    return 'Refund not requested: the amount must be more than 0 and at most the order total of EUR ' + formatDecimal($Order/TotalAmount, '#,##0.00') + '.';
+  end if;
+  retrieve $Existing from "ServiceDesk"."RefundRequest" where [ServiceDesk.RefundRequest_Order = $Order] first;
+  if $Existing != empty then
+    return 'Refund not requested: order ' + $Order/OrderNumber + ' already has a refund request with status ' + getCaption($Existing/Status) + '.';
+  end if;
+  $Refund = create "ServiceDesk"."RefundRequest" ("Amount" = $Amount, "Reason" = $Reason, "ServiceDesk"."RefundRequest_Order" = $Order) commit;
+  return 'Requested a refund of EUR ' + formatDecimal($Amount, '#,##0.00') + ' for order ' + $Order/OrderNumber + '. A support agent will review it.';
+end;

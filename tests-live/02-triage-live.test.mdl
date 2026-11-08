@@ -1,0 +1,16 @@
+mdl 1;
+
+-- Live model calls (they cost GenAI units). Run against the app started with the key:
+--   ./mxcli run --local --test-endpoint --detach -p ServiceDeskCopilot.mpr --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY ...
+--   ./mxcli test tests-live/ -p ServiceDeskCopilot.mpr --attach
+
+/**
+ * @test Triage agent returns category, priority and summary, and rates damaged goods Urgent
+ * @expect $Classified = true
+ */
+$Ticket = create ServiceDesk.Ticket (Subject = 'Lamp arrived broken', Description = 'The box was crushed in transit and the glass shade is shattered. I want a replacement.');
+$Response = call java action AgentEditorCommons.Agent_CallDocument_WithoutHistory(Agent = 'ServiceDesk.TriageAgent', OptionalContextObject = $Ticket, OptionalRequest = empty, OptionalFileCollection = empty);
+declare $Text String = $Response/ResponseText;
+log info node 'ServiceDeskTest' 'Triage response: {1}' with ({1} = $Text);
+declare $Classified Boolean = contains($Text, '"category"') and contains($Text, '"summary"') and contains($Text, '"priority": "Urgent"');
+/

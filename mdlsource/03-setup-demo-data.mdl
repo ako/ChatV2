@@ -100,14 +100,4 @@ begin
   return true;
 end;
 
-/** After-startup microflow: loads the Agent Editor documents into Agent Commons, then seeds demo data. */
-create or modify microflow "ServiceDesk"."ASU_App" ()
-returns Boolean as $Started
-folder 'Setup'
-begin
-  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
-  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
-  return true;
-end;
-
-alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
+-- ASU_App (the after-startup microflow) and its registration live in 07-chat.mdl.

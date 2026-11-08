@@ -239,3 +239,74 @@ Surprises:
   - [ako/mxcli#2027](https://github.com/ako/mxcli/issues/2027): security level Off passes every gate.
   - [ako/mxcli#2028](https://github.com/ako/mxcli/issues/2028): marketplace install does not sync managed
     Java dependencies.
+
+## Step B: agents and chat (2026-11-08)
+
+What it adds:
+- `mdlsource/05-agent-tools.mdl` to `07-chat.mdl`.
+- `scripts/apply-agents.sh` and `scripts/patch-agent-documents.py`.
+- 6 tool tests in `tests/`, and a live model test in `tests-live/`.
+
+Verified live with `GENAI_TEXT_KEY`, passed per run as `--constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY`:
+- **The key works from outside Mendix Cloud.** It imported into a `run --local` app in a Claude Code
+  cloud container and exposed 11 Claude models: Haiku 4.5 and 5.5, Sonnet 4.5, 4.6, 5 and 5.5,
+  Opus 4.6, 4.7, 4.8, 5 and 5.5.
+- **Chat as `demo_customer`:** "Where is my order SO-10002?" called `GetOrderStatus` and answered
+  with the real order data.
+- **Refund request:** the request for a refund stopped at a **Confirm / Reject** prompt, so
+  human-in-the-loop works. After Confirm, `IssueRefund` created a RefundRequest of EUR 10, status
+  Requested, which OQL confirms.
+- **Triage task agent** (Haiku 5.5) returns `{"category","priority","summary"}` JSON
+  (`tests-live/`, passes with `--attach`).
+- **Admin pages:** Token consumption monitor, Traces and Agents render. Traces show the Sonnet 5.5
+  call with 2,800 tokens and 1 tool call.
+
+Gates:
+- `check`: clean.
+- `docker check`: 0 errors.
+- `test --local`: 10/10.
+- `lint`: 0 errors, 14 warnings. The 2 new ones are CONV010 on `ACT_Ticket_AddAttachment` and
+  `MxTest` noise while the test endpoint runs.
+- `report`: 76/100.
+- `playwright check` per role: Customer sees 2 tickets and 3 orders; SupportAgent and
+  Administrator see 10 and 15.
+
+mxcli gaps found (filed, see below). These block Agent Editor agents written with mxcli from
+working at all:
+1. **`create agent` drops `Document:` on microflow tools.** Only MCP tools get their document
+   reference written (`mdl/executor/cmd_agenteditor_write.go`). Tool `id` is left empty and
+   `userAccessApproval` is never written. As a result, the Mendix Cloud GenAI connector sends the
+   tools without a `toolSpec` wrapper, and Bedrock rejects the call with HTTP 400 ("property 'name'
+   is not defined in the schema"). `describe agent` does print `Document:` once it is present.
+2. **No `selectedModel` on agents.** With multi-model resources (11.12+), the agent document holds
+   `selectedModel: {id, name}`, and the import matches `id` against the deployed model ID. Without
+   it the import refuses the agent ("Model with name  is referenced but could not be found") and
+   the **whole agent import aborts**.
+3. `create or modify agent` rebuilds the JSON and drops any field it does not model, so these
+   have to be re-applied after every exec.
+4. Streaming is stored on the **agent** (`enableBackendStreaming`, `enableUIStreaming`), not the
+   model. The Agent Editor import honours it, which the OQL on `AgentCommons.Version` confirms.
+5. Provider values accepted by `AgentEditorCommons.ImportDeployedModel`: `MxCloudGenAI`, `Azure`
+   (Azure AI Foundry) and `Fuse`.
+
+Workaround: `scripts/patch-agent-documents.py` writes items 1, 2 and 4 into the agent unit's JSON.
+It fixes the BSON length prefixes and the unit's `ContentsHash`, which is base64 SHA-256 of the
+`.mxunit` file. `mxcli diag --check-units` and `docker check` stay clean. `scripts/apply-agents.sh`
+runs it after `06-agents.mdl`.
+
+Other surprises:
+- **Claude 5.5 models reject `temperature`**: HTTP 400 "`temperature` is deprecated for this
+  model". The agents set none.
+- Microflow tests run as a system session, so `'[%CurrentUser%]'` in XPath throws. The tools use
+  `$currentUser` with an empty-check, which is also safe for workflow and background calls.
+- `GenAICommons.StoreTraces` defaults to false. It is now true in the Default configuration.
+  Chat calls are traced; a direct `Agent_CallDocument_WithoutHistory` from a microflow test is not.
+- The connector logs `404 - file not found for file: llm-streaming` on the first streaming call.
+  That is it registering its request handler, and the reply still arrives.
+- `mxcli run --test-endpoint` writes `javasource/mxtest/`, which got committed once in Step A. It
+  is now git-ignored.
+- Demo-user passwords only take effect after a runtime restart.
+- The knowledge base is defined but not attached: `GENAI_TEXT_KEY` is a text-generation key, and
+  a knowledge base needs its own resource and key (`ServiceDesk.MxGenAIKnowledgeBaseKey`).
+- The model once said it had answered "before looking up" the order, although the tool span shows
+  the call ran first. It looks like a model quirk; worth watching once streaming is visible in the UI.

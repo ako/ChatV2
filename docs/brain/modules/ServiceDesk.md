@@ -22,3 +22,21 @@ Staff work across all customers, so their entity access has no XPath constraint.
 Anchors: `@ServiceDesk.SUB_EnsureDemoCustomerAccount` · id `10285b` · 2026-11-08
 
 The runtime had not created demo users when the after-startup microflow ran, so the Customer link stayed empty. SUB_EnsureDemoCustomerAccount creates the account with the Customer role when it is missing, then SUB_SeedCustomers links it to Ada Jansen.
+
+## Agent documents need scripts/apply-agents.sh, not 06-agents.mdl alone
+
+Anchors: `@ServiceDesk.SupportAgent` · id `b486f6` · 2026-11-08
+
+mxcli does not write selectedModel, tool microflow references, tool approval or streaming into agent documents, and create or modify drops them again. scripts/patch-agent-documents.py fills them in from scripts/agent-document-fields.json after every exec of 06-agents.mdl; without it the agents fail to import or the model call fails with HTTP 400.
+
+## SupportAgent runs on Claude Sonnet 5.5, TriageAgent on Claude Haiku 5.5, without temperature
+
+Anchors: `@ServiceDesk.SupportModel` · id `76c0ef` · 2026-11-08
+
+Both come from the one Mendix Cloud GenAI text resource (11 Claude models). Claude 5.5 models reject a temperature parameter with HTTP 400, so neither agent sets one. Haiku keeps the frequent triage calls cheap.
+
+## The knowledge base tool is not attached until a knowledge-base key exists
+
+Anchors: `@ServiceDesk.PolicyKnowledgeBase` · id `2d15b5` · 2026-11-08 · OPEN
+
+GENAI_TEXT_KEY is a text-generation key; a Mendix Cloud GenAI knowledge base needs its own resource and key (constant ServiceDesk.MxGenAIKnowledgeBaseKey). Attach the PolicyKnowledgeBase tool to SupportAgent once that key is available.

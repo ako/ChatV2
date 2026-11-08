@@ -257,39 +257,6 @@ create or modify page "ServiceDesk"."Ticket_NewEdit" folder 'Tickets'
   }
 };
 
-/** Tickets: all of them for staff, only their own for a customer. Step B adds the floating chat button here. */
-create or modify page "ServiceDesk"."Ticket_Overview" folder 'Tickets'
-(
-  title: 'Tickets',
-  layout: Atlas_Core.Atlas_Default,
-  url: 'tickets'
-)
-{
-  layoutgrid lgMain {
-    row {
-      column (desktopwidth: 12) {
-        dynamictext txtHeading (content: 'Tickets', rendermode: H2)
-        actionbutton btnNew (caption: 'New ticket', action: create object "ServiceDesk"."Ticket" then show page "ServiceDesk"."Ticket_NewEdit", buttonstyle: primary)
-        datagrid dgTickets (
-          datasource: database from "ServiceDesk"."Ticket" sort by "TicketNumber" desc,
-          PagingPosition: bottom,
-          designproperties: ('Hover': on, 'Striped': on)
-        ) {
-          column (attribute: "TicketNumber", caption: '#') { numberfilter nfNumber }
-          column (attribute: "Subject", caption: 'Subject') { textfilter tfSubject }
-          column (attribute: Ticket_Customer/"Name", caption: 'Customer')
-          column (attribute: "Category", caption: 'Category') { dropdownfilter ddCategory }
-          column (attribute: "Priority", caption: 'Priority') { dropdownfilter ddPriority }
-          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
-          column (caption: '') {
-            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."Ticket_NewEdit"("Ticket" = $currentObject))
-          }
-        }
-      }
-    }
-  }
-};
-
 /** Popup page: upload a policy or FAQ document. */
 create or modify page "ServiceDesk"."PolicyDocument_NewEdit" folder 'Knowledge'
 (
@@ -378,15 +345,4 @@ grant view on page "ServiceDesk"."Customer_NewEdit" to "ServiceDesk"."SupportAge
 grant view on page "ServiceDesk"."PolicyDocument_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."PolicyDocument_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
-create or modify navigation Responsive
-  app title 'Service Desk Copilot'
-  app icon Atlas_Core.Content.Mendix
-  home page "ServiceDesk"."Home"
-{
-  menu item 'Home' ( OnClick: show page "ServiceDesk"."Home", Icon: Atlas_Core.Atlas.home )
-  menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
-  menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
-  menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
-  menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
-  menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )
-};
+-- The Ticket_Overview page and the navigation menu live in 07-chat.mdl.

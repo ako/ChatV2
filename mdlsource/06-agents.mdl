@@ -1,0 +1,96 @@
+mdl 1;
+
+-- Agent Editor documents: the Mendix Cloud GenAI model and knowledge base,
+-- the conversational support agent and the triage task agent.
+-- Key constants carry no value in the model; pass them per run, e.g.
+--   --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
+
+/** Mendix Cloud GenAI text generation key. Never commit a value; pass it per run or per environment. */
+create or modify constant "ServiceDesk"."MxGenAIKey" folder 'Agents' (
+  Type: String,
+  DefaultValue: ''
+);
+
+/** Mendix Cloud GenAI knowledge base key. Never commit a value; pass it per run or per environment. */
+create or modify constant "ServiceDesk"."MxGenAIKnowledgeBaseKey" folder 'Agents' (
+  Type: String,
+  DefaultValue: ''
+);
+
+create or modify ai model "ServiceDesk"."SupportModel" folder 'Agents' (
+  Provider: MxCloudGenAI,
+  Key: @"ServiceDesk"."MxGenAIKey"
+);
+
+create or modify knowledge base "ServiceDesk"."PolicyKnowledgeBase" folder 'Agents' (
+  Provider: MxCloudGenAI,
+  Key: @"ServiceDesk"."MxGenAIKnowledgeBaseKey"
+);
+
+/** Chat agent for customers and service-desk staff. */
+create or modify agent "ServiceDesk"."SupportAgent" folder 'Agents' (
+  UsageType: Chat,
+  Model: "ServiceDesk"."SupportModel",
+  Description: 'Answers questions about orders and tickets, opens tickets and requests refunds after the user approves.',
+  ToolChoice: Auto,
+  SystemPrompt: $$You are the service-desk assistant of a web shop. You help customers and support staff with orders, tickets and refunds.
+
+Tools:
+- GetOrderStatus: look up an order by its number (format SO-10001). Use it whenever someone asks where an order is, when it ships or what it cost.
+- SearchTickets: find existing tickets by a word or phrase from the subject or description.
+- CreateTicket: open a new ticket for an order. Only do this after you have a clear subject, a short description and the order number. The user is asked to approve it.
+- IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
+
+Rules:
+- Only report what the tools return. Never invent orders, tickets, amounts or tracking codes.
+- If a tool says nothing was found, say so and ask the user to check the number.
+- Before creating a ticket or requesting a refund, check with SearchTickets or GetOrderStatus whether it is needed.
+- Answer policy and FAQ questions from the knowledge base when it is available, and say when you do not know.
+- Keep answers short and friendly. Use the user's language.$$
+)
+{
+  tool GetOrderStatus (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_GetOrderStatus",
+    Enabled: true,
+    Description: 'Returns the status, order date, total, carrier and tracking code of one order. Input: OrderNumber, e.g. SO-10002.'
+  )
+
+  tool SearchTickets (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_SearchTickets",
+    Enabled: true,
+    Description: 'Searches existing support tickets by a word or phrase and returns up to ten with their number, subject, status and priority. Input: SearchText.'
+  )
+
+  tool CreateTicket (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_CreateTicket",
+    Enabled: true,
+    Description: 'Opens a new support ticket for an order. Inputs: Subject, Description, OrderNumber. Requires the user to approve.'
+  )
+
+  tool IssueRefund (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_IssueRefund",
+    Enabled: true,
+    Description: 'Requests a refund for an order, at most the order total. Inputs: OrderNumber, Amount (a decimal number), Reason. Requires the user to approve; a support agent reviews it afterwards.'
+  )
+};
+
+/** Task agent that classifies a ticket. Used by the ticket workflow and as a tool of the support agent. */
+create or modify agent "ServiceDesk"."TriageAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  Description: 'Classifies a support ticket by category and priority and writes a one-sentence summary.',
+  Entity: "ServiceDesk"."Ticket",
+  Variables: ("Subject": EntityAttribute, "Description": EntityAttribute),
+  SystemPrompt: $$You triage support tickets for a web shop.
+
+Return only a JSON object, with no other text, in this shape:
+{"category": "Billing|Shipping|Product|Account|Other", "priority": "Low|Medium|High|Urgent", "summary": "one sentence"}
+
+Priority guide: Urgent for damaged goods, safety issues or money taken without delivery; High for billing errors and missing items; Medium for delays and changes; Low for questions.$$,
+  UserPrompt: $$Subject: {{Subject}}
+Description: {{Description}}$$
+);

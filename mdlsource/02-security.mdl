@@ -63,9 +63,14 @@ create or modify user role Administrator (
   CheckSecurity: true
 );
 
+create or modify demo user 'demo_administrator' ( Password: 'DemoAdmin1234!', UserRoles: (Administrator) );
 create or modify demo user 'demo_customer' ( Password: 'DemoCustomer1!', UserRoles: ("Customer") );
 create or modify demo user 'demo_agent' ( Password: 'DemoAgent1234!', UserRoles: ("SupportAgent") );
 
 -- The blank template ships with security off. Prototype level enforces page and
 -- microflow access only; production level is needed for the row-level XPath rules above.
 alter app security ( SecurityLevel: PRODUCTION );
+
+-- The template's generic User role and its demo user are not used by this app.
+drop demo user if exists 'demo_user';
+drop user role if exists User;
