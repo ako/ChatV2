@@ -161,3 +161,28 @@ These are the numbers for the unmodified template, before any of our own work.
   widget definitions behind ([ako/mxcli#1409](https://github.com/ako/mxcli/issues/1409)).
 - Not a gap: MCP Client 4.4 supports protocol v2025-11-25. mxcli's `ProtocolVersion` is free-form, so
   the value passes through; only `v2024_11_05` and `v2025_03_26` are documented.
+
+## Agents Kit install (2026-11-08)
+
+Installed with `mxcli marketplace install <id>`; each resolved to the latest release, which
+is compatible with 11.16.0:
+
+- CommunityCommons 11.5.1
+- GenAI Commons 7.3.0
+- Encryption 11.1.2
+- Mendix Cloud GenAI Connector 7.4.0
+- MCP Client 4.4.0
+- Markdown viewer and Events (widgets)
+- Conversational UI 7.4.0
+- Agent Commons 4.4.0
+- MCP Server 5.4.0
+- **Agent Editor 2.7.0**, published 2026-11-06. This is newer than the 2.6.0 the docs list.
+
+Notes:
+- Agent Commons failed once with `TLS handshake timeout` against marketplace.mendix.com and
+  worked on retry.
+- Each install fixed widget definitions (CE0463) and design properties (CE6087) itself, so no
+  separate `mxcli fix` run was needed.
+- `mxcli docker check` (mxbuild 11.16.0) afterwards reports **0 errors**.
+- The 11.12.1 worked example in the skill needed `--version` pins. On 11.16.0 the latest
+  versions install as they are.
