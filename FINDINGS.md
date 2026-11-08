@@ -135,8 +135,10 @@ Gaps, filed on ako/mxcli:
 - [ako/mxcli#2022](https://github.com/ako/mxcli/issues/2022) No **streaming** setting on AI Model documents (11.14).
 - [ako/mxcli#2023](https://github.com/ako/mxcli/issues/2023) The `Provider` value is free-form and unvalidated. No documented value for **Azure AI
   Foundry**, and a typo only shows up when Studio Pro opens the document.
-- [ako/mxcli#2024](https://github.com/ako/mxcli/issues/2024) No native **`call agent`** microflow action. The workaround is calling the AgentCommons
-  Java actions.
+- [ako/mxcli#2024](https://github.com/ako/mxcli/issues/2024), corrected 2026-11-08: Studio Pro's "Call Agent" toolbox actions
+  are exposed Java actions (`AgentEditorCommons.Agent_CallDocument_WithHistory` / `_WithoutHistory` /
+  `ChatContext_Create_ForAgentDocument`), and `call java action` already writes them. Only the agents
+  skill is out of date.
 
 ## Quality baseline, blank app (2026-11-08)
 
@@ -233,3 +235,7 @@ Surprises:
   quoted: `Atlas_Core.Atlas."shopping-cart"`.
 - The encryption key is passed per run from a git-ignored file:
   `--constant Encryption.EncryptionKey=@file:.mxcli/encryption.key`.
+- Filed:
+  - [ako/mxcli#2027](https://github.com/ako/mxcli/issues/2027): security level Off passes every gate.
+  - [ako/mxcli#2028](https://github.com/ako/mxcli/issues/2028): marketplace install does not sync managed
+    Java dependencies.
