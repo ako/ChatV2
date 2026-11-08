@@ -126,14 +126,38 @@ Supported:
   `--version` is required and that `mxcli fix widgets` and `mxcli fix design-properties` are
   needed afterwards.
 
-Gaps:
-- No **Published MCP Service** document. Without it, the app's microflows cannot be exposed
+Gaps, filed on ako/mxcli:
+- [ako/mxcli#2020](https://github.com/ako/mxcli/issues/2020) No **Published MCP Service** document. Without it, the app's microflows cannot be exposed
   as MCP tools, so the 11.16 OAuth 2.0 feature cannot be tested.
-- Agent tools and knowledge bases have no **user access / approval** properties (HiddenForUser,
+- [ako/mxcli#2021](https://github.com/ako/mxcli/issues/2021) Agent tools and knowledge bases have no **user access / approval** properties (HiddenForUser,
   VisibleForUser, UserConfirmationRequired) and no tool **name/description override**
   (Agent Editor 2.2+).
-- No **streaming** setting on AI Model documents (11.14).
-- The `Provider` value is free-form and unvalidated. No documented value for **Azure AI
+- [ako/mxcli#2022](https://github.com/ako/mxcli/issues/2022) No **streaming** setting on AI Model documents (11.14).
+- [ako/mxcli#2023](https://github.com/ako/mxcli/issues/2023) The `Provider` value is free-form and unvalidated. No documented value for **Azure AI
   Foundry**, and a typo only shows up when Studio Pro opens the document.
-- No native **`call agent`** microflow action. The workaround is calling the AgentCommons
+- [ako/mxcli#2024](https://github.com/ako/mxcli/issues/2024) No native **`call agent`** microflow action. The workaround is calling the AgentCommons
   Java actions.
+
+## Quality baseline, blank app (2026-11-08)
+
+These are the numbers for the unmodified template, before any of our own work.
+
+- `mxcli lint`: 8 issues — 0 errors, 0 warnings, 8 info, all in `MyFirstModule`.
+  - Example: QUAL004, the unused `MyFirstLogic`.
+- `mxcli report`: overall score 99/100.
+
+| Category | Score |
+|---|---|
+| Security | 99 |
+| Quality | 95 |
+| Architecture | 100 |
+| Performance | 100 |
+| Naming | 99 |
+| Design | 100 |
+| Other | 99 |
+
+- Boot check: `mxcli run --local --watch --detach` came up, and http://127.0.0.1:8080/ returns HTTP 200.
+- Already tracked: `marketplace install` does not install module dependencies and leaves CE0463
+  widget definitions behind ([ako/mxcli#1409](https://github.com/ako/mxcli/issues/1409)).
+- Not a gap: MCP Client 4.4 supports protocol v2025-11-25. mxcli's `ProtocolVersion` is free-form, so
+  the value passes through; only `v2024_11_05` and `v2025_03_26` are documented.
