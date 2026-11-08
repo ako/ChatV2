@@ -1,6 +1,6 @@
 ---
 name: widgets
-description: "The pluggable and custom widgets installed in THIS project and how to write them in MDL — Badge, Badge button, Area chart, Bar chart, Bubble chart, Column chart, Custom chart, Heat map, Line chart, Pie chart, Time series, Chart playground and 30 more. Use before placing any PLUGGABLEWIDGET or CUSTOMWIDGET on a page, or when a widget's property names, enumeration values or child blocks need checking."
+description: "The pluggable and custom widgets installed in THIS project and how to write them in MDL — Badge, Badge button, Area chart, Bar chart, Bubble chart, Column chart, Custom chart, Heat map, Line chart, Pie chart, Time series, Chart playground and 32 more. Use before placing any PLUGGABLEWIDGET or CUSTOMWIDGET on a page, or when a widget's property names, enumeration values or child blocks need checking."
 ---
 
 # Widgets in this project
@@ -43,11 +43,13 @@ this page.
 | `PLUGGABLEWIDGET` | [DATAGRIDNUMBERFILTER](datagridnumberfilter.md) | `com.mendix.widget.web.datagridnumberfilter.DatagridNumberFilter` | Number filter | 12 |
 | `PLUGGABLEWIDGET` | [DATAGRIDTEXTFILTER](datagridtextfilter.md) | `com.mendix.widget.web.datagridtextfilter.DatagridTextFilter` | Text filter | 12 |
 | `PLUGGABLEWIDGET` | [DROPDOWNSORT](dropdownsort.md) | `com.mendix.widget.web.dropdownsort.DropdownSort` | Drop-down sort | 5 |
+| `PLUGGABLEWIDGET` | [EVENTS](events.md) | `com.mendix.widget.web.events.Events` | Events | 13 |
 | `PLUGGABLEWIDGET` | [FIELDSET](fieldset.md) | `com.mendix.widget.web.fieldset.Fieldset` | Fieldset | 2 |
 | `PLUGGABLEWIDGET` | [GALLERY](gallery.md) | `com.mendix.widget.web.gallery.Gallery` | Gallery | 33 |
 | `PLUGGABLEWIDGET` | [HTMLELEMENT](htmlelement.md) | `com.mendix.widget.web.htmlelement.HTMLElement` | HTML Element | 12 |
 | `PLUGGABLEWIDGET` | [IMAGE](image.md) | `com.mendix.widget.web.image.Image` | Image | 21 |
 | `PLUGGABLEWIDGET` | [LANGUAGESELECTOR](languageselector.md) | `com.mendix.widget.web.languageselector.LanguageSelector` | Language selector | 6 |
+| `PLUGGABLEWIDGET` | [MARKDOWN](markdown.md) | `com.mendix.widget.web.markdown.Markdown` | Markdown viewer | 1 |
 | `PLUGGABLEWIDGET` | [POPUPMENU](popupmenu.md) | `com.mendix.widget.web.popupmenu.PopupMenu` | Pop-up menu | 9 |
 | `PLUGGABLEWIDGET` | [SELECTIONHELPER](selectionhelper.md) | `com.mendix.widget.web.selectionhelper.SelectionHelper` | Selection helper | 5 |
 | `PLUGGABLEWIDGET` | [TIMELINE](timeline.md) | `com.mendix.widget.web.timeline.Timeline` | Timeline | 18 |

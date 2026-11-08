@@ -1,0 +1,113 @@
+mdl 1;
+
+-- App startup: load the Agent Editor documents, then seed demo data once.
+
+drop microflow if exists "ServiceDesk"."ACT_SeedDemoData";
+
+/** Returns the demo_customer account, creating it with the Customer role when the runtime has not created the demo user yet. */
+create or modify microflow "ServiceDesk"."SUB_EnsureDemoCustomerAccount" ()
+returns System.User as $DemoUser
+folder 'Setup'
+begin
+  retrieve $Existing from System.User where [Name = 'demo_customer'] first;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  retrieve $CustomerRole from System.UserRole where [Name = 'Customer'] first;
+  $Account = create Administration.Account (Name = 'demo_customer', Password = 'DemoCustomer1!', FullName = 'Ada Jansen', Email = 'ada.jansen@example.com', System.UserRoles = $CustomerRole) commit;
+  return $Account;
+end;
+
+/** Seeds five demo customers and links the first one to the demo_customer account. */
+create or modify microflow "ServiceDesk"."SUB_SeedCustomers" ()
+folder 'Setup'
+begin
+  $DemoUser = call microflow "ServiceDesk"."SUB_EnsureDemoCustomerAccount" ();
+  $Ada = create "ServiceDesk"."Customer" ("Name" = 'Ada Jansen', "Email" = 'ada.jansen@example.com', "Company" = 'Jansen Bikes') commit;
+  $Bram = create "ServiceDesk"."Customer" ("Name" = 'Bram de Vries', "Email" = 'bram.devries@example.com', "Company" = 'De Vries Logistics') commit;
+  $Chloe = create "ServiceDesk"."Customer" ("Name" = 'Chloé Martin', "Email" = 'chloe.martin@example.com', "Company" = 'Atelier Martin') commit;
+  $Daan = create "ServiceDesk"."Customer" ("Name" = 'Daan Bakker', "Email" = 'daan.bakker@example.com') commit;
+  $Emma = create "ServiceDesk"."Customer" ("Name" = 'Emma Visser', "Email" = 'emma.visser@example.com', "Company" = 'Visser & Co') commit;
+  change $Ada ("ServiceDesk"."Customer_User" = $DemoUser) commit;
+end;
+
+/** Seeds fifteen demo orders across the five demo customers. */
+create or modify microflow "ServiceDesk"."SUB_SeedOrders" ()
+folder 'Setup'
+begin
+  retrieve $Ada from "ServiceDesk"."Customer" where [Email = 'ada.jansen@example.com'] first;
+  retrieve $Bram from "ServiceDesk"."Customer" where [Email = 'bram.devries@example.com'] first;
+  retrieve $Chloe from "ServiceDesk"."Customer" where [Email = 'chloe.martin@example.com'] first;
+  retrieve $Daan from "ServiceDesk"."Customer" where [Email = 'daan.bakker@example.com'] first;
+  retrieve $Emma from "ServiceDesk"."Customer" where [Email = 'emma.visser@example.com'] first;
+  $O1 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10001', "OrderDate" = addDays([%BeginOfCurrentDay%], -30), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 249.95, "Carrier" = 'PostNL', "TrackingCode" = '3SABCD000101', "ServiceDesk"."Order_Customer" = $Ada) commit;
+  $O2 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10002', "OrderDate" = addDays([%BeginOfCurrentDay%], -6), "Status" = ServiceDesk.ENUM_OrderStatus.Shipped, "TotalAmount" = 89.50, "Carrier" = 'DHL', "TrackingCode" = 'JVGL0000000102', "ServiceDesk"."Order_Customer" = $Ada) commit;
+  $O3 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10003', "OrderDate" = addDays([%BeginOfCurrentDay%], -1), "Status" = ServiceDesk.ENUM_OrderStatus.Placed, "TotalAmount" = 1299.00, "ServiceDesk"."Order_Customer" = $Ada) commit;
+  $O4 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10004', "OrderDate" = addDays([%BeginOfCurrentDay%], -45), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 54.20, "Carrier" = 'PostNL', "TrackingCode" = '3SABCD000104', "ServiceDesk"."Order_Customer" = $Bram) commit;
+  $O5 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10005', "OrderDate" = addDays([%BeginOfCurrentDay%], -12), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 410.00, "Carrier" = 'UPS', "TrackingCode" = '1Z999AA10000105', "ServiceDesk"."Order_Customer" = $Bram) commit;
+  $O6 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10006', "OrderDate" = addDays([%BeginOfCurrentDay%], -3), "Status" = ServiceDesk.ENUM_OrderStatus.Shipped, "TotalAmount" = 75.00, "Carrier" = 'DHL', "TrackingCode" = 'JVGL0000000106', "ServiceDesk"."Order_Customer" = $Bram) commit;
+  $O7 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10007', "OrderDate" = addDays([%BeginOfCurrentDay%], -20), "Status" = ServiceDesk.ENUM_OrderStatus.Cancelled, "TotalAmount" = 199.99, "ServiceDesk"."Order_Customer" = $Chloe) commit;
+  $O8 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10008', "OrderDate" = addDays([%BeginOfCurrentDay%], -9), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 32.75, "Carrier" = 'PostNL', "TrackingCode" = '3SABCD000108', "ServiceDesk"."Order_Customer" = $Chloe) commit;
+  $O9 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10009', "OrderDate" = addDays([%BeginOfCurrentDay%], -2), "Status" = ServiceDesk.ENUM_OrderStatus.Placed, "TotalAmount" = 560.40, "ServiceDesk"."Order_Customer" = $Chloe) commit;
+  $O10 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10010', "OrderDate" = addDays([%BeginOfCurrentDay%], -60), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 899.00, "Carrier" = 'UPS', "TrackingCode" = '1Z999AA10000110', "ServiceDesk"."Order_Customer" = $Daan) commit;
+  $O11 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10011', "OrderDate" = addDays([%BeginOfCurrentDay%], -5), "Status" = ServiceDesk.ENUM_OrderStatus.Shipped, "TotalAmount" = 129.00, "Carrier" = 'PostNL', "TrackingCode" = '3SABCD000111', "ServiceDesk"."Order_Customer" = $Daan) commit;
+  $O12 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10012', "OrderDate" = addDays([%BeginOfCurrentDay%], -15), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 44.90, "Carrier" = 'DHL', "TrackingCode" = 'JVGL0000000112', "ServiceDesk"."Order_Customer" = $Emma) commit;
+  $O13 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10013', "OrderDate" = addDays([%BeginOfCurrentDay%], -4), "Status" = ServiceDesk.ENUM_OrderStatus.Shipped, "TotalAmount" = 315.60, "Carrier" = 'UPS', "TrackingCode" = '1Z999AA10000113', "ServiceDesk"."Order_Customer" = $Emma) commit;
+  $O14 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10014', "OrderDate" = [%BeginOfCurrentDay%], "Status" = ServiceDesk.ENUM_OrderStatus.Placed, "TotalAmount" = 18.00, "ServiceDesk"."Order_Customer" = $Emma) commit;
+  $O15 = create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10015', "OrderDate" = addDays([%BeginOfCurrentDay%], -90), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 2150.00, "Carrier" = 'DHL', "TrackingCode" = 'JVGL0000000115', "ServiceDesk"."Order_Customer" = $Emma) commit;
+end;
+
+/** Seeds ten demo tickets and one refund request. */
+create or modify microflow "ServiceDesk"."SUB_SeedTickets" ()
+folder 'Setup'
+begin
+  retrieve $Bram from "ServiceDesk"."Customer" where [Email = 'bram.devries@example.com'] first;
+  retrieve $O1 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10001'] first;
+  retrieve $O2 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10002'] first;
+  retrieve $O5 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10005'] first;
+  retrieve $O7 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10007'] first;
+  retrieve $O8 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10008'] first;
+  retrieve $O10 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10010'] first;
+  retrieve $O11 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10011'] first;
+  retrieve $O13 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10013'] first;
+  retrieve $O15 from "ServiceDesk"."Order" where [OrderNumber = 'SO-10015'] first;
+  $T1 = create "ServiceDesk"."Ticket" ("Subject" = 'Parcel not delivered yet', "Description" = 'Tracking for SO-10002 has not moved for four days.', "Category" = ServiceDesk.ENUM_TicketCategory.Shipping, "Priority" = ServiceDesk.ENUM_TicketPriority.Medium, "ServiceDesk"."Ticket_Customer" = $O2/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O2) commit;
+  $T2 = create "ServiceDesk"."Ticket" ("Subject" = 'Charged twice', "Description" = 'My card shows two charges for order SO-10001.', "Category" = ServiceDesk.ENUM_TicketCategory.Billing, "Priority" = ServiceDesk.ENUM_TicketPriority.High, "ServiceDesk"."Ticket_Customer" = $O1/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O1) commit;
+  $T3 = create "ServiceDesk"."Ticket" ("Subject" = 'Wrong size received', "Description" = 'Ordered size L, received M.', "Category" = ServiceDesk.ENUM_TicketCategory.Product, "Priority" = ServiceDesk.ENUM_TicketPriority.Medium, "ServiceDesk"."Ticket_Customer" = $O5/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O5) commit;
+  $T4 = create "ServiceDesk"."Ticket" ("Subject" = 'Cannot log in', "Description" = 'Password reset email never arrives.', "Category" = ServiceDesk.ENUM_TicketCategory.Account, "Priority" = ServiceDesk.ENUM_TicketPriority.Low, "ServiceDesk"."Ticket_Customer" = $Bram) commit;
+  $T5 = create "ServiceDesk"."Ticket" ("Subject" = 'Refund for cancelled order', "Description" = 'Order SO-10007 was cancelled but I have not been refunded.', "Category" = ServiceDesk.ENUM_TicketCategory.Billing, "Priority" = ServiceDesk.ENUM_TicketPriority.High, "ServiceDesk"."Ticket_Customer" = $O7/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O7) commit;
+  $T6 = create "ServiceDesk"."Ticket" ("Subject" = 'Item arrived damaged', "Description" = 'The box was crushed and the lamp is broken.', "Category" = ServiceDesk.ENUM_TicketCategory.Product, "Priority" = ServiceDesk.ENUM_TicketPriority.Urgent, "Status" = ServiceDesk.ENUM_TicketStatus.InProgress, "ServiceDesk"."Ticket_Customer" = $O8/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O8) commit;
+  $T7 = create "ServiceDesk"."Ticket" ("Subject" = 'Change delivery address', "Description" = 'Can SO-10011 be delivered to my office instead?', "Category" = ServiceDesk.ENUM_TicketCategory.Shipping, "Priority" = ServiceDesk.ENUM_TicketPriority.Medium, "ServiceDesk"."Ticket_Customer" = $O11/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O11) commit;
+  $T8 = create "ServiceDesk"."Ticket" ("Subject" = 'Invoice needed for company', "Description" = 'Please send an invoice with VAT for SO-10010.', "Category" = ServiceDesk.ENUM_TicketCategory.Billing, "Priority" = ServiceDesk.ENUM_TicketPriority.Low, "Status" = ServiceDesk.ENUM_TicketStatus.Resolved, "ServiceDesk"."Ticket_Customer" = $O10/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O10) commit;
+  $T9 = create "ServiceDesk"."Ticket" ("Subject" = 'Missing item in parcel', "Description" = 'Only two of the three items in SO-10013 arrived.', "Category" = ServiceDesk.ENUM_TicketCategory.Shipping, "Priority" = ServiceDesk.ENUM_TicketPriority.High, "ServiceDesk"."Ticket_Customer" = $O13/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O13) commit;
+  $T10 = create "ServiceDesk"."Ticket" ("Subject" = 'Question about warranty', "Description" = 'How long is the warranty on the bike from SO-10015?', "Category" = ServiceDesk.ENUM_TicketCategory.Other, "Priority" = ServiceDesk.ENUM_TicketPriority.Low, "ServiceDesk"."Ticket_Customer" = $O15/"ServiceDesk"."Order_Customer", "ServiceDesk"."Ticket_Order" = $O15) commit;
+  $R1 = create "ServiceDesk"."RefundRequest" ("Amount" = 199.99, "Reason" = 'Order cancelled before shipping.', "ServiceDesk"."RefundRequest_Order" = $O7, "ServiceDesk"."RefundRequest_Ticket" = $T5) commit;
+end;
+
+/** Seeds demo customers, orders and tickets when the database has none. Returns whether it seeded. */
+create or modify microflow "ServiceDesk"."SUB_SeedDemoData" ()
+returns Boolean as $Seeded
+folder 'Setup'
+begin
+  retrieve $Existing from "ServiceDesk"."Customer" first;
+  if $Existing != empty then
+    return false;
+  end if;
+  call microflow "ServiceDesk"."SUB_SeedCustomers" ();
+  call microflow "ServiceDesk"."SUB_SeedOrders" ();
+  call microflow "ServiceDesk"."SUB_SeedTickets" ();
+  log info node 'ServiceDesk' 'Seeded demo data: 5 customers, 15 orders, 10 tickets, 1 refund request.';
+  return true;
+end;
+
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, then seeds demo data. */
+create or modify microflow "ServiceDesk"."ASU_App" ()
+returns Boolean as $Started
+folder 'Setup'
+begin
+  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
+  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  return true;
+end;
+
+alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );

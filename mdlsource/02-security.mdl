@@ -1,0 +1,71 @@
+mdl 1;
+
+-- Roles: Customer (own data + chat), SupportAgent (all tickets, approvals,
+-- workflow tasks) and Administrator (agents, models, keys, MCP, KB,
+-- traces and token usage).
+
+create or modify module role "ServiceDesk"."Customer" description 'Chats with the support agent; sees only their own orders and tickets';
+create or modify module role "ServiceDesk"."SupportAgent" description 'Sees all tickets, approves agent actions and handles workflow tasks';
+create or modify module role "ServiceDesk"."Admin" description 'Configures agents, models, keys, MCP and knowledge bases';
+
+-- Customer: own records only
+grant read * on entity "ServiceDesk"."Customer" to "ServiceDesk"."Customer"
+  where [ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read * on entity "ServiceDesk"."Order" to "ServiceDesk"."Customer"
+  where [ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant create, read *, write ("Subject", "Description") on entity "ServiceDesk"."Ticket" to "ServiceDesk"."Customer"
+  where [ServiceDesk.Ticket_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant create, read *, write * on entity "ServiceDesk"."Attachment" to "ServiceDesk"."Customer"
+  where [ServiceDesk.Attachment_Ticket/ServiceDesk.Ticket/ServiceDesk.Ticket_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read * on entity "ServiceDesk"."RefundRequest" to "ServiceDesk"."Customer"
+  where [ServiceDesk.RefundRequest_Order/ServiceDesk.Order/ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+
+-- SupportAgent: all service-desk data, no customer/order maintenance
+grant read * on entity "ServiceDesk"."Customer" to "ServiceDesk"."SupportAgent";
+grant read * on entity "ServiceDesk"."Order" to "ServiceDesk"."SupportAgent";
+grant create, read *, write * on entity "ServiceDesk"."Ticket" to "ServiceDesk"."SupportAgent";
+grant create, delete, read *, write * on entity "ServiceDesk"."Attachment" to "ServiceDesk"."SupportAgent";
+grant create, read *, write * on entity "ServiceDesk"."RefundRequest" to "ServiceDesk"."SupportAgent";
+grant create, read *, write * on entity "ServiceDesk"."PolicyDocument" to "ServiceDesk"."SupportAgent";
+
+-- Admin: everything
+grant create, delete, read *, write * on entity "ServiceDesk"."Customer" to "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."Order" to "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."Ticket" to "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."Attachment" to "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."RefundRequest" to "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."PolicyDocument" to "ServiceDesk"."Admin";
+
+create or modify user role "Customer" (
+  ModuleRoles: (System.User, Administration.User, "ServiceDesk"."Customer",
+                GenAICommons.User, ConversationalUI.User, MxGenAIConnector.User,
+                MCPClient.User, Encryption.User),
+  Description: 'A customer of the shop',
+  CheckSecurity: true
+);
+
+create or modify user role "SupportAgent" (
+  ModuleRoles: (System.User, Administration.User, "ServiceDesk"."SupportAgent",
+                GenAICommons.User, ConversationalUI.User, MxGenAIConnector.User,
+                MCPClient.User, Encryption.User),
+  Description: 'Service-desk staff',
+  CheckSecurity: true
+);
+
+create or modify user role Administrator (
+  ModuleRoles: (System.Administrator, Administration.Administrator, MyFirstModule.User,
+                "ServiceDesk"."Admin", "ServiceDesk"."SupportAgent",
+                GenAICommons.Administrator, GenAICommons.UsageMonitoring, GenAICommons.TraceMonitoring,
+                ConversationalUI.User, ConversationalUI.UsageMonitoring, ConversationalUI.TraceMonitoring,
+                AgentCommons.AgentAdmin, MxGenAIConnector.Administrator, MCPClient.Administrator,
+                Encryption.User),
+  ManageAllRoles: true,
+  CheckSecurity: true
+);
+
+create or modify demo user 'demo_customer' ( Password: 'DemoCustomer1!', UserRoles: ("Customer") );
+create or modify demo user 'demo_agent' ( Password: 'DemoAgent1234!', UserRoles: ("SupportAgent") );
+
+-- The blank template ships with security off. Prototype level enforces page and
+-- microflow access only; production level is needed for the row-level XPath rules above.
+alter app security ( SecurityLevel: PRODUCTION );

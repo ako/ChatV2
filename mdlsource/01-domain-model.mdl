@@ -1,0 +1,128 @@
+mdl 1;
+
+-- ServiceDesk domain model: customers, orders, tickets, attachments,
+-- refund requests and the policy documents that feed the knowledge base.
+
+create module if not exists "ServiceDesk";
+
+create or modify enumeration "ServiceDesk"."ENUM_OrderStatus" (
+  "Placed" 'Placed',
+  "Shipped" 'Shipped',
+  "Delivered" 'Delivered',
+  "Cancelled" 'Cancelled'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_TicketCategory" (
+  "Billing" 'Billing',
+  "Shipping" 'Shipping',
+  "Product" 'Product',
+  "Account" 'Account',
+  "Other" 'Other'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_TicketPriority" (
+  "Low" 'Low',
+  "Medium" 'Medium',
+  "High" 'High',
+  "Urgent" 'Urgent'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_TicketStatus" (
+  "Open" 'Open',
+  "Triaged" 'Triaged',
+  "InProgress" 'In progress',
+  "AwaitingRefundApproval" 'Awaiting refund approval',
+  "Resolved" 'Resolved'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_RefundStatus" (
+  "Requested" 'Requested',
+  "Approved" 'Approved',
+  "Rejected" 'Rejected'
+);
+
+/** A customer of the shop. Linked to a user account so a logged-in customer sees only their own data. */
+create or modify persistent entity "ServiceDesk"."Customer" (
+  "Name": String(200) not null error message 'Enter the customer name.',
+  "Email": String(200) not null error message 'Enter an email address.' unique error message 'This email address is already in use.',
+  "Company": String(200)
+);
+
+/** An order placed by a customer. */
+create or modify persistent entity "ServiceDesk"."Order" (
+  "OrderNumber": String(20) not null error message 'Enter an order number.' unique error message 'This order number already exists.',
+  "OrderDate": DateTime,
+  "Status": Enumeration("ServiceDesk"."ENUM_OrderStatus") default "Placed",
+  "TotalAmount": Decimal default 0,
+  "Carrier": String(100),
+  "TrackingCode": String(100)
+)
+index ("OrderNumber");
+
+/** A support ticket. Its status mirrors where the ticket-handling workflow is. */
+create or modify persistent entity "ServiceDesk"."Ticket" (
+  "TicketNumber": AutoNumber default 1000,
+  "Subject": String(200) not null error message 'Enter a subject.',
+  "Description": String(unlimited),
+  "Category": Enumeration("ServiceDesk"."ENUM_TicketCategory"),
+  "Priority": Enumeration("ServiceDesk"."ENUM_TicketPriority"),
+  "Status": Enumeration("ServiceDesk"."ENUM_TicketStatus") default "Open",
+  "TriageSummary": String(unlimited),
+  "CreatedDate": AutoCreatedDate,
+  "ChangedDate": AutoChangedDate
+);
+
+/** A file attached to a ticket, such as a PDF invoice or a screenshot. */
+create or modify persistent entity "ServiceDesk"."Attachment" extends System.FileDocument (
+  "ExtractedSummary": String(unlimited)
+);
+
+/** A refund requested for an order, approved or rejected by a support agent. */
+create or modify persistent entity "ServiceDesk"."RefundRequest" (
+  "Amount": Decimal default 0,
+  "Reason": String(2000),
+  "Status": Enumeration("ServiceDesk"."ENUM_RefundStatus") default "Requested",
+  "CreatedDate": AutoCreatedDate
+);
+
+/** An FAQ or policy document an administrator loads into the knowledge base. */
+create or modify persistent entity "ServiceDesk"."PolicyDocument" extends System.FileDocument (
+  "Title": String(200) not null error message 'Enter a title.',
+  "IngestedOn": DateTime
+);
+
+create or modify association "ServiceDesk"."Customer_User"
+  from "ServiceDesk"."Customer" to System.User
+  type Reference;
+
+create or modify association "ServiceDesk"."Order_Customer"
+  from "ServiceDesk"."Order" to "ServiceDesk"."Customer"
+  type Reference
+  on delete cascade;
+
+create or modify association "ServiceDesk"."Ticket_Customer"
+  from "ServiceDesk"."Ticket" to "ServiceDesk"."Customer"
+  type Reference
+  on delete cascade;
+
+create or modify association "ServiceDesk"."Ticket_Order"
+  from "ServiceDesk"."Ticket" to "ServiceDesk"."Order"
+  type Reference;
+
+create or modify association "ServiceDesk"."Ticket_AssignedTo"
+  from "ServiceDesk"."Ticket" to System.User
+  type Reference;
+
+create or modify association "ServiceDesk"."Attachment_Ticket"
+  from "ServiceDesk"."Attachment" to "ServiceDesk"."Ticket"
+  type Reference
+  on delete cascade;
+
+create or modify association "ServiceDesk"."RefundRequest_Order"
+  from "ServiceDesk"."RefundRequest" to "ServiceDesk"."Order"
+  type Reference
+  on delete cascade;
+
+create or modify association "ServiceDesk"."RefundRequest_Ticket"
+  from "ServiceDesk"."RefundRequest" to "ServiceDesk"."Ticket"
+  type Reference;

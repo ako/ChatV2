@@ -1,0 +1,392 @@
+mdl 1;
+
+-- Overview and edit pages for the service desk, plus home page and menu.
+-- Entity access rules decide what each role sees, so customers and staff
+-- share the same pages.
+
+/** Popup page: create or edit a customer (administrators). */
+create or modify page "ServiceDesk"."Customer_NewEdit" folder 'Customers'
+(
+  params: ( $Customer: "ServiceDesk"."Customer" ),
+  title: 'Customer',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvCustomer (datasource: $Customer) {
+          textbox txtName (label: 'Name', attribute: "Name")
+          textbox txtEmail (label: 'Email', attribute: "Email")
+          textbox txtCompany (label: 'Company', attribute: "Company")
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** All customers. */
+create or modify page "ServiceDesk"."Customer_Overview" folder 'Customers'
+(
+  title: 'Customers',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'customers'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Customers', rendermode: H2)
+        actionbutton btnNew (caption: 'New customer', action: create object "ServiceDesk"."Customer" then show page "ServiceDesk"."Customer_NewEdit", buttonstyle: primary)
+        datagrid dgCustomers (
+          datasource: database from "ServiceDesk"."Customer" sort by "Name" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Name", caption: 'Name') { textfilter tfName }
+          column (attribute: "Email", caption: 'Email') { textfilter tfEmail }
+          column (attribute: "Company", caption: 'Company') { textfilter tfCompany }
+          column (caption: '') {
+            actionbutton btnEdit (caption: 'Edit', action: show page "ServiceDesk"."Customer_NewEdit"("Customer" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup page: view or edit an order. Customers and support agents see it read-only. */
+create or modify page "ServiceDesk"."Order_NewEdit" folder 'Orders'
+(
+  params: ( $Order: "ServiceDesk"."Order" ),
+  title: 'Order',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvOrder (datasource: $Order) {
+          textbox txtOrderNumber (label: 'Order number', attribute: "OrderNumber")
+          combobox cbCustomer (label: 'Customer', Association: Order_Customer, datasource: database "ServiceDesk"."Customer", CaptionAttribute: "Name")
+          datepicker dpOrderDate (label: 'Order date', attribute: "OrderDate")
+          combobox cbStatus (label: 'Status', attribute: "Status")
+          textbox txtTotal (label: 'Total amount', attribute: "TotalAmount", DecimalPrecision: 2)
+          textbox txtCarrier (label: 'Carrier', attribute: "Carrier")
+          textbox txtTracking (label: 'Tracking code', attribute: "TrackingCode")
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Close', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Orders: all of them for staff, only their own for a customer. */
+create or modify page "ServiceDesk"."Order_Overview" folder 'Orders'
+(
+  title: 'Orders',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'orders'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Orders', rendermode: H2)
+        datagrid dgOrders (
+          datasource: database from "ServiceDesk"."Order" sort by "OrderDate" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "OrderNumber", caption: 'Order') { textfilter tfOrder }
+          column (attribute: Order_Customer/"Name", caption: 'Customer')
+          column (attribute: "OrderDate", caption: 'Date') { datefilter dfDate }
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+          column (attribute: "TotalAmount", caption: 'Total') { numberfilter nfTotal }
+          column (attribute: "Carrier", caption: 'Carrier')
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."Order_NewEdit"("Order" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup page: upload a file to a ticket. */
+create or modify page "ServiceDesk"."Attachment_NewEdit" folder 'Tickets'
+(
+  params: ( $Attachment: "ServiceDesk"."Attachment" ),
+  title: 'Attachment',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvAttachment (datasource: $Attachment) {
+          filemanager fmFile (label: 'File', Type: Both, MaxFileSize: 5, AllowedExtensions: '.pdf,.png,.jpg,.jpeg')
+          textarea txtSummary (label: 'Extracted summary', attribute: "ExtractedSummary", Editable: Never)
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Creates an attachment for the ticket and opens it for upload. */
+create or modify microflow "ServiceDesk"."ACT_Ticket_AddAttachment" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Tickets'
+begin
+  $Attachment = create "ServiceDesk"."Attachment" ("ServiceDesk"."Attachment_Ticket" = $Ticket);
+  show page "ServiceDesk"."Attachment_NewEdit" ("Attachment" = $Attachment);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_Ticket_AddAttachment" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup page: a refund request. Support agents approve or reject it. */
+create or modify page "ServiceDesk"."RefundRequest_NewEdit" folder 'Refunds'
+(
+  params: ( $RefundRequest: "ServiceDesk"."RefundRequest" ),
+  title: 'Refund request',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvRefund (datasource: $RefundRequest) {
+          dynamictext txtOrder (content: 'Order {1}', contentparams: ({1} = RefundRequest_Order/"OrderNumber"))
+          textbox txtAmount (label: 'Amount', attribute: "Amount", DecimalPrecision: 2)
+          textarea txtReason (label: 'Reason', attribute: "Reason")
+          combobox cbStatus (label: 'Status', attribute: "Status")
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Close', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Refund requests. */
+create or modify page "ServiceDesk"."RefundRequest_Overview" folder 'Refunds'
+(
+  title: 'Refund requests',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'refunds'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Refund requests', rendermode: H2)
+        datagrid dgRefunds (
+          datasource: database from "ServiceDesk"."RefundRequest" sort by "CreatedDate" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: RefundRequest_Order/"OrderNumber", caption: 'Order')
+          column (attribute: "Amount", caption: 'Amount') { numberfilter nfAmount }
+          column (attribute: "Reason", caption: 'Reason')
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."RefundRequest_NewEdit"("RefundRequest" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup page: create or work on a ticket, with its attachments and refund requests. */
+create or modify page "ServiceDesk"."Ticket_NewEdit" folder 'Tickets'
+(
+  params: ( $Ticket: "ServiceDesk"."Ticket" ),
+  title: 'Ticket',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvTicket (datasource: $Ticket) {
+          textbox txtSubject (label: 'Subject', attribute: "Subject")
+          textarea txtDescription (label: 'Description', attribute: "Description")
+          combobox cbCustomer (label: 'Customer', Association: Ticket_Customer, datasource: database "ServiceDesk"."Customer", CaptionAttribute: "Name")
+          combobox cbOrder (label: 'Order', Association: Ticket_Order, datasource: database "ServiceDesk"."Order", CaptionAttribute: "OrderNumber")
+          combobox cbCategory (label: 'Category', attribute: "Category")
+          combobox cbPriority (label: 'Priority', attribute: "Priority")
+          combobox cbStatus (label: 'Status', attribute: "Status")
+          textarea txtTriage (label: 'AI triage summary', attribute: "TriageSummary", Editable: Never)
+          dynamictext txtAttachments (content: 'Attachments', rendermode: H4)
+          actionbutton btnAddAttachment (caption: 'Add attachment', action: call microflow "ServiceDesk"."ACT_Ticket_AddAttachment"("Ticket" = $currentObject))
+          datagrid dgAttachments (datasource: $currentObject/Attachment_Ticket) {
+            column (attribute: "Name", caption: 'File')
+            column (attribute: "ExtractedSummary", caption: 'Summary')
+            column (caption: '') {
+              actionbutton btnOpenAttachment (caption: 'Open', action: show page "ServiceDesk"."Attachment_NewEdit"("Attachment" = $currentObject))
+            }
+          }
+          dynamictext txtRefunds (content: 'Refund requests', rendermode: H4)
+          datagrid dgRefunds (datasource: $currentObject/RefundRequest_Ticket) {
+            column (attribute: "Amount", caption: 'Amount')
+            column (attribute: "Status", caption: 'Status')
+            column (caption: '') {
+              actionbutton btnOpenRefund (caption: 'Open', action: show page "ServiceDesk"."RefundRequest_NewEdit"("RefundRequest" = $currentObject))
+            }
+          }
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Tickets: all of them for staff, only their own for a customer. Step B adds the floating chat button here. */
+create or modify page "ServiceDesk"."Ticket_Overview" folder 'Tickets'
+(
+  title: 'Tickets',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'tickets'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Tickets', rendermode: H2)
+        actionbutton btnNew (caption: 'New ticket', action: create object "ServiceDesk"."Ticket" then show page "ServiceDesk"."Ticket_NewEdit", buttonstyle: primary)
+        datagrid dgTickets (
+          datasource: database from "ServiceDesk"."Ticket" sort by "TicketNumber" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "TicketNumber", caption: '#') { numberfilter nfNumber }
+          column (attribute: "Subject", caption: 'Subject') { textfilter tfSubject }
+          column (attribute: Ticket_Customer/"Name", caption: 'Customer')
+          column (attribute: "Category", caption: 'Category') { dropdownfilter ddCategory }
+          column (attribute: "Priority", caption: 'Priority') { dropdownfilter ddPriority }
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."Ticket_NewEdit"("Ticket" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup page: upload a policy or FAQ document. */
+create or modify page "ServiceDesk"."PolicyDocument_NewEdit" folder 'Knowledge'
+(
+  params: ( $PolicyDocument: "ServiceDesk"."PolicyDocument" ),
+  title: 'Policy document',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvPolicy (datasource: $PolicyDocument) {
+          textbox txtTitle (label: 'Title', attribute: "Title")
+          filemanager fmFile (label: 'File', Type: Both, MaxFileSize: 5, AllowedExtensions: '.pdf,.txt,.md,.docx')
+          datepicker dpIngested (label: 'Loaded into knowledge base', attribute: "IngestedOn", DateFormat: DateTime, Editable: Never)
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Policy and FAQ documents for the knowledge base. Step B adds the load-into-knowledge-base action. */
+create or modify page "ServiceDesk"."PolicyDocument_Overview" folder 'Knowledge'
+(
+  title: 'Policy documents',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'policies'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Policy documents', rendermode: H2)
+        actionbutton btnNew (caption: 'Upload document', action: create object "ServiceDesk"."PolicyDocument" then show page "ServiceDesk"."PolicyDocument_NewEdit", buttonstyle: primary)
+        datagrid dgPolicies (
+          datasource: database from "ServiceDesk"."PolicyDocument" sort by "Title" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Title", caption: 'Title') { textfilter tfTitle }
+          column (attribute: "Name", caption: 'File')
+          column (attribute: "IngestedOn", caption: 'Loaded')
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."PolicyDocument_NewEdit"("PolicyDocument" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Landing page for every role. */
+create or modify page "ServiceDesk"."Home" folder 'Home'
+(
+  title: 'Service Desk Copilot',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'home'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Service Desk Copilot', rendermode: H1)
+        dynamictext txtIntro (content: 'Look up orders, raise and follow up tickets, and ask the AI support agent for help.', rendermode: Paragraph)
+        actionbutton btnTickets (caption: 'Tickets', action: show page "ServiceDesk"."Ticket_Overview", buttonstyle: primary)
+        actionbutton btnOrders (caption: 'Orders', action: show page "ServiceDesk"."Order_Overview")
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Home" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Ticket_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Ticket_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Attachment_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Order_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Order_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."RefundRequest_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."RefundRequest_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Customer_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Customer_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."PolicyDocument_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."PolicyDocument_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+create or modify navigation Responsive
+  app title 'Service Desk Copilot'
+  app icon Atlas_Core.Content.Mendix
+  home page "ServiceDesk"."Home"
+{
+  menu item 'Home' ( OnClick: show page "ServiceDesk"."Home", Icon: Atlas_Core.Atlas.home )
+  menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
+  menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
+  menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
+  menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
+  menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )
+};

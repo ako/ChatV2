@@ -186,3 +186,50 @@ Notes:
 - `mxcli docker check` (mxbuild 11.16.0) afterwards reports **0 errors**.
 - The 11.12.1 worked example in the skill needed `--version` pins. On 11.16.0 the latest
   versions install as they are.
+
+## Step A: data, security, pages, setup (2026-11-08)
+
+Built from `mdlsource/01-domain-model.mdl` to `04-pages.mdl`, and `tests/01-chat-agent.test.mdl`.
+Each script runs twice, and the second run writes nothing.
+
+Gates:
+- `check`: clean.
+- `lint`: 0 errors, 15 warnings, 57 info. The warnings are deliberate demo choices recorded in
+  the brain:
+  - SEC003: demo users at Production level.
+  - SEC008 and CONV007: staff read all rows.
+  - CONV006: create and delete from pages.
+  - ARCH003: no business keys.
+- `report`: 78/100. Security 40, Architecture 82, Quality 85. Down from the blank app's 99,
+  for the reasons above.
+- `docker check` (mxbuild 11.16.0): 0 errors.
+- `test --local`: 4/4 pass.
+- `run --local` boots with HTTP 200.
+- `mxcli playwright check` per role:
+  - SupportAgent and Administrator: all 6 pages render, with 10 tickets and 15 orders.
+  - Customer (demo_customer): 2 tickets and 3 orders, only their own. Customers, Refunds and
+    Policies are refused with 403, which is correct.
+
+Surprises:
+- **The blank template ships with Security level Off.** `check`, `lint` and `mx check` all passed
+  while every entity access rule was ignored. The demo customer saw all 10 tickets and the
+  Customers page, and no demo users were created, so `demo_agent` could not log in.
+  `playwright check` per role was the only gate that caught it.
+  - Prototype level fixes page access but still shows the customer every row, because it does
+    not enforce entity access.
+  - Production level is needed for row-level XPath. It surfaced 2 new CE2729 errors (a file
+    manager without write access), which are now fixed.
+- **Marketplace install does not download managed Java dependencies.** `mx check` passed, but
+  `test --local` failed with "An error occurred while compiling Java actions": the MCP SDK,
+  Jackson and Reactor JARs were missing from `vendorlib/`.
+  - Fix: `~/.mxcli/mxbuild/11.16.0/modeler/mx sync-java-dependencies ServiceDeskCopilot.mpr`,
+    with `LD_PRELOAD` set to the system libfreetype.
+  - The first attempt failed with "Failed to find some hosts". Maven Central returned 429 to curl
+    at the same time; the second attempt worked.
+- **Demo users do not exist yet when the after-startup microflow runs** on a fresh database. The
+  seed creates `demo_customer` itself.
+- MDL: the enumeration value `New` is reserved (MDL010). `AutoCreatedDate` attributes are always
+  named `CreatedDate`, and a custom name is discarded (MDL022). A hyphenated icon name has to be
+  quoted: `Atlas_Core.Atlas."shopping-cart"`.
+- The encryption key is passed per run from a git-ignored file:
+  `--constant Encryption.EncryptionKey=@file:.mxcli/encryption.key`.

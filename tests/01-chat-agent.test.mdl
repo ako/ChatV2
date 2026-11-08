@@ -1,0 +1,35 @@
+mdl 1;
+
+-- Slice 01: demo data seeded by the after-startup microflow.
+
+/**
+ * @test Seeding again is a no-op once customers exist
+ * @expect $Seeded = false
+ */
+$Seeded = call microflow ServiceDesk.SUB_SeedDemoData();
+/
+
+/**
+ * @test Startup seeds five customers
+ * @expect $CustomerCount = 5
+ */
+retrieve $Customers from ServiceDesk.Customer;
+$CustomerCount = count($Customers);
+/
+
+/**
+ * @test Startup seeds fifteen orders
+ * @expect $OrderCount = 15
+ */
+retrieve $Orders from ServiceDesk.Order;
+$OrderCount = count($Orders);
+/
+
+/**
+ * @test The demo_customer account is linked to a customer
+ * @expect $LinkedName = 'Ada Jansen'
+ */
+retrieve $DemoUser from System.User where [Name = 'demo_customer'] first;
+retrieve $Linked from ServiceDesk.Customer where [ServiceDesk.Customer_User = $DemoUser] first;
+declare $LinkedName String = $Linked/Name;
+/

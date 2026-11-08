@@ -40,6 +40,22 @@ MCP and uses tools from an external MCP server.
 
 ## Run it
 
+Generate a local encryption key once. The file is git-ignored, and a fresh container needs a new one:
+
 ```bash
-./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr   # http://localhost:8080/
+python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)), end='')" > .mxcli/encryption.key
 ```
+
+Then start the app:
+
+```bash
+./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key
+```
+
+Demo users:
+
+| User | Password | Role |
+|---|---|---|
+| demo_customer | DemoCustomer1! | Customer, linked to Ada Jansen |
+| demo_agent | DemoAgent1234! | SupportAgent |
+| demo_administrator | (template default) | Administrator |
