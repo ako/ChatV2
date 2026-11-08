@@ -1,0 +1,467 @@
+mdl 1;
+
+-- Slice 02: ticket handling as a workflow.
+--   AI triage (agent task) -> Resolve ticket (support agent)
+--     -> Resolved
+--     -> Refund needed -> Approve refund (support agent) -> Resolved
+-- A ticket starts the workflow when it is created, from the page or by the chat agent.
+
+/** The customer linked to the signed-in user; empty for staff and for system sessions (tests, background tasks). */
+create or modify microflow "ServiceDesk"."SUB_GetCurrentCustomer" ()
+returns "ServiceDesk"."Customer" as $Customer
+folder 'Agent tools'
+begin
+  if $currentUser = empty then
+    return empty;
+  end if;
+  retrieve $Customer from "ServiceDesk"."Customer" where [ServiceDesk.Customer_User = $currentUser] first;
+  return $Customer;
+end;
+
+/** The triage agent's answer, parsed from its JSON reply. */
+create or modify non-persistent entity "ServiceDesk"."TriageResult" (
+  "Category": String(50),
+  "Priority": String(50),
+  "Summary": String(2000)
+);
+
+create or modify json structure "ServiceDesk"."JSON_TriageResult" folder 'Workflow'
+  sample '{"category": "Billing", "priority": "High", "summary": "The customer was charged twice."}';
+
+create or modify import mapping "ServiceDesk"."IMM_TriageResult"
+  with json structure "ServiceDesk"."JSON_TriageResult"
+{
+  create "ServiceDesk"."TriageResult" {
+    Category = category,
+    Priority = priority,
+    Summary = summary
+  }
+};
+
+/** The imported runtime agent for an Agent Editor document, by qualified name. Calling it through Agent Commons keeps this script free of design-time agent references, so it can run before 07-agents.mdl. */
+create or modify microflow "ServiceDesk"."SUB_GetAgent" ($QualifiedName: String)
+returns AgentCommons.Agent as $Agent
+folder 'Agents'
+begin
+  retrieve $Agent from AgentCommons.Agent where [_QualifiedName = $QualifiedName] first;
+  if $Agent = empty then
+    log warning node 'ServiceDesk' 'Agent {1} is not loaded. Check the startup log of ASU_AgentEditor.' with ({1} = $QualifiedName);
+  end if;
+  return $Agent;
+end;
+
+/** Runs the triage agent on a ticket and stores category, priority and summary. Returns false when the agent call or its answer fails. */
+create or modify microflow "ServiceDesk"."SUB_Ticket_ApplyTriage" ($Ticket: "ServiceDesk"."Ticket")
+returns Boolean as $Applied
+folder 'Workflow'
+begin
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.TriageAgent');
+  if $Agent = empty then
+    return false;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = $Ticket, OptionalRequest = empty, OptionalFileCollection = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Triage agent call failed for ticket {1}: {2}' with ({1} = toString($Ticket/TicketNumber), {2} = $latestError/Message);
+    return false;
+  end error;
+  if $Response = empty or $Response/ResponseText = empty then
+    log warning node 'ServiceDesk' 'Triage agent returned no answer for ticket {1}.' with ({1} = toString($Ticket/TicketNumber));
+    return false;
+  end if;
+  declare $Text String = $Response/ResponseText;
+  declare $Start Integer = find($Text, '{');
+  declare $End Integer = findLast($Text, '}');
+  if $Start < 0 or $End <= $Start then
+    log warning node 'ServiceDesk' 'Triage answer for ticket {1} contains no JSON: {2}' with ({1} = toString($Ticket/TicketNumber), {2} = $Text);
+    return false;
+  end if;
+  declare $Json String = substring($Text, $Start, $End - $Start + 1);
+  $Result = import from mapping "ServiceDesk"."IMM_TriageResult"($Json) on error without rollback begin
+    log warning node 'ServiceDesk' 'Triage answer for ticket {1} is not valid JSON: {2}' with ({1} = toString($Ticket/TicketNumber), {2} = $Json);
+    return false;
+  end error;
+  change $Ticket (
+    "Category" = if $Result/Category = 'Billing' then ServiceDesk.ENUM_TicketCategory.Billing
+      else if $Result/Category = 'Shipping' then ServiceDesk.ENUM_TicketCategory.Shipping
+      else if $Result/Category = 'Product' then ServiceDesk.ENUM_TicketCategory.Product
+      else if $Result/Category = 'Account' then ServiceDesk.ENUM_TicketCategory.Account
+      else ServiceDesk.ENUM_TicketCategory.Other,
+    "Priority" = if $Result/Priority = 'Urgent' then ServiceDesk.ENUM_TicketPriority.Urgent
+      else if $Result/Priority = 'High' then ServiceDesk.ENUM_TicketPriority.High
+      else if $Result/Priority = 'Low' then ServiceDesk.ENUM_TicketPriority.Low
+      else ServiceDesk.ENUM_TicketPriority.Medium,
+    "TriageSummary" = $Result/Summary,
+    "Status" = if $Ticket/Status = ServiceDesk.ENUM_TicketStatus.Open then ServiceDesk.ENUM_TicketStatus.Triaged else $Ticket/Status
+  ) commit;
+  return true;
+end;
+
+/** Workflow AI agent task: triage the ticket. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_Triage" ($Ticket: "ServiceDesk"."Ticket")
+returns Boolean as $Triaged
+folder 'Workflow'
+begin
+  $Triaged = call microflow "ServiceDesk"."SUB_Ticket_ApplyTriage" (Ticket = $Ticket);
+  return $Triaged;
+end;
+
+/** Workflow step: the ticket is being worked on. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_MarkInProgress" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  change $Ticket ("Status" = ServiceDesk.ENUM_TicketStatus.InProgress) commit;
+end;
+
+/** Workflow step: a refund for the ticket's order waits for approval. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_MarkAwaitingRefund" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  change $Ticket ("Status" = ServiceDesk.ENUM_TicketStatus.AwaitingRefundApproval) commit;
+end;
+
+/** Workflow step: the ticket is resolved. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_MarkResolved" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  change $Ticket ("Status" = ServiceDesk.ENUM_TicketStatus.Resolved) commit;
+end;
+
+/** Sets every requested refund on the ticket's order to the given decision. */
+create or modify microflow "ServiceDesk"."SUB_Ticket_DecideRefunds" ($Ticket: "ServiceDesk"."Ticket", $Approve: Boolean)
+folder 'Workflow'
+begin
+  retrieve $Order from $Ticket/"ServiceDesk"."Ticket_Order";
+  if $Order = empty then
+    return;
+  end if;
+  retrieve $Refunds from "ServiceDesk"."RefundRequest" where [ServiceDesk.RefundRequest_Order = $Order][Status = 'Requested'];
+  loop $Refund in $Refunds begin
+    change $Refund (
+      "Status" = if $Approve then ServiceDesk.ENUM_RefundStatus.Approved else ServiceDesk.ENUM_RefundStatus.Rejected,
+      "ServiceDesk"."RefundRequest_Ticket" = $Ticket
+    );
+  end loop;
+  commit $Refunds;
+end;
+
+/** Workflow step: approve the requested refunds of the ticket's order. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_ApproveRefunds" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  call microflow "ServiceDesk"."SUB_Ticket_DecideRefunds" (Ticket = $Ticket, Approve = true);
+end;
+
+/** Workflow step: reject the requested refunds of the ticket's order. */
+create or modify microflow "ServiceDesk"."WFA_Ticket_RejectRefunds" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  call microflow "ServiceDesk"."SUB_Ticket_DecideRefunds" (Ticket = $Ticket, Approve = false);
+end;
+
+/** Assigns a workflow task to the signed-in user. */
+create or modify microflow "ServiceDesk"."SUB_Task_Assign" ($WorkflowUserTask: System.WorkflowUserTask)
+folder 'Workflow'
+begin
+  change $WorkflowUserTask (System.WorkflowUserTask_Assignees = $currentUser) commit;
+end;
+
+/** Claims a workflow task for the signed-in user. Shared by every task page. */
+create or modify microflow "ServiceDesk"."ACT_Task_AssignToMe" ($WorkflowUserTask: System.WorkflowUserTask)
+folder 'Workflow'
+begin
+  call microflow "ServiceDesk"."SUB_Task_Assign" (WorkflowUserTask = $WorkflowUserTask);
+end;
+
+/** Task page: resolve a ticket, or send it for refund approval. */
+create or modify page "ServiceDesk"."WF_ResolveTicket" folder 'Workflow'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $Ticket: "ServiceDesk"."Ticket" ),
+  title: 'Resolve ticket',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvTicket (datasource: $Ticket) {
+          dynamictext txtHeading (content: 'Ticket #{1}: {2}', contentparams: ({1} = TicketNumber, {2} = Subject), rendermode: H3)
+          textarea txtDescription (label: 'Description', attribute: "Description", Editable: Never)
+          combobox cbCategory (label: 'Category', attribute: "Category")
+          combobox cbPriority (label: 'Priority', attribute: "Priority")
+          textarea txtTriage (label: 'AI triage summary', attribute: "TriageSummary", Editable: Never)
+          dynamictext txtOrder (content: 'Order: {1}', contentparams: ({1} = Ticket_Order/OrderNumber))
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes)
+          }
+        }
+        dataview dvTask (datasource: $WorkflowUserTask) {
+          actionbutton btnAssign (caption: 'Assign to me', action: call microflow "ServiceDesk"."ACT_Task_AssignToMe"(WorkflowUserTask = $WorkflowUserTask))
+          actionbutton btnResolved (caption: 'Resolved', action: complete task 'Resolved', buttonstyle: success)
+          actionbutton btnRefund (caption: 'Refund needed', action: complete task 'Refund needed', buttonstyle: warning)
+        }
+      }
+    }
+  }
+};
+
+/** Task page: approve or reject the refund requested for the ticket's order. */
+create or modify page "ServiceDesk"."WF_ApproveRefund" folder 'Workflow'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $Ticket: "ServiceDesk"."Ticket" ),
+  title: 'Approve refund',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvTicket (datasource: $Ticket) {
+          dynamictext txtHeading (content: 'Ticket #{1}: {2}', contentparams: ({1} = TicketNumber, {2} = Subject), rendermode: H3)
+          dynamictext txtOrder (content: 'Order {1}, total EUR {2}', contentparams: ({1} = Ticket_Order/OrderNumber, {2} = Ticket_Order/TotalAmount))
+          textarea txtTriage (label: 'AI triage summary', attribute: "TriageSummary", Editable: Never)
+        }
+        dataview dvTask (datasource: $WorkflowUserTask) {
+          actionbutton btnAssign (caption: 'Assign to me', action: call microflow "ServiceDesk"."ACT_Task_AssignToMe"(WorkflowUserTask = $WorkflowUserTask))
+          actionbutton btnApprove (caption: 'Approve', action: complete task 'Approve', buttonstyle: success)
+          actionbutton btnReject (caption: 'Reject', action: complete task 'Reject', buttonstyle: danger)
+        }
+      }
+    }
+  }
+};
+
+create or modify workflow "ServiceDesk"."WF_TicketHandling" folder 'Workflow'
+  parameter $Context: "ServiceDesk"."Ticket"
+  display 'Ticket #{1}' with ({1} = toString($WorkflowContext/TicketNumber))
+  description '{1}' with ({1} = $WorkflowContext/Subject)
+begin
+  call agent microflow "ServiceDesk"."WFA_Ticket_Triage"(Ticket = $WorkflowContext) as aiTriage
+    caption 'AI triage';
+
+  call microflow "ServiceDesk"."WFA_Ticket_MarkInProgress"(Ticket = $WorkflowContext) as markInProgress
+    caption 'Mark in progress';
+
+  user task ResolveTicket 'Resolve the ticket'
+    page "ServiceDesk"."WF_ResolveTicket"
+    targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+    outcomes
+      'Resolved' { }
+      'Refund needed' {
+        call microflow "ServiceDesk"."WFA_Ticket_MarkAwaitingRefund"(Ticket = $WorkflowContext) as markAwaitingRefund
+          caption 'Mark awaiting refund approval';
+        user task ApproveRefund 'Approve the refund'
+          page "ServiceDesk"."WF_ApproveRefund"
+          targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+          outcomes
+            'Approve' { call microflow "ServiceDesk"."WFA_Ticket_ApproveRefunds"(Ticket = $WorkflowContext) as approveRefunds caption 'Approve refunds'; }
+            'Reject' { call microflow "ServiceDesk"."WFA_Ticket_RejectRefunds"(Ticket = $WorkflowContext) as rejectRefunds caption 'Reject refunds'; };
+      };
+
+  call microflow "ServiceDesk"."WFA_Ticket_MarkResolved"(Ticket = $WorkflowContext) as markResolved
+    caption 'Mark resolved';
+end workflow;
+
+/** Starts ticket handling for a new ticket. */
+create or modify microflow "ServiceDesk"."SUB_Ticket_StartHandling" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Workflow'
+begin
+  $Workflow = call workflow "ServiceDesk"."WF_TicketHandling" ($Ticket);
+end;
+
+/** Links a customer's new ticket to them, commits it and starts its handling workflow when it is new. */
+create or modify microflow "ServiceDesk"."SUB_Ticket_Submit" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Tickets'
+begin
+  declare $IsNew Boolean = isNew($Ticket);
+  if $IsNew then
+    $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+    if $Customer != empty then
+      change $Ticket ("ServiceDesk"."Ticket_Customer" = $Customer);
+    end if;
+  end if;
+  commit $Ticket;
+  if $IsNew then
+    call microflow "ServiceDesk"."SUB_Ticket_StartHandling" (Ticket = $Ticket);
+  end if;
+end;
+
+/** Save button of the ticket page. */
+create or modify microflow "ServiceDesk"."ACT_Ticket_Save" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Tickets'
+begin
+  call microflow "ServiceDesk"."SUB_Ticket_Submit" (Ticket = $Ticket);
+  close page;
+end;
+
+drop microflow if exists "ServiceDesk"."SUB_Attachment_Analyse";
+
+/** Commits an attachment, sends the PDF or image to the document agent and stores its description on the attachment. */
+create or modify microflow "ServiceDesk"."SUB_Attachment_SaveAndAnalyse" ($Attachment: "ServiceDesk"."Attachment")
+returns Boolean as $Analysed
+folder 'Tickets'
+begin
+  commit $Attachment;
+  declare $FileName String = toLowerCase($Attachment/Name);
+  declare $IsPdf Boolean = endsWith($FileName, '.pdf');
+  $Files = call microflow GenAICommons.FileCollection_CreateAndAddFile (
+    URL = empty,
+    FileDocument = $Attachment,
+    ENUM_FileType = if $IsPdf then GenAICommons.ENUM_FileType.document else GenAICommons.ENUM_FileType.image,
+    TextContent = empty
+  );
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.DocumentAgent');
+  if $Agent = empty then
+    return false;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = empty, OptionalRequest = empty, OptionalFileCollection = $Files) on error without rollback begin
+    log error node 'ServiceDesk' 'Document agent call failed for {1}: {2}' with ({1} = $Attachment/Name, {2} = $latestError/Message);
+    return false;
+  end error;
+  if $Response = empty or $Response/ResponseText = empty then
+    return false;
+  end if;
+  change $Attachment ("ExtractedSummary" = $Response/ResponseText) commit;
+  return true;
+end;
+
+/** Save button of the attachment page: stores the file, then lets the document agent describe it. */
+create or modify microflow "ServiceDesk"."ACT_Attachment_Save" ($Attachment: "ServiceDesk"."Attachment")
+folder 'Tickets'
+begin
+  $Analysed = call microflow "ServiceDesk"."SUB_Attachment_SaveAndAnalyse" (Attachment = $Attachment);
+  close page;
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_Attachment_Save" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup page: upload a file to a ticket. */
+create or modify page "ServiceDesk"."Attachment_NewEdit" folder 'Tickets'
+(
+  params: ( $Attachment: "ServiceDesk"."Attachment" ),
+  title: 'Attachment',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvAttachment (datasource: $Attachment) {
+          filemanager fmFile (label: 'File', Type: Both, MaxFileSize: 5, AllowedExtensions: '.pdf,.png,.jpg,.jpeg')
+          textarea txtSummary (label: 'Extracted summary', attribute: "ExtractedSummary", Editable: Never)
+          footer {
+            actionbutton btnSave (caption: 'Save and analyse', action: call microflow "ServiceDesk"."ACT_Attachment_Save"("Attachment" = $currentObject), buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** A new, uncommitted attachment on a ticket. */
+create or modify microflow "ServiceDesk"."SUB_Attachment_CreateForTicket" ($Ticket: "ServiceDesk"."Ticket")
+returns "ServiceDesk"."Attachment" as $Attachment
+folder 'Tickets'
+begin
+  $Attachment = create "ServiceDesk"."Attachment" ("ServiceDesk"."Attachment_Ticket" = $Ticket);
+  return $Attachment;
+end;
+
+/** Creates an attachment for the ticket and opens it for upload. */
+create or modify microflow "ServiceDesk"."ACT_Ticket_AddAttachment" ($Ticket: "ServiceDesk"."Ticket")
+folder 'Tickets'
+begin
+  $Attachment = call microflow "ServiceDesk"."SUB_Attachment_CreateForTicket" (Ticket = $Ticket);
+  show page "ServiceDesk"."Attachment_NewEdit" ("Attachment" = $Attachment);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_Ticket_AddAttachment" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+grant view on page "ServiceDesk"."Attachment_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup page: create or work on a ticket, with its attachments and refund requests. */
+create or modify page "ServiceDesk"."Ticket_NewEdit" folder 'Tickets'
+(
+  params: ( $Ticket: "ServiceDesk"."Ticket" ),
+  title: 'Ticket',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvTicket (datasource: $Ticket) {
+          textbox txtSubject (label: 'Subject', attribute: "Subject")
+          textarea txtDescription (label: 'Description', attribute: "Description")
+          combobox cbCustomer (label: 'Customer', Association: Ticket_Customer, datasource: database "ServiceDesk"."Customer", CaptionAttribute: "Name")
+          combobox cbOrder (label: 'Order', Association: Ticket_Order, datasource: database "ServiceDesk"."Order", CaptionAttribute: "OrderNumber")
+          combobox cbCategory (label: 'Category', attribute: "Category")
+          combobox cbPriority (label: 'Priority', attribute: "Priority")
+          combobox cbStatus (label: 'Status', attribute: "Status")
+          textarea txtTriage (label: 'AI triage summary', attribute: "TriageSummary", Editable: Never)
+          dynamictext txtAttachments (content: 'Attachments', rendermode: H4)
+          actionbutton btnAddAttachment (caption: 'Add attachment', action: call microflow "ServiceDesk"."ACT_Ticket_AddAttachment"("Ticket" = $currentObject))
+          datagrid dgAttachments (datasource: $currentObject/Attachment_Ticket) {
+            column (attribute: "Name", caption: 'File')
+            column (attribute: "ExtractedSummary", caption: 'Summary')
+            column (caption: '') {
+              actionbutton btnOpenAttachment (caption: 'Open', action: show page "ServiceDesk"."Attachment_NewEdit"("Attachment" = $currentObject))
+            }
+          }
+          dynamictext txtRefunds (content: 'Refund requests', rendermode: H4)
+          datagrid dgRefunds (datasource: $currentObject/RefundRequest_Ticket) {
+            column (attribute: "Amount", caption: 'Amount')
+            column (attribute: "Status", caption: 'Status')
+            column (caption: '') {
+              actionbutton btnOpenRefund (caption: 'Open', action: show page "ServiceDesk"."RefundRequest_NewEdit"("RefundRequest" = $currentObject))
+            }
+          }
+          footer {
+            actionbutton btnSave (caption: 'Save', action: call microflow "ServiceDesk"."ACT_Ticket_Save"("Ticket" = $currentObject), buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Ticket_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Inbox: open workflow tasks the signed-in user may pick up or has claimed. */
+create or modify page "ServiceDesk"."WF_TaskInbox" folder 'Workflow'
+(
+  title: 'My tasks',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'tasks'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'My tasks', rendermode: H2)
+        datagrid dgTasks (
+          datasource: database from System.WorkflowUserTask
+            where [System.WorkflowUserTask_TargetUsers = '[%CurrentUser%]' or System.WorkflowUserTask_Assignees = '[%CurrentUser%]'][State = 'Created' or State = 'InProgress']
+            sort by StartTime asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: Name, caption: 'Task')
+          column (attribute: WorkflowUserTask_Workflow/Name, caption: 'Ticket')
+          column (attribute: WorkflowUserTask_Workflow/Description, caption: 'Subject')
+          column (attribute: StartTime, caption: 'Started')
+          column (caption: '') {
+            linkbutton btnOpen (caption: 'Open', action: open user task)
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."WF_TaskInbox" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+grant execute on microflow "ServiceDesk"."ACT_Task_AssignToMe" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Ticket_Save" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ResolveTicket" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ApproveRefund" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

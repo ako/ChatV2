@@ -23,11 +23,11 @@ Anchors: `@ServiceDesk.SUB_EnsureDemoCustomerAccount` · id `10285b` · 2026-11-
 
 The runtime had not created demo users when the after-startup microflow ran, so the Customer link stayed empty. SUB_EnsureDemoCustomerAccount creates the account with the Customer role when it is missing, then SUB_SeedCustomers links it to Ada Jansen.
 
-## Agent documents need scripts/apply-agents.sh, not 06-agents.mdl alone
+## Agent documents need scripts/apply-agents.sh, not 07-agents.mdl alone
 
 Anchors: `@ServiceDesk.SupportAgent` · id `b486f6` · 2026-11-08
 
-mxcli does not write selectedModel, tool microflow references, tool approval or streaming into agent documents, and create or modify drops them again. scripts/patch-agent-documents.py fills them in from scripts/agent-document-fields.json after every exec of 06-agents.mdl; without it the agents fail to import or the model call fails with HTTP 400.
+mxcli does not write selectedModel, tool microflow references, tool approval or streaming into agent documents, and create or modify drops them again. scripts/patch-agent-documents.py fills them in from scripts/agent-document-fields.json after every exec of 07-agents.mdl; without it the agents fail to import or the model call fails with HTTP 400.
 
 ## SupportAgent runs on Claude Sonnet 5.5, TriageAgent on Claude Haiku 5.5, without temperature
 
@@ -40,3 +40,21 @@ Both come from the one Mendix Cloud GenAI text resource (11 Claude models). Clau
 Anchors: `@ServiceDesk.PolicyKnowledgeBase` · id `2d15b5` · 2026-11-08 · OPEN
 
 GENAI_TEXT_KEY is a text-generation key; a Mendix Cloud GenAI knowledge base needs its own resource and key (constant ServiceDesk.MxGenAIKnowledgeBaseKey). Attach the PolicyKnowledgeBase tool to SupportAgent once that key is available.
+
+## Workflow and attachment microflows call agents through Agent Commons by name, not by agent document
+
+Anchors: `@ServiceDesk.SUB_GetAgent` · id `a8ec2e` · 2026-11-08
+
+SUB_Ticket_ApplyTriage and SUB_Attachment_SaveAndAnalyse retrieve the imported AgentCommons.Agent by _QualifiedName and call AgentCommons.Agent_Call_WithoutHistory. check --references resolves agent-document references, and the dependency cycle tool -> workflow -> agent -> tool would otherwise make a fresh run of the scripts fail in any order.
+
+## Ticket status mirrors the workflow; the workflow is the source of truth
+
+Anchors: `@ServiceDesk.WF_TicketHandling` · id `7dd2d0` · 2026-11-08
+
+WF_TicketHandling sets Status through WFA_ microflows at each step so the ticket lists and the customer can see progress. Triage only moves an Open ticket to Triaged, so re-triaging from the chat tool never moves a ticket backwards.
+
+## Customers' new tickets are linked to them in SUB_Ticket_Submit
+
+Anchors: `@ServiceDesk.SUB_Ticket_Submit` · id `202886` · 2026-11-08
+
+The Customer role may not write Ticket_Customer, so a ticket created from the page was saved without a customer and disappeared from the customer's own list. The save microflow links it to the signed-in customer.

@@ -5,18 +5,6 @@ mdl 1;
 -- their own orders and tickets: the lookups go through the customer linked
 -- to the current user, and only staff (no linked customer) see everything.
 
-/** The customer linked to the signed-in user; empty for staff and for system sessions (tests, background tasks). */
-create or modify microflow "ServiceDesk"."SUB_GetCurrentCustomer" ()
-returns "ServiceDesk"."Customer" as $Customer
-folder 'Agent tools'
-begin
-  if $currentUser = empty then
-    return empty;
-  end if;
-  retrieve $Customer from "ServiceDesk"."Customer" where [ServiceDesk.Customer_User = $currentUser] first;
-  return $Customer;
-end;
-
 /** Finds an order by number. A customer only finds their own orders; staff find any order. */
 create or modify microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" ($OrderNumber: String)
 returns "ServiceDesk"."Order" as $Order
@@ -87,7 +75,7 @@ begin
   return $Lines;
 end;
 
-/** Agent tool: opens a ticket for an order. Requires the user's approval in the chat. */
+/** Agent tool: opens a ticket for an order and starts its handling workflow. Requires the user's approval in the chat. */
 create or modify microflow "ServiceDesk"."Tool_CreateTicket" ($Subject: String, $Description: String, $OrderNumber: String)
 returns String as $Answer
 folder 'Agent tools'
@@ -98,6 +86,7 @@ begin
   end if;
   retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
   $Ticket = create "ServiceDesk"."Ticket" ("Subject" = $Subject, "Description" = $Description, "ServiceDesk"."Ticket_Order" = $Order, "ServiceDesk"."Ticket_Customer" = $Customer) commit;
+  call microflow "ServiceDesk"."SUB_Ticket_StartHandling" (Ticket = $Ticket);
   return 'Created ticket #' + toString($Ticket/TicketNumber) + ' for order ' + $Order/OrderNumber + '.';
 end;
 
@@ -119,4 +108,35 @@ begin
   end if;
   $Refund = create "ServiceDesk"."RefundRequest" ("Amount" = $Amount, "Reason" = $Reason, "ServiceDesk"."RefundRequest_Order" = $Order) commit;
   return 'Requested a refund of EUR ' + formatDecimal($Amount, '#,##0.00') + ' for order ' + $Order/OrderNumber + '. A support agent will review it.';
+end;
+
+/** A ticket by number: the customer's own, or any ticket when the customer is empty (staff). */
+create or modify microflow "ServiceDesk"."SUB_FindTicketForCustomer" ($TicketNumber: Integer, $Customer: "ServiceDesk"."Customer")
+returns "ServiceDesk"."Ticket" as $Ticket
+folder 'Agent tools'
+begin
+  if $Customer != empty then
+    retrieve $OwnTicket from "ServiceDesk"."Ticket" where [TicketNumber = $TicketNumber][ServiceDesk.Ticket_Customer = $Customer] first;
+    return $OwnTicket;
+  end if;
+  retrieve $AnyTicket from "ServiceDesk"."Ticket" where [TicketNumber = $TicketNumber] first;
+  return $AnyTicket;
+end;
+
+/** Agent tool: runs the triage agent on an existing ticket (agent-as-tool) and returns its classification. */
+create or modify microflow "ServiceDesk"."Tool_TriageTicket" ($TicketNumber: Integer)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  $Ticket = call microflow "ServiceDesk"."SUB_FindTicketForCustomer" (TicketNumber = $TicketNumber, Customer = $Customer);
+  if $Ticket = empty then
+    return 'No ticket #' + toString($TicketNumber) + ' found for this user.';
+  end if;
+  $Triaged = call microflow "ServiceDesk"."SUB_Ticket_ApplyTriage" (Ticket = $Ticket);
+  if not($Triaged) then
+    return 'The triage agent could not classify ticket #' + toString($TicketNumber) + '.';
+  end if;
+  return 'Ticket #' + toString($TicketNumber) + ': category ' + getCaption($Ticket/Category)
+    + ', priority ' + getCaption($Ticket/Priority) + '. ' + $Ticket/TriageSummary;
 end;

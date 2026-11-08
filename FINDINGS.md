@@ -312,3 +312,57 @@ Other surprises:
   the call ran first. It looks like a model quirk; worth watching once streaming is visible in the UI.
 - [ako/mxcli#2021](https://github.com/ako/mxcli/issues/2021) (commented): `userAccessApproval` is stored per tool in the
   agent document. When it is absent, the import defaults the tool to `HiddenForUser`.
+
+## Slice 02: ticket workflow, attachments, agent-as-tool, dashboard (2026-11-08)
+
+What it adds:
+- `mdlsource/05-ticket-workflow.mdl`, with the scripts renumbered: tools are now 06, agents 07,
+  chat 08.
+- The dashboard view entities, in `04-pages.mdl`.
+- The `DocumentAgent` and the `TriageTicket` tool, in 06 and 07.
+- 6 more tests in `tests/02-triage-workflow.test.mdl`.
+
+Verified live in the browser with `GENAI_TEXT_KEY`:
+- **Customer creates a ticket** → `WF_TicketHandling` starts → the **AI Agent Task** runs the
+  TriageAgent (Haiku 5.5) → the ticket gets category, priority and summary, and moves to In
+  progress. Examples: "Invoice charged twice" → Billing/High; "Wrong colour helmet" → Product/High.
+- **Support agent** → My tasks → *Resolve the ticket* → Assign to me → **Refund needed** → *Approve
+  the refund* → **Approve** → the ticket is Resolved and the requested refund is set to Approved.
+- **Attachment:** a PDF invoice uploaded by the customer is read by the DocumentAgent through a
+  GenAI Commons FileCollection. It found "two approved card charges of EUR 249.95 for a single
+  item".
+- **Agent-as-tool:** asking the chat "How urgent is ticket 1005?" made the SupportAgent call
+  `TriageTicket`, which runs the TriageAgent. Answer: Product / Urgent.
+- **Dashboard:** the view entities `TicketStats` (open tickets per category and priority) and
+  `RefundTotals` (count and sum per status) are computed by the database. Staff only; customers
+  get 403.
+
+Gates:
+- `check`: clean.
+- `docker check`: 0 errors.
+- `test --local`: 16/16.
+- `lint`: 0 errors, 16 warnings.
+- `report`: 72/100. Architecture fell to 58 because of ARCH001 on task pages, see below.
+- `playwright check` per role passes.
+- A second exec of every script writes nothing, except `07-agents.mdl`, which mxcli rewrites
+  (ako/mxcli#2031).
+
+Surprises:
+- **`check --references` resolves agent-document names** passed to
+  `Agent_CallDocument_*(Agent = 'Module.Agent')`. Combined with the dependency cycle tool →
+  workflow → agent → tool, no script order works on a fresh project. The workflow and attachment
+  microflows therefore retrieve `AgentCommons.Agent` by `_QualifiedName` and call
+  `AgentCommons.Agent_Call_WithoutHistory`, which is what `Agent_CallDocument_*` does internally.
+- **The Customer role cannot write `Ticket_Customer`**, so a ticket created on the page was saved
+  without a customer and vanished from the customer's own list. Only browser rows per role caught
+  it. `SUB_Ticket_Submit` now links it.
+- **`mxcli run --test-endpoint` triggers a second build right after boot**, about 30 seconds of
+  "Failed to fetch dynamically imported module …/dist/pages/*.js" 404s and a forced client
+  reload. Without `--test-endpoint` the app stays on build #1.
+- **Lint ARCH001 flags `System.WorkflowUserTask` on task pages and the task inbox.** Mendix
+  requires that parameter on a task page, so these 3 warnings are false positives.
+- A `create or modify microflow` that changes a decision's nesting is refused (MDL-V1-REBUILD).
+  `ACT_Ticket_Save` had to be dropped and recreated once.
+- An import mapping with an object root must not use `first` (MDL-MAP04: it builds, then throws
+  at runtime).
+- Microflow tests roll back per test, so data-count tests see the seeded state.

@@ -121,6 +121,8 @@ create or modify navigation Responsive
 {
   menu item 'Home' ( OnClick: show page "ServiceDesk"."Home", Icon: Atlas_Core.Atlas.home )
   menu item 'Assistant' ( OnClick: call microflow "ServiceDesk"."ACT_SupportChat_Open", Icon: Atlas_Core.Atlas."message-bubble" )
+  menu item 'Dashboard' ( OnClick: show page "ServiceDesk"."Dashboard", Icon: Atlas_Core.Atlas."analytics-bars" )
+  menu item 'My tasks' ( OnClick: show page "ServiceDesk"."WF_TaskInbox", Icon: Atlas_Core.Atlas."checkmark-circle" )
   menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
   menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
   menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )

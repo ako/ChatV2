@@ -13,7 +13,7 @@ grant read * on entity "ServiceDesk"."Customer" to "ServiceDesk"."Customer"
   where [ServiceDesk.Customer_User = '[%CurrentUser%]'];
 grant read * on entity "ServiceDesk"."Order" to "ServiceDesk"."Customer"
   where [ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
-grant create, read *, write ("Subject", "Description") on entity "ServiceDesk"."Ticket" to "ServiceDesk"."Customer"
+grant create, read *, write ("Subject", "Description", "Ticket_Order") on entity "ServiceDesk"."Ticket" to "ServiceDesk"."Customer"
   where [ServiceDesk.Ticket_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
 grant create, read *, write * on entity "ServiceDesk"."Attachment" to "ServiceDesk"."Customer"
   where [ServiceDesk.Attachment_Ticket/ServiceDesk.Ticket/ServiceDesk.Ticket_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];

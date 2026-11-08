@@ -100,4 +100,4 @@ begin
   return true;
 end;
 
--- ASU_App (the after-startup microflow) and its registration live in 07-chat.mdl.
+-- ASU_App (the after-startup microflow) and its registration live in 08-chat.mdl.

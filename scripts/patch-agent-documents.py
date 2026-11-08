@@ -18,7 +18,7 @@ stores these in an agent document; mxcli's `create agent` leaves them out:
 
 The values per agent are in scripts/agent-document-fields.json. A later
 `create or modify agent` drops them again, so scripts/apply-agents.sh runs
-mdlsource/06-agents.mdl and then this script.
+mdlsource/07-agents.mdl and then this script.
 
 Usage:
   python3 scripts/patch-agent-documents.py <project.mpr> <fields.json>

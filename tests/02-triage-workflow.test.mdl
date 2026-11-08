@@ -1,0 +1,56 @@
+mdl 1;
+
+-- Slice 02: workflow helpers, agent-as-tool lookup and the dashboard views.
+
+/**
+ * @test Approving refunds sets the requested refund of the ticket's order to Approved
+ * @expect $Status = 'Approved'
+ */
+retrieve $Order from ServiceDesk.Order where [OrderNumber = 'SO-10007'] first;
+retrieve $Ticket from ServiceDesk.Ticket where [ServiceDesk.Ticket_Order = $Order] first;
+call microflow ServiceDesk.WFA_Ticket_ApproveRefunds(Ticket = $Ticket);
+retrieve $Refund from ServiceDesk.RefundRequest where [ServiceDesk.RefundRequest_Order = $Order] first;
+declare $Status String = getKey($Refund/Status);
+/
+
+/**
+ * @test Marking a ticket resolved sets its status
+ * @expect $Status = 'Resolved'
+ */
+retrieve $Ticket from ServiceDesk.Ticket where [Subject = 'Cannot log in'] first;
+call microflow ServiceDesk.WFA_Ticket_MarkResolved(Ticket = $Ticket);
+declare $Status String = getKey($Ticket/Status);
+/
+
+/**
+ * @test Staff find any ticket by number
+ * @expect $Found = true
+ */
+retrieve $Any from ServiceDesk.Ticket first;
+$Ticket = call microflow ServiceDesk.SUB_FindTicketForCustomer(TicketNumber = $Any/TicketNumber, Customer = empty);
+declare $Found Boolean = $Ticket != empty;
+/
+
+/**
+ * @test Triage tool reports an unknown ticket number
+ * @expect $NotFound = true
+ */
+$Answer = call microflow ServiceDesk.Tool_TriageTicket(TicketNumber = 999999);
+declare $NotFound Boolean = startsWith($Answer, 'No ticket #999999');
+/
+
+/**
+ * @test Dashboard view counts all ten seeded tickets as open, except the one seeded resolved
+ * @expect $OpenTotal = 9
+ */
+retrieve $Stats from ServiceDesk.TicketStats;
+$OpenTotal = sum $Stats by OpenTickets;
+/
+
+/**
+ * @test Refund totals view sums the seeded refund
+ * @expect $Total = 199.99
+ */
+retrieve $Totals from ServiceDesk.RefundTotals;
+$Total = sum $Totals by TotalAmount;
+/

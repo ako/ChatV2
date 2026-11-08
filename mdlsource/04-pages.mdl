@@ -120,40 +120,6 @@ create or modify page "ServiceDesk"."Order_Overview" folder 'Orders'
   }
 };
 
-/** Popup page: upload a file to a ticket. */
-create or modify page "ServiceDesk"."Attachment_NewEdit" folder 'Tickets'
-(
-  params: ( $Attachment: "ServiceDesk"."Attachment" ),
-  title: 'Attachment',
-  layout: Atlas_Core.PopupLayout
-)
-{
-  layoutgrid lgForm {
-    row {
-      column (desktopwidth: autofill) {
-      dataview dvAttachment (datasource: $Attachment) {
-          filemanager fmFile (label: 'File', Type: Both, MaxFileSize: 5, AllowedExtensions: '.pdf,.png,.jpg,.jpeg')
-          textarea txtSummary (label: 'Extracted summary', attribute: "ExtractedSummary", Editable: Never)
-          footer {
-            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
-            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
-          }
-        }
-      }
-    }
-  }
-};
-
-/** Creates an attachment for the ticket and opens it for upload. */
-create or modify microflow "ServiceDesk"."ACT_Ticket_AddAttachment" ($Ticket: "ServiceDesk"."Ticket")
-folder 'Tickets'
-begin
-  $Attachment = create "ServiceDesk"."Attachment" ("ServiceDesk"."Attachment_Ticket" = $Ticket);
-  show page "ServiceDesk"."Attachment_NewEdit" ("Attachment" = $Attachment);
-end;
-
-grant execute on microflow "ServiceDesk"."ACT_Ticket_AddAttachment" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-
 /** Popup page: a refund request. Support agents approve or reject it. */
 create or modify page "ServiceDesk"."RefundRequest_NewEdit" folder 'Refunds'
 (
@@ -203,53 +169,6 @@ create or modify page "ServiceDesk"."RefundRequest_Overview" folder 'Refunds'
           column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
           column (caption: '') {
             actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."RefundRequest_NewEdit"("RefundRequest" = $currentObject))
-          }
-        }
-      }
-    }
-  }
-};
-
-/** Popup page: create or work on a ticket, with its attachments and refund requests. */
-create or modify page "ServiceDesk"."Ticket_NewEdit" folder 'Tickets'
-(
-  params: ( $Ticket: "ServiceDesk"."Ticket" ),
-  title: 'Ticket',
-  layout: Atlas_Core.PopupLayout
-)
-{
-  layoutgrid lgForm {
-    row {
-      column (desktopwidth: autofill) {
-      dataview dvTicket (datasource: $Ticket) {
-          textbox txtSubject (label: 'Subject', attribute: "Subject")
-          textarea txtDescription (label: 'Description', attribute: "Description")
-          combobox cbCustomer (label: 'Customer', Association: Ticket_Customer, datasource: database "ServiceDesk"."Customer", CaptionAttribute: "Name")
-          combobox cbOrder (label: 'Order', Association: Ticket_Order, datasource: database "ServiceDesk"."Order", CaptionAttribute: "OrderNumber")
-          combobox cbCategory (label: 'Category', attribute: "Category")
-          combobox cbPriority (label: 'Priority', attribute: "Priority")
-          combobox cbStatus (label: 'Status', attribute: "Status")
-          textarea txtTriage (label: 'AI triage summary', attribute: "TriageSummary", Editable: Never)
-          dynamictext txtAttachments (content: 'Attachments', rendermode: H4)
-          actionbutton btnAddAttachment (caption: 'Add attachment', action: call microflow "ServiceDesk"."ACT_Ticket_AddAttachment"("Ticket" = $currentObject))
-          datagrid dgAttachments (datasource: $currentObject/Attachment_Ticket) {
-            column (attribute: "Name", caption: 'File')
-            column (attribute: "ExtractedSummary", caption: 'Summary')
-            column (caption: '') {
-              actionbutton btnOpenAttachment (caption: 'Open', action: show page "ServiceDesk"."Attachment_NewEdit"("Attachment" = $currentObject))
-            }
-          }
-          dynamictext txtRefunds (content: 'Refund requests', rendermode: H4)
-          datagrid dgRefunds (datasource: $currentObject/RefundRequest_Ticket) {
-            column (attribute: "Amount", caption: 'Amount')
-            column (attribute: "Status", caption: 'Status')
-            column (caption: '') {
-              actionbutton btnOpenRefund (caption: 'Open', action: show page "ServiceDesk"."RefundRequest_NewEdit"("RefundRequest" = $currentObject))
-            }
-          }
-          footer {
-            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
-            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
           }
         }
       }
@@ -334,8 +253,6 @@ create or modify page "ServiceDesk"."Home" folder 'Home'
 
 grant view on page "ServiceDesk"."Home" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Ticket_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-grant view on page "ServiceDesk"."Ticket_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-grant view on page "ServiceDesk"."Attachment_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."RefundRequest_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
@@ -345,4 +262,71 @@ grant view on page "ServiceDesk"."Customer_NewEdit" to "ServiceDesk"."SupportAge
 grant view on page "ServiceDesk"."PolicyDocument_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."PolicyDocument_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
--- The Ticket_Overview page and the navigation menu live in 07-chat.mdl.
+-- The Ticket_NewEdit and Attachment_NewEdit pages live in 05-ticket-workflow.mdl; Ticket_Overview and the navigation menu in 08-chat.mdl.
+
+-- Dashboard: aggregations as view entities, so the database counts and sums
+-- instead of a microflow loading every ticket or refund.
+
+/** Open tickets per category and priority (everything not yet resolved). */
+create or modify view entity "ServiceDesk"."TicketStats" (
+  "Category": Enumeration("ServiceDesk"."ENUM_TicketCategory"),
+  "Priority": Enumeration("ServiceDesk"."ENUM_TicketPriority"),
+  "OpenTickets": Integer
+) as (
+  select t.Category as Category, t.Priority as Priority, count(t.ID) as OpenTickets
+  from ServiceDesk.Ticket as t
+  where t.Status != 'Resolved'
+  group by t.Category, t.Priority
+);
+
+/** Refund requests and their total amount per status. */
+create or modify view entity "ServiceDesk"."RefundTotals" (
+  "RefundStatus": Enumeration("ServiceDesk"."ENUM_RefundStatus"),
+  "Requests": Integer,
+  "TotalAmount": Decimal
+) as (
+  select r.Status as RefundStatus, count(r.ID) as Requests, sum(r.Amount) as TotalAmount
+  from ServiceDesk.RefundRequest as r
+  group by r.Status
+);
+
+grant read * on entity "ServiceDesk"."TicketStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."RefundTotals" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Staff dashboard: open tickets and refund totals. */
+create or modify page "ServiceDesk"."Dashboard" folder 'Dashboard'
+(
+  title: 'Dashboard',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'dashboard'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 6) {
+        dynamictext txtTickets (content: 'Open tickets', rendermode: H3)
+        datagrid dgTicketStats (
+          datasource: database from "ServiceDesk"."TicketStats" sort by "OpenTickets" desc,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Category", caption: 'Category') { dropdownfilter ddCategory }
+          column (attribute: "Priority", caption: 'Priority') { dropdownfilter ddPriority }
+          column (attribute: "OpenTickets", caption: 'Open tickets')
+        }
+      }
+      column (desktopwidth: 6) {
+        dynamictext txtRefunds (content: 'Refunds', rendermode: H3)
+        datagrid dgRefundTotals (
+          datasource: database from "ServiceDesk"."RefundTotals",
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "RefundStatus", caption: 'Status')
+          column (attribute: "Requests", caption: 'Requests')
+          column (attribute: "TotalAmount", caption: 'Total (EUR)')
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Dashboard" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

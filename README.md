@@ -52,7 +52,7 @@ Then start the app. The Mendix Cloud GenAI key is read from the `GENAI_TEXT_KEY`
 ./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
 ```
 
-Change the agents with `scripts/apply-agents.sh`, not by running `mdlsource/06-agents.mdl` on its own. The script also fills in the agent fields mxcli does not write yet; see `FINDINGS.md`.
+Run the scripts in `mdlsource/` in file order. Change the agents with `scripts/apply-agents.sh`, not by running `mdlsource/07-agents.mdl` on its own. The script also fills in the agent fields mxcli does not write yet; see `FINDINGS.md`.
 
 Live model tests cost GenAI units, so they are kept apart from `tests/`. Start the app as above with `--test-endpoint`, then run:
 
@@ -67,3 +67,15 @@ Demo users:
 | demo_customer | DemoCustomer1! | Customer, linked to Ada Jansen |
 | demo_agent | DemoAgent1234! | SupportAgent |
 | demo_administrator | DemoAdmin1234! | Administrator |
+
+## What to try
+
+| As | Where | What happens |
+|---|---|---|
+| demo_customer | Assistant | Ask about an order (SO-10001 to SO-10003), or ask for a refund. The refund waits for your Confirm. |
+| demo_customer | Tickets → New ticket | The ticket-handling workflow starts, and AI triage fills in category, priority and summary. |
+| demo_customer | Ticket → Add attachment | Upload a PDF or image. The document agent writes a summary of it. |
+| demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |
+| demo_agent | Assistant | "How urgent is ticket 1005?" The support agent calls the triage agent as a tool. |
+| demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
+| demo_administrator | Token usage, Traces, Agents | GenAI usage, traces and the imported agents. |

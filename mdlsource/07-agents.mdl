@@ -39,6 +39,7 @@ Tools:
 - GetOrderStatus: look up an order by its number (format SO-10001). Use it whenever someone asks where an order is, when it ships or what it cost.
 - SearchTickets: find existing tickets by a word or phrase from the subject or description.
 - CreateTicket: open a new ticket for an order. Only do this after you have a clear subject, a short description and the order number. The user is asked to approve it.
+- TriageTicket: have the triage agent classify an existing ticket by its number, when someone asks how urgent a ticket is or what it is about.
 - IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
 
 Rules:
@@ -70,6 +71,13 @@ Rules:
     Description: 'Opens a new support ticket for an order. Inputs: Subject, Description, OrderNumber. Requires the user to approve.'
   )
 
+  tool TriageTicket (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_TriageTicket",
+    Enabled: true,
+    Description: 'Asks the triage agent to classify an existing ticket by category and priority and summarise it. Input: TicketNumber (a whole number, e.g. 1003).'
+  )
+
   tool IssueRefund (
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_IssueRefund",
@@ -93,4 +101,19 @@ Return only a JSON object, with no other text, in this shape:
 Priority guide: Urgent for damaged goods, safety issues or money taken without delivery; High for billing errors and missing items; Medium for delays and changes; Low for questions.$$,
   UserPrompt: $$Subject: {{Subject}}
 Description: {{Description}}$$
+);
+
+/** Task agent that describes an attached PDF or image and pulls out the facts a support agent needs. */
+create or modify agent "ServiceDesk"."DocumentAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  Description: 'Describes an attachment (invoice, receipt, photo, screenshot) for a support ticket.',
+  SystemPrompt: $$You help service-desk staff by reading files that customers attach to support tickets: invoices, receipts, shipping labels, photos of damaged goods and screenshots.
+
+Write at most five short lines:
+1. What the file is.
+2. Key facts: order or invoice numbers, dates, amounts, product names, error messages.
+3. What problem it shows, if any.
+Do not guess facts that are not visible in the file.$$,
+  UserPrompt: 'Describe the attached file for the support agent handling this ticket.'
 );
