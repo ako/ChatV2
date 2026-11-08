@@ -366,3 +366,44 @@ Surprises:
 - An import mapping with an object root must not use `first` (MDL-MAP04: it builds, then throws
   at runtime).
 - Microflow tests roll back per test, so data-count tests see the seeded state.
+
+## Slice 03: publishing the app as an MCP server (2026-11-08)
+
+What it adds:
+- `mdlsource/09-mcp-server.mdl`, which follows the runtime-configuration pattern of the mcp-server skill in
+  [ako/mxcli#2041](https://github.com/ako/mxcli/pull/2041):
+  - `MCP_Initialize` calls `MCPServer.CreateMCPServer`, then `AddTool` twice and `AddPrompt` once.
+  - It runs from `ASU_App`, which now lives in this script.
+- MCP Server **5.4.0** still has that runtime API. Its 5.x additions are `AuthorizationServerUrl`, `Scopes` and `Title`.
+- **Tools:** `get_order_status` and `search_tickets` reuse the agent tool microflows, which return String.
+- **Prompt:** `ticket_reply`.
+- **Endpoint:** `http://localhost:8080/servicedesk/mcp`, protocol `v2025_03_26`, streamable HTTP.
+
+Verified with a raw MCP client (Python, streamable HTTP):
+- No credentials, or a wrong password → **401**.
+- As `demo_customer`, initialize works and the server lists 2 tools (with titles) and 1 prompt.
+- `get_order_status SO-10002` (own order) → status and tracking.
+- `get_order_status SO-10004` (Bram's order) → "No order found … for this user". **The tools run as
+  the authenticated user**, so `$currentUser` is set and customer scoping works.
+- `prompts/get ticket_reply` fills in the ticket.
+- The server survives an mxcli hot reload, and a full restart re-registers it.
+
+Gates:
+- `docker check`: 0 errors.
+- `test --local`: 16/16.
+- `lint`: 0 errors, 20 warnings. The 4 new ones are CONV013 on the MCP Java action calls, which come
+  straight from the skill's example.
+
+Surprises:
+- **`MCPServer.CreateMCPServer` throws an NPE under `mxcli run --local`.** It builds its endpoint from
+  `ApplicationRootUrl`, which `run --local` leaves unset when the model holds the stock
+  `http://localhost:8080/`. The after-startup microflow failed, and so did the whole app start.
+  - Fix for a local run: `--runtime-setting ApplicationRootUrl=http://localhost:8080/`.
+  - `MCP_Initialize` now logs the failure and lets the app start, so `mxcli test --local`, which has no
+    such flag, keeps working.
+- Under `mdl 1;`, a string literal `'\n'` is stored as written, so Mendix wrote a literal backslash-n
+  into the search result. The ticket search now separates results with `; `.
+- After the container was recycled, the local Postgres was gone. `run --local --ensure-db` re-provisions
+  it, and the persisted data directory kept the seeded data.
+- OAuth 2.0 is not set up: it needs an external authorization server. The Published MCP Service
+  document (model configuration) is still not writable from MDL ([ako/mxcli#2020](https://github.com/ako/mxcli/issues/2020)).

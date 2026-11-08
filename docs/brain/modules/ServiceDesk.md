@@ -58,3 +58,9 @@ WF_TicketHandling sets Status through WFA_ microflows at each step so the ticket
 Anchors: `@ServiceDesk.SUB_Ticket_Submit` · id `202886` · 2026-11-08
 
 The Customer role may not write Ticket_Customer, so a ticket created from the page was saved without a customer and disappeared from the customer's own list. The save microflow links it to the signed-in customer.
+
+## The MCP server uses runtime configuration with app-account authentication, not OAuth
+
+Anchors: `@ServiceDesk.MCP_Initialize` · id `8c8860` · 2026-11-08
+
+MCP_Initialize registers the server with MCPServer.CreateMCPServer / AddTool / AddPrompt (pattern from ako/mxcli#2041) because MDL cannot write a Published MCP Service document yet (ako/mxcli#2020). Clients authenticate with Username and Password headers checked by MCP_Authenticate, so tools run as that user and a customer only reaches their own data. OAuth 2.0 needs an authorization server (AuthorizationServerUrl, Scopes) and is not set up in this demo.

@@ -70,7 +70,7 @@ begin
     set $Lines = $Lines + '#' + toString($Ticket/TicketNumber) + ' ' + $Ticket/Subject
       + ' (status ' + getCaption($Ticket/Status)
       + ', priority ' + (if $Ticket/Priority = empty then 'not set' else getCaption($Ticket/Priority))
-      + ')' + '\n';
+      + '); ';
   end loop;
   return $Lines;
 end;

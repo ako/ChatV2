@@ -49,8 +49,10 @@ python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_let
 Then start the app. The Mendix Cloud GenAI key is read from the `GENAI_TEXT_KEY` environment variable and never written to a file:
 
 ```bash
-./mxcli run --local --watch --detach -p ServiceDeskCopilot.mpr --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
 ```
+
+The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
 
 Run the scripts in `mdlsource/` in file order. Change the agents with `scripts/apply-agents.sh`, not by running `mdlsource/07-agents.mdl` on its own. The script also fills in the agent fields mxcli does not write yet; see `FINDINGS.md`.
 
@@ -79,3 +81,12 @@ Demo users:
 | demo_agent | Assistant | "How urgent is ticket 1005?" The support agent calls the triage agent as a tool. |
 | demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
 | demo_administrator | Token usage, Traces, Agents | GenAI usage, traces and the imported agents. |
+
+## MCP server
+
+The app publishes `get_order_status`, `search_tickets` and a `ticket_reply` prompt at `http://localhost:8080/servicedesk/mcp` (streamable HTTP, protocol 2025-03-26). Clients sign in with an app account, sent as `Username` and `Password` headers. Tools run as that user, so a customer only reaches their own orders and tickets. An MCP client config for Claude Code:
+
+```json
+{ "mcpServers": { "servicedesk": { "type": "http", "url": "http://localhost:8080/servicedesk/mcp",
+  "headers": { "Username": "demo_customer", "Password": "DemoCustomer1!" } } } }
+```

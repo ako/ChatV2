@@ -1,0 +1,115 @@
+mdl 1;
+
+-- Slice 03: publish the service desk as an MCP server (runtime configuration,
+-- MCP Server module 5.4). External agents such as Claude Code can then look up
+-- orders and tickets, as the signed-in user, and use a reply-drafting prompt.
+-- Pattern from the mcp-server skill (ako/mxcli#2041). The Published MCP Service
+-- document (model configuration, OAuth) is not writable from MDL yet (ako/mxcli#2020).
+
+/** Authenticates an MCP request with the app's own accounts: headers Username and Password. Returns empty to refuse the request. */
+create or modify microflow "ServiceDesk"."MCP_Authenticate" (
+  $HttpRequest: System.HttpRequest,
+  $McpServer: MCPServer.McpServer
+)
+returns System.User as $User
+folder 'MCP'
+begin
+  retrieve $Headers from $HttpRequest/System.HttpHeaders;
+  $UserName = find $Headers by Key = 'Username';
+  $Password = find $Headers by Key = 'Password';
+  if $UserName = empty or $Password = empty then
+    return empty;
+  end if;
+  retrieve $Account from System.User where [Name = $UserName/Value] first;
+  if $Account = empty then
+    return empty;
+  end if;
+  $Valid = call java action System.VerifyPassword(userName = $UserName/Value, password = $Password/Value);
+  if $Valid then
+    return $Account;
+  end if;
+  return empty;
+end;
+
+/** MCP prompt: drafts a reply to a ticket, with the ticket's details filled in. */
+create or modify microflow "ServiceDesk"."MCPPrompt_TicketReply" (
+  $Prompt: MCPServer.Prompt,
+  $TicketNumber: String
+)
+returns MCPServer.PromptMessage as $Message
+folder 'MCP'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  $Ticket = call microflow "ServiceDesk"."SUB_FindTicketForCustomer" (TicketNumber = parseInteger($TicketNumber), Customer = $Customer);
+  if $Ticket = empty then
+    $NotFound = create MCPServer.PromptMessage (Role = 'USER', Content = 'Ticket ' + $TicketNumber + ' was not found for this user. Ask for the correct ticket number.');
+    return $NotFound;
+  end if;
+  $Message = create MCPServer.PromptMessage (
+    Role = 'USER',
+    Content = 'Draft a short, friendly reply to the customer for support ticket #' + toString($Ticket/TicketNumber)
+      + '. Subject: ' + $Ticket/Subject
+      + '. Description: ' + (if $Ticket/Description = empty then '(none)' else $Ticket/Description)
+      + '. Current status: ' + getCaption($Ticket/Status)
+      + '. Explain the next step and do not promise a refund that has not been approved.'
+  );
+  return $Message;
+end;
+
+/** Starts the MCP server and registers its tools and prompt. Called from the after-startup microflow; a failure is logged and does not stop the app from starting. */
+create or modify microflow "ServiceDesk"."MCP_Initialize" ()
+returns Boolean as $Started
+folder 'MCP'
+begin
+  $McpServer = call java action MCPServer.CreateMCPServer(
+    Path = 'servicedesk',
+    Name = 'ServiceDesk',
+    Version = '1.0.0',
+    ProtocolVersion = MCPServer.ENUM_ProtocolVersion.v2025_03_26,
+    AuthenticationMicroflow = 'ServiceDesk.MCP_Authenticate',
+    AuthorizationServerUrl = empty,
+    Scopes = empty
+  ) on error without rollback begin
+    log warning node 'ServiceDesk' 'MCP server not started: {1}. A local run needs --runtime-setting ApplicationRootUrl=http://localhost:8080/ (mxcli run --local ignores the stock root URL).' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  $OrderTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'get_order_status',
+    Description = 'Status, order date, total, carrier and tracking code of one order, e.g. SO-10002. Customers only see their own orders.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_GetOrderStatus',
+    Schema = '{"type": "object", "properties": {"OrderNumber": {"type": "string", "description": "Order number, e.g. SO-10002"}}, "required": ["OrderNumber"]}',
+    Title = 'Order status'
+  );
+  $TicketTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'search_tickets',
+    Description = 'Up to ten support tickets whose subject or description contains the search text, with status and priority. Customers only see their own tickets.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_SearchTickets',
+    Schema = '{"type": "object", "properties": {"SearchText": {"type": "string", "description": "A word or phrase"}}, "required": ["SearchText"]}',
+    Title = 'Search tickets'
+  );
+  $Arguments = create list of MCPServer.PromptArgument;
+  call microflow MCPServer.PopulatePromptArgList(PromptArgumentList = $Arguments, Name = 'TicketNumber', Description = 'The ticket number, e.g. 1003', Required = true);
+  $Prompt = call java action MCPServer.AddPrompt(
+    McpServer = $McpServer,
+    Name = 'ticket_reply',
+    Description = 'Draft a reply to the customer for one support ticket.',
+    Parameters = $Arguments,
+    Microflow = 'ServiceDesk.MCPPrompt_TicketReply'
+  );
+  return true;
+end;
+
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, then starts the MCP server. */
+create or modify microflow "ServiceDesk"."ASU_App" ()
+returns Boolean as $Started
+folder 'Setup'
+begin
+  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
+  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  $McpStarted = call microflow "ServiceDesk"."MCP_Initialize" ();
+  return true;
+end;
+
+alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );

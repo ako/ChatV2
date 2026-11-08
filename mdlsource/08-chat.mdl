@@ -61,17 +61,7 @@ begin
   return $ChatContext;
 end;
 
-/** After-startup microflow: loads the Agent Editor documents into Agent Commons, then seeds demo data. */
-create or modify microflow "ServiceDesk"."ASU_App" ()
-returns Boolean as $Started
-folder 'Setup'
-begin
-  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
-  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
-  return true;
-end;
-
-alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
+-- ASU_App (the after-startup microflow) and its registration live in 09-mcp-server.mdl.
 
 grant execute on microflow "ServiceDesk"."ACT_SupportChat_Open" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant execute on microflow "ServiceDesk"."DS_SupportChat" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
