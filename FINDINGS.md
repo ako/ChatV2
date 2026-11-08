@@ -271,22 +271,22 @@ Gates:
 - `playwright check` per role: Customer sees 2 tickets and 3 orders; SupportAgent and
   Administrator see 10 and 15.
 
-mxcli gaps found (filed, see below). These block Agent Editor agents written with mxcli from
+mxcli gaps found. These block Agent Editor agents written with mxcli from
 working at all:
-1. **`create agent` drops `Document:` on microflow tools.** Only MCP tools get their document
+1. [ako/mxcli#2030](https://github.com/ako/mxcli/issues/2030): **`create agent` drops `Document:` on microflow tools.** Only MCP tools get their document
    reference written (`mdl/executor/cmd_agenteditor_write.go`). Tool `id` is left empty and
    `userAccessApproval` is never written. As a result, the Mendix Cloud GenAI connector sends the
    tools without a `toolSpec` wrapper, and Bedrock rejects the call with HTTP 400 ("property 'name'
    is not defined in the schema"). `describe agent` does print `Document:` once it is present.
-2. **No `selectedModel` on agents.** With multi-model resources (11.12+), the agent document holds
+2. [ako/mxcli#2031](https://github.com/ako/mxcli/issues/2031): **No `selectedModel` on agents.** With multi-model resources (11.12+), the agent document holds
    `selectedModel: {id, name}`, and the import matches `id` against the deployed model ID. Without
    it the import refuses the agent ("Model with name  is referenced but could not be found") and
    the **whole agent import aborts**.
 3. `create or modify agent` rebuilds the JSON and drops any field it does not model, so these
    have to be re-applied after every exec.
-4. Streaming is stored on the **agent** (`enableBackendStreaming`, `enableUIStreaming`), not the
+4. [ako/mxcli#2022](https://github.com/ako/mxcli/issues/2022) (commented): streaming is stored on the **agent** (`enableBackendStreaming`, `enableUIStreaming`), not the
    model. The Agent Editor import honours it, which the OQL on `AgentCommons.Version` confirms.
-5. Provider values accepted by `AgentEditorCommons.ImportDeployedModel`: `MxCloudGenAI`, `Azure`
+5. [ako/mxcli#2023](https://github.com/ako/mxcli/issues/2023) (commented): provider values accepted by `AgentEditorCommons.ImportDeployedModel`: `MxCloudGenAI`, `Azure`
    (Azure AI Foundry) and `Fuse`.
 
 Workaround: `scripts/patch-agent-documents.py` writes items 1, 2 and 4 into the agent unit's JSON.
@@ -310,3 +310,5 @@ Other surprises:
   a knowledge base needs its own resource and key (`ServiceDesk.MxGenAIKnowledgeBaseKey`).
 - The model once said it had answered "before looking up" the order, although the tool span shows
   the call ran first. It looks like a model quirk; worth watching once streaming is visible in the UI.
+- [ako/mxcli#2021](https://github.com/ako/mxcli/issues/2021) (commented): `userAccessApproval` is stored per tool in the
+  agent document. When it is absent, the import defaults the tool to `HiddenForUser`.
