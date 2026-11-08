@@ -356,10 +356,10 @@ Surprises:
 - **The Customer role cannot write `Ticket_Customer`**, so a ticket created on the page was saved
   without a customer and vanished from the customer's own list. Only browser rows per role caught
   it. `SUB_Ticket_Submit` now links it.
-- **`mxcli run --test-endpoint` triggers a second build right after boot**, about 30 seconds of
+- [ako/mxcli#2033](https://github.com/ako/mxcli/issues/2033): **`mxcli run --test-endpoint` triggers a second build right after boot**, about 30 seconds of
   "Failed to fetch dynamically imported module …/dist/pages/*.js" 404s and a forced client
   reload. Without `--test-endpoint` the app stays on build #1.
-- **Lint ARCH001 flags `System.WorkflowUserTask` on task pages and the task inbox.** Mendix
+- [ako/mxcli#2034](https://github.com/ako/mxcli/issues/2034): **Lint ARCH001 flags `System.WorkflowUserTask` on task pages and the task inbox.** Mendix
   requires that parameter on a task page, so these 3 warnings are false positives.
 - A `create or modify microflow` that changes a decision's nesting is refused (MDL-V1-REBUILD).
   `ACT_Ticket_Save` had to be dropped and recreated once.
