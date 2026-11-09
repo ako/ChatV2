@@ -658,7 +658,8 @@ Surprises:
   (git-ignored, mode 600).
 - One watch build failed with CE0108 between the execs of two scripts (an intermediate state). A
   fresh start built cleanly, and `docker check` reports 0 errors.
-- **`mxcli test --local` disturbs a `run --watch` app on the same project.** The test run briefly
+- **`mxcli test --local` disturbs a `run --watch` app on the same project**
+  ([ako/mxcli#2063](https://github.com/ako/mxcli/issues/2063), reproduced twice). The test run briefly
   adds the `mxtest` test-endpoint Java action. The watcher rebuilt in the middle and failed
   ("package mxtest.actions does not exist"), then recovered with a full restart, which drops browser
   sessions (also on the hub preview). It is related to ako/mxcli#2033. Until it is fixed, run the
@@ -706,9 +707,21 @@ Surprises:
   stored the text as the reference). So "new chat like this one" dispatches to the two known creators.
 - **The trial runtime's session cap.** Test browsers that do not log out use up the trial license's
   concurrent sessions ("Maximum number of sessions exceeded"). Logins then fail for everyone,
-  including the hub preview. Test scripts now log out in a `finally`, and a restart clears the
-  sessions.
-- **The watch build reports CE0108 after a `drop microflow` + `create` (twice now).** It reported
+  including the hub preview. A restart clears the sessions. Note: `GET /logout` is a 404 in Mendix,
+  so a test that "logs out" by visiting it frees nothing. Log out through the client
+  (`mx.logout()`) or keep test runs few.
+- **The watch build reports a false CE0108** ([ako/mxcli#2064](https://github.com/ako/mxcli/issues/2064)).
+  A later repro showed it is not about drop + create: it fails on an *incremental* build in an
+  `mxbuild --serve` process that has already built, and the same MDL passes on a full build. Seen three times. It reported
   `ACT_RuntimeChat_Open` and `ACT_Chat_Delete` as "Variable defined but not in scope", while
   `docker check` on the same model reports 0 errors and a fresh start builds cleanly. It looks like
   `mxbuild --serve`'s incremental state going stale. Workaround: `mxcli run restart`.
+
+## Container recycled while idle (2026-11-09)
+
+At about 21:45 the container restarted while idle, and the app process went with it (`run status`: "exited
+without cleaning up"). The project, the PostgreSQL data (including `servicedesk_vectors` and the pgvector
+extension), the chats and the `.mxcli/` secret files all survived. The carrier MCP server
+(`python3 tools/carrier-mcp/server.py`) and the app need starting again. Because the secrets are
+passed as `@env:`/`@file:` references, one `run --hub …` command brings the preview back at the same
+URL.
