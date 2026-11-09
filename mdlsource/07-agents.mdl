@@ -20,6 +20,20 @@ create or modify constant "ServiceDesk"."MxGenAIKnowledgeBaseKey" folder 'Agents
   DefaultValue: ''
 );
 
+/** URL of the external parcel-tracking MCP server (tools/carrier-mcp). */
+create or modify constant "ServiceDesk"."CarrierMcpEndpoint" folder 'Agents' (
+  Type: String,
+  DefaultValue: 'http://127.0.0.1:8765/mcp'
+);
+
+/** External MCP server of the parcel carrier: track_parcel, list_carriers. Its endpoint constant is set by scripts/patch-agent-documents.py until mxcli can write it. */
+create or modify consumed mcp service "ServiceDesk"."CarrierTracking" folder 'Agents' (
+  ProtocolVersion: v2025_03_26,
+  Version: '1.0.0',
+  ConnectionTimeoutSeconds: 30,
+  Documentation: 'Parcel tracking for PostNL, DHL and UPS (tools/carrier-mcp).'
+);
+
 create or modify ai model "ServiceDesk"."SupportModel" folder 'Agents' (
   Provider: MxCloudGenAI,
   Key: @"ServiceDesk"."MxGenAIKey"
@@ -45,6 +59,7 @@ Tools:
 - SearchTickets: find existing tickets by a word or phrase from the subject or description.
 - CreateTicket: open a new ticket for an order. Only do this after you have a clear subject, a short description and the order number. The user is asked to approve it.
 - TriageTicket: have the triage agent classify an existing ticket by its number, when someone asks how urgent a ticket is or what it is about.
+- track_parcel (carrier tracking service): the scan history of a parcel by its tracking code. Use it after GetOrderStatus when someone asks where a parcel is or why it is late.
 - IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
 
 Rules:
@@ -85,6 +100,11 @@ Rules:
     Enabled: true,
     UserAccessApproval: VisibleForUser,
     Description: 'Asks the triage agent to classify an existing ticket by category and priority and summarise it. Input: TicketNumber (a whole number, e.g. 1003).'
+  )
+
+  mcp service "ServiceDesk"."CarrierTracking" (
+    Enabled: true,
+    UserAccessApproval: VisibleForUser
   )
 
   tool IssueRefund (

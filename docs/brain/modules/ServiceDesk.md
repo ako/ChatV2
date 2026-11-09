@@ -64,3 +64,9 @@ The Customer role may not write Ticket_Customer, so a ticket created from the pa
 Anchors: `@ServiceDesk.MCP_Initialize` · id `8c8860` · 2026-11-08
 
 MCP_Initialize registers the server with MCPServer.CreateMCPServer / AddTool / AddPrompt (pattern from ako/mxcli#2041) because MDL cannot write a Published MCP Service document yet (ako/mxcli#2020). Clients authenticate with Username and Password headers checked by MCP_Authenticate, so tools run as that user and a customer only reaches their own data. OAuth 2.0 needs an authorization server (AuthorizationServerUrl, Scopes) and is not set up in this demo.
+
+## The external MCP server is a local stand-in carrier (tools/carrier-mcp), consumed through ServiceDesk.CarrierTracking
+
+Anchors: `@ServiceDesk.CarrierTracking` · id `e2f7f0` · 2026-11-09
+
+A Python MCP SDK 2.x server on 127.0.0.1:8765 serves track_parcel for the demo orders' tracking codes, so the demo needs no outside network. MDL cannot write a consumed MCP service's endpoint constant or credentials microflow yet; scripts/patch-agent-documents.py sets the endpoint (ServiceDesk.CarrierMcpEndpoint) once, and create or modify keeps it. track_parcel is not scoped to the signed-in customer: a tracking code works like a shared secret, as it does with real carriers.

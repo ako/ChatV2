@@ -17,7 +17,11 @@ builds, but scripts/agent-document-fields.json now holds only selectedModel.
 Usage:
   python3 scripts/patch-agent-documents.py <project.mpr> <fields.json>
 
-Only the agent unit's Contents string is rewritten; the BSON length prefixes
+A consumed MCP service entry ({"endpoint": "Module.UrlConstant",
+"authenticationMicroflow": "Module.Microflow"}) sets the service's endpoint
+constant and optional credentials microflow, which mxcli cannot write either.
+
+Only the document's Contents string is rewritten; the BSON length prefixes
 and the unit's ContentsHash (base64 SHA-256) in the .mpr are updated to match.
 Running it again with the same values changes nothing.
 """
@@ -31,6 +35,7 @@ import sys
 import uuid
 
 AGENT_MARKER = b"ReadableTypeName\x00\x06\x00\x00\x00Agent\x00"
+MCP_MARKER = b"ReadableTypeName\x00\x15\x00\x00\x00Consumed MCP service\x00"
 
 
 def read_cstring(b, pos):
@@ -81,6 +86,51 @@ def units(project_dir):
                 yield path, open(path, "rb").read()
 
 
+def write_contents(con, path, b, fields, contents, label):
+    """Store new Contents JSON in a unit and update its ContentsHash; returns 0 on success."""
+    o, l = fields["Contents"]
+    new = json.dumps(contents, ensure_ascii=False).encode("utf-8") + b"\x00"
+    out = bytearray(b[:o]) + struct.pack("<i", len(new)) + new + b[o + 4 + l:]
+    out[0:4] = struct.pack("<i", len(out))
+    with open(path, "wb") as fh:
+        fh.write(out)
+    digest = base64.b64encode(hashlib.sha256(bytes(out)).digest()).decode()
+    unit = uuid.UUID(os.path.splitext(os.path.basename(path))[0])
+    rows = 0
+    for key in (unit.bytes_le, unit.bytes):
+        rows = con.execute("update Unit set ContentsHash = ? where UnitID = ?", (digest, key)).rowcount
+        if rows:
+            break
+    con.commit()
+    print(f"{label}: updated ({path}; index rows: {rows})")
+    return 0 if rows == 1 else 1
+
+
+def patch_mcp_service(con, qualified_name, short, wanted, mcp_services, constants, microflows):
+    """Consumed MCP service: set the endpoint constant and, optionally, the credentials microflow."""
+    if short not in mcp_services:
+        print(f"{qualified_name}: no consumed MCP service document found")
+        return 1
+    status = 0
+    for path, b, fields in mcp_services[short]:
+        contents = json.loads(string_value(b, fields["Contents"]))
+        before = json.dumps(contents, sort_keys=True)
+        for key, index in (("endpoint", constants), ("authenticationMicroflow", microflows)):
+            if key not in wanted:
+                continue
+            ids = index.get(wanted[key].split(".", 1)[1], [])
+            if len(ids) != 1:
+                print(f"{qualified_name}: {key}: expected one document {wanted[key]}, found {len(ids)}")
+                status = 1
+                continue
+            contents[key] = {"qualifiedName": wanted[key], "documentId": ids[0]}
+        if json.dumps(contents, sort_keys=True) == before:
+            print(f"{qualified_name}: already up to date")
+            continue
+        status |= write_contents(con, path, b, fields, contents, qualified_name)
+    return status
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__)
@@ -90,7 +140,7 @@ def main():
     project_dir = os.path.dirname(os.path.abspath(mpr))
 
     # Index units by name: agent documents, and microflows for tool references.
-    agents, microflows = {}, {}
+    agents, microflows, constants, mcp_services = {}, {}, {}, {}
     for path, b in units(project_dir):
         try:
             fields = top_level_strings(b)
@@ -102,6 +152,10 @@ def main():
         unit_id = os.path.splitext(os.path.basename(path))[0]
         if b"extension/agent-editor" in b and AGENT_MARKER in b:
             agents.setdefault(name, []).append((path, b, fields))
+        elif b"extension/agent-editor" in b and MCP_MARKER in b:
+            mcp_services.setdefault(name, []).append((path, b, fields))
+        elif "$Type" in fields and string_value(b, fields["$Type"]) == "Constants$Constant":
+            constants.setdefault(name, []).append(unit_id)
         elif "$Type" in fields and string_value(b, fields["$Type"]) == "Microflows$Microflow":
             microflows.setdefault(name, []).append(unit_id)
 
@@ -109,6 +163,9 @@ def main():
     status = 0
     for qualified_name, wanted in spec.items():
         short = qualified_name.split(".", 1)[1]
+        if "endpoint" in wanted:
+            status |= patch_mcp_service(con, qualified_name, short, wanted, mcp_services, constants, microflows)
+            continue
         if short not in agents:
             print(f"{qualified_name}: no agent document found")
             status = 1

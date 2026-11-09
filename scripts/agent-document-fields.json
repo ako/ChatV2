@@ -16,5 +16,8 @@
       "id": "eu.anthropic.claude-haiku-5-5",
       "name": "eu.anthropic.claude-haiku-5-5"
     }
+  },
+  "ServiceDesk.CarrierTracking": {
+    "endpoint": "ServiceDesk.CarrierMcpEndpoint"
   }
 }

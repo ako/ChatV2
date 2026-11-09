@@ -74,7 +74,7 @@ Demo users:
 
 | As | Where | What happens |
 |---|---|---|
-| demo_customer | Assistant | Ask about an order (SO-10001 to SO-10003), or ask for a refund. The refund waits for your Confirm. |
+| demo_customer | Assistant | Ask about an order (SO-10001 to SO-10003), ask where a late parcel is (uses the carrier MCP server), or ask for a refund. The refund waits for your Confirm. |
 | demo_customer | Tickets → New ticket | The ticket-handling workflow starts, and AI triage fills in category, priority and summary. |
 | demo_customer | Ticket → Add attachment | Upload a PDF or image. The document agent writes a summary of it. |
 | demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |
@@ -82,7 +82,15 @@ Demo users:
 | demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
 | demo_administrator | Token usage, Traces, Agents | GenAI usage, traces and the imported agents. |
 
-## MCP server
+## MCP servers
+
+The support agent also **uses** an external MCP server: a stand-in parcel carrier in `tools/carrier-mcp/` (Python MCP SDK 2.x). Start it next to the app so the agent can track parcels:
+
+```bash
+python3 tools/carrier-mcp/server.py
+```
+
+The app itself **publishes** an MCP server too:
 
 The app publishes `get_order_status`, `search_tickets` and a `ticket_reply` prompt at `http://localhost:8080/servicedesk/mcp` (streamable HTTP, protocol 2025-03-26). Clients sign in with an app account, sent as `Username` and `Password` headers. Tools run as that user, so a customer only reaches their own orders and tickets. An MCP client config for Claude Code:
 

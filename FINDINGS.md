@@ -431,3 +431,37 @@ Verified:
   - Recreating the agents from the script alone stores each tool's document, id and approval, plus
     the streaming switches.
   - `selectedModel` stays empty until the patch sets it, and later execs keep it.
+
+## Slice 03: consuming an external MCP server (2026-11-09)
+
+What it adds:
+- `tools/carrier-mcp/server.py`: a stand-in parcel carrier that publishes `track_parcel` and
+  `list_carriers` over MCP. It uses the Python MCP SDK 2.3 (`mcp.server.mcpserver.MCPServer`; FastMCP
+  was renamed in 2.x), runs streamable HTTP on `127.0.0.1:8765/mcp`, and knows the tracking codes of
+  the demo orders.
+- `mdlsource/07-agents.mdl`:
+  - the constant `ServiceDesk.CarrierMcpEndpoint`;
+  - the consumed MCP service `ServiceDesk.CarrierTracking`;
+  - an `mcp service` block on the SupportAgent, with `UserAccessApproval: VisibleForUser`.
+
+Verified live as `demo_customer`:
+- Question: "My parcel for order SO-10002 still has not arrived. Where is it and why is it late?"
+- The agent called `GetOrderStatus`, then **`track_parcel` on the carrier server**; its log shows the
+  MCP session and the calls.
+- Answer: delayed at the DHL hub in Venlo because of a sorting backlog, expected 2026-11-10.
+- Sonnet 5.5 again added an odd "I used the tracking code before I had confirmed it" note. Its
+  answer was correct.
+
+Gates:
+- A second exec of every script writes nothing.
+- `docker check`: 0 errors. `test --local`: 16/16. `lint`: unchanged.
+
+Gap ([ako/mxcli#2060](https://github.com/ako/mxcli/issues/2060)):
+- `create consumed mcp service` cannot write `endpoint` (a String-constant reference) or
+  `authenticationMicroflow`. Without `endpoint` the service connects nowhere.
+- `scripts/patch-agent-documents.py` now sets both from `scripts/agent-document-fields.json`. The
+  #2037 carry keeps them on later execs.
+
+Note: `track_parcel` answers for any tracking code; it is not scoped to the signed-in customer, as
+with real carriers. To run the demo, start the carrier server next to the app:
+`python3 tools/carrier-mcp/server.py`.

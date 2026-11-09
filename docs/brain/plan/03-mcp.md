@@ -12,7 +12,7 @@ Anchors: `@ServiceDesk.ServiceDeskMCP` · id `e9d7d4` · 2026-11-08
 
 ## The support agent uses tools from an external MCP server via a consumed MCP service
 
-Anchors: `@ServiceDesk.ExternalMCP` · id `0e188f` · 2026-11-08
+Anchors: `@ServiceDesk.CarrierTracking` · id `0e188f` · 2026-11-08
 
 ## The app publishes order status and ticket search over MCP, plus a ticket-reply prompt
 
