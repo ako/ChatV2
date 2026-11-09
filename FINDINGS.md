@@ -816,3 +816,22 @@ Surprises:
   found dead; Fuseki, started by its script, lived). They are now started with `setsid nohup`.
 - The model again said it had answered "before the lookups came back", although the trace shows the
   tool calls first; the earlier note on this quirk stands.
+
+## Review of open mxcli gaps (2026-11-09)
+
+Filed after reviewing which agent and MCP features work end to end, and what the skills, `syntax` and
+`help` cover (mxcli `nightly-20261109-a88c4d94f`, the latest nightly):
+- [ako/mxcli#2067](https://github.com/ako/mxcli/issues/2067): the agents skill and `syntax agents` do not
+  say that the selected model (#2031) and the consumed MCP endpoint (#2060) cannot be written. Agents built
+  by following them fail only at runtime. The issue also notes that #2030 looks fixed in this nightly.
+- [ako/mxcli#2068](https://github.com/ako/mxcli/issues/2068): no skill covers the runtime side of Agents
+  Kit 2: Agent Commons runtime agents, the OpenAI-compatible connector, the PgVector knowledge base,
+  Conversational UI chat pages (including the collapsed-height gotcha), and StoreTraces.
+- [ako/mxcli#2069](https://github.com/ako/mxcli/issues/2069): lint ARCH001 flags the data view on
+  `ConversationalUI.ChatContext` that Conversational UI's chat snippet requires (same class as #2034).
+
+Checked and not mxcli problems:
+- An OQL query on `ServiceDesk.Order` fails to parse because `Order` is reserved in OQL; quote it.
+- The project's skills lagged the binary only because a newer nightly was installed mid-session.
+  `.claude/bootstrap-mxcli.sh` runs `init --sync-skills` at session start. A scratch sync updates 9 skills
+  and adds `mcp-server`.
