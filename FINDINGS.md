@@ -516,3 +516,50 @@ Notes:
 - Introspection returns `aud` as a string when there is one audience. A token with several audiences
   returns an array, which the import mapping cannot read, so it is refused. That is safe, but
   stricter than necessary.
+
+## Slice 04: runtime agent on an OpenAI-compatible endpoint (OpenRouter, free models) (2026-11-09)
+
+What it adds:
+- **OpenAI Connector 9.4.0** (Marketplace 220472). Its Java dependency sync failed once with "Failed
+  to find some hosts" and worked on retry.
+- **`mdlsource/10-runtime-agent.mdl`**, run at startup:
+  - `ASU_ConfigureOpenAICompatible` creates or updates the OpenAI Connector configuration
+    "OpenRouter" (ApiType OpenAI, endpoint `https://openrouter.ai/api/v1`) and a text deployed model
+    with tool calling;
+  - `ASU_SeedRuntimeAgent` creates "Support Agent (runtime)" with `AgentCommons.Agent_GetCreate_Json`,
+    Agent Commons' own export/import JSON, holding the four tools and their approval settings;
+  - a chat for staff on it, under the menu item "Assistant (OpenRouter)".
+- **`mdlsource/99-app-shell.mdl`**: the after-startup microflow and the navigation menu, which
+  reference every other script, now run last.
+- **OpenRouter key:** the `OPENROUTER_KEY` variable was **expired** (401 "API key expired"). A new key
+  was saved as an environment network secret. The proxy injects it, and
+  `ServiceDesk.OpenRouterApiKey` holds only a placeholder.
+
+Model choice:
+- 14 of 463 OpenRouter models are free and list tool support.
+- Of four tried with a real tool call, only `nvidia/nemotron-3.5-super-vl:free` answered with a
+  correct `GetOrderStatus` call. The Gemma models returned 429 (rate-limited upstream), and the
+  Nemotron ultra model returned 502.
+
+Verified live as `demo_agent`, under "Assistant (OpenRouter)":
+- "Where is my order SO-10002?" → `GetOrderStatus` → the correct order details.
+- A refund request for SO-10006 showed **Confirm / Reject**. After Confirm, a refund of EUR 5 was
+  recorded with status Requested, so tool approval works on the runtime agent too.
+
+Gates:
+- A second exec of every script writes nothing.
+- `docker check`: 0 errors. `test --local`: 16/16. `lint`: 0 errors, 20 warnings.
+
+Surprises:
+- **Mendix's Call REST did not go through the proxy.** The runtime JVM gets
+  `JAVA_TOOL_OPTIONS` with `https.proxyHost`/`https.proxyPort`, but the OpenAI connector's REST call
+  went direct, and OpenRouter answered the placeholder key with "Missing Authentication header" (401).
+  - Running the app with `JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=<port of $HTTPS_PROXY>"`
+    routes it through the proxy, which injects the key.
+  - Mendix Cloud GenAI had worked all along because this container also allows direct connections.
+- **The test runtime has no encryption key**, so `Configuration_Commit` (it encrypts the API key)
+  threw and stopped the whole startup. Optional setup is now wrapped in error handlers
+  (`SUB_SetUpRuntimeAgent`), and it logs "OpenAI-compatible endpoint not configured" instead.
+- **PgVector is not possible here.** OpenRouter has **no embedding models**, and the local Postgres 16
+  has no `vector` extension. This is recorded as an open question in the brain.
+- A `retrieve` XPath cannot reference a constant (MDL-XPATH03 / CE0161); assign it to a variable first.

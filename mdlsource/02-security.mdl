@@ -57,7 +57,7 @@ create or modify user role Administrator (
                 "ServiceDesk"."Admin", "ServiceDesk"."SupportAgent",
                 GenAICommons.Administrator, GenAICommons.UsageMonitoring, GenAICommons.TraceMonitoring,
                 ConversationalUI.User, ConversationalUI.UsageMonitoring, ConversationalUI.TraceMonitoring,
-                AgentCommons.AgentAdmin, MxGenAIConnector.Administrator, MCPClient.Administrator,
+                AgentCommons.AgentAdmin, MxGenAIConnector.Administrator, MCPClient.Administrator, OpenAIConnector.Administrator,
                 Encryption.User),
   ManageAllRoles: true,
   CheckSecurity: true

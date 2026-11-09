@@ -100,4 +100,4 @@ begin
   return true;
 end;
 
--- ASU_App (the after-startup microflow) and its registration live in 09-mcp-server.mdl.
+-- ASU_App (the after-startup microflow) and its registration live in 99-app-shell.mdl.

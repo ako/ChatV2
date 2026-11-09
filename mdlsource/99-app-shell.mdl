@@ -1,0 +1,54 @@
+mdl 1;
+
+-- The app shell: the after-startup microflow and the navigation menu. They
+-- reference documents from every other script, so this script runs last.
+
+/** Configures the OpenAI-compatible endpoint and seeds the runtime agent. Optional: a failure (no encryption key, as in the test runtime) is logged and does not stop the app from starting. */
+create or modify microflow "ServiceDesk"."SUB_SetUpRuntimeAgent" ()
+returns Boolean as $Ready
+folder 'Setup'
+begin
+  $OpenRouterModel = call microflow "ServiceDesk"."ASU_ConfigureOpenAICompatible" () on error without rollback begin
+    log warning node 'ServiceDesk' 'OpenAI-compatible endpoint not configured: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  $RuntimeAgent = call microflow "ServiceDesk"."ASU_SeedRuntimeAgent" () on error without rollback begin
+    log warning node 'ServiceDesk' 'Runtime agent not created: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  return true;
+end;
+
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint. */
+create or modify microflow "ServiceDesk"."ASU_App" ()
+returns Boolean as $Started
+folder 'Setup'
+begin
+  $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
+  $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  $McpStarted = call microflow "ServiceDesk"."MCP_Initialize" ();
+  $RuntimeAgentReady = call microflow "ServiceDesk"."SUB_SetUpRuntimeAgent" ();
+  return true;
+end;
+
+alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
+
+create or modify navigation Responsive
+  app title 'Service Desk Copilot'
+  app icon Atlas_Core.Content.Mendix
+  home page "ServiceDesk"."Home"
+{
+  menu item 'Home' ( OnClick: show page "ServiceDesk"."Home", Icon: Atlas_Core.Atlas.home )
+  menu item 'Assistant' ( OnClick: call microflow "ServiceDesk"."ACT_SupportChat_Open", Icon: Atlas_Core.Atlas."message-bubble" )
+  menu item 'Assistant (OpenRouter)' ( OnClick: call microflow "ServiceDesk"."ACT_RuntimeChat_Open", Icon: Atlas_Core.Atlas."message-bubble-add" )
+  menu item 'Dashboard' ( OnClick: show page "ServiceDesk"."Dashboard", Icon: Atlas_Core.Atlas."analytics-bars" )
+  menu item 'My tasks' ( OnClick: show page "ServiceDesk"."WF_TaskInbox", Icon: Atlas_Core.Atlas."checkmark-circle" )
+  menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
+  menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
+  menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
+  menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
+  menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )
+  menu item 'Token usage' ( OnClick: call microflow ConversationalUI.NAV_TokenConsumptionMonitor, Icon: Atlas_Core.Atlas.dashboard )
+  menu item 'Traces' ( OnClick: show page ConversationalUI.Trace_Overview, Icon: Atlas_Core.Atlas.search )
+  menu item 'Agents' ( OnClick: show page AgentCommons.Agent_Overview, Icon: Atlas_Core.Atlas.cog )
+};

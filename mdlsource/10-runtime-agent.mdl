@@ -1,0 +1,183 @@
+mdl 1;
+
+-- Slice 04: the support agent rebuilt as a runtime agent (Agent Commons) on an
+-- OpenAI-compatible endpoint: OpenRouter, free models only.
+--   * An OpenAI Connector configuration for https://openrouter.ai/api/v1 and a
+--     deployed model, created at startup from constants.
+--   * The runtime agent, created at startup from Agent Commons' export/import
+--     JSON (Agent_GetCreate_Json); after that an administrator edits it, adds
+--     versions and test cases on the Agents page.
+--   * A chat on that agent for staff.
+-- The API key: in the Claude Code environment the network proxy injects the
+-- real OpenRouter key, so the constant holds a placeholder. Elsewhere pass the
+-- key per run: --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_API_KEY
+
+/** OpenAI-compatible endpoint (OpenRouter). */
+create or modify constant "ServiceDesk"."OpenRouterEndpoint" folder 'Runtime agent' ( Type: String, DefaultValue: 'https://openrouter.ai/api/v1' );
+/** Model ID on OpenRouter. A free model that supports tool calls. */
+create or modify constant "ServiceDesk"."OpenRouterModel" folder 'Runtime agent' ( Type: String, DefaultValue: 'nvidia/nemotron-3.5-super-vl:free' );
+/** OpenRouter API key. The default is a placeholder that the Claude Code network proxy replaces; pass a real key per run elsewhere. */
+create or modify constant "ServiceDesk"."OpenRouterApiKey" folder 'Runtime agent' ( Type: String, DefaultValue: 'proxy-injected' );
+
+/** Creates or updates the OpenRouter configuration of the OpenAI Connector and its deployed model. Returns the deployed model. */
+create or modify microflow "ServiceDesk"."ASU_ConfigureOpenAICompatible" ()
+returns OpenAIConnector.OpenAIDeployedModel as $DeployedModel
+folder 'Runtime agent'
+begin
+  retrieve $Existing from OpenAIConnector.Configuration where [DisplayName = 'OpenRouter'] first;
+  $Configuration = call microflow "ServiceDesk"."SUB_OpenRouter_GetCreateConfiguration" (Existing = $Existing);
+  $ApiKey = call microflow OpenAIConnector.ApiKey_GetCreate_Configuration(Configuration = $Configuration);
+  change $ApiKey (ApiKey = @ServiceDesk.OpenRouterApiKey);
+  change $Configuration (DisplayName = 'OpenRouter', ApiType = OpenAIConnector.ENUM_ApiType.OpenAI, Endpoint = @ServiceDesk.OpenRouterEndpoint);
+  call microflow OpenAIConnector.Configuration_Commit(Configuration = $Configuration);
+  declare $ModelId String = @ServiceDesk.OpenRouterModel;
+  retrieve $Model from OpenAIConnector.OpenAIDeployedModel where [OpenAIConnector.OpenAIDeployedModel_Configuration = $Configuration][Model = $ModelId] first;
+  $DeployedModel = call microflow "ServiceDesk"."SUB_OpenRouter_GetCreateModel" (Configuration = $Configuration, Existing = $Model);
+  return $DeployedModel;
+end;
+
+/** The OpenRouter configuration: the existing one, or a new one. */
+create or modify microflow "ServiceDesk"."SUB_OpenRouter_GetCreateConfiguration" ($Existing: OpenAIConnector.Configuration)
+returns OpenAIConnector.Configuration as $Configuration
+folder 'Runtime agent'
+begin
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $New = call microflow OpenAIConnector.Configuration_Create();
+  return $New;
+end;
+
+/** The deployed model for the configured OpenRouter model: the existing one, or a new text model with tool calling. */
+create or modify microflow "ServiceDesk"."SUB_OpenRouter_GetCreateModel" ($Configuration: OpenAIConnector.Configuration, $Existing: OpenAIConnector.OpenAIDeployedModel)
+returns OpenAIConnector.OpenAIDeployedModel as $DeployedModel
+folder 'Runtime agent'
+begin
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  call microflow GenAICommons.InputModality_GetCreateAll();
+  retrieve $TextInput from GenAICommons.InputModality where [ModelModality = 'Text'];
+  $New = call microflow OpenAIConnector.OpenAIDeployedModel_Create(
+    Configuration = $Configuration,
+    Model = @ServiceDesk.OpenRouterModel,
+    Architecture = 'OpenAI',
+    OutputModality = GenAICommons.ENUM_ModelModality.Text,
+    ApiVersion = empty,
+    DisplayName = 'OpenRouter ' + @ServiceDesk.OpenRouterModel,
+    SupportsSystemPrompt = GenAICommons.ENUM_ModelSupport._True,
+    SupportsFunctionCalling = GenAICommons.ENUM_ModelSupport._True,
+    SupportsConversationHistory = GenAICommons.ENUM_ModelSupport._True,
+    InputModalityList = $TextInput,
+    SupportsStreaming = GenAICommons.ENUM_ModelSupport._False
+  );
+  call microflow OpenAIConnector.OpenAIDeployedModel_SetMicroflow(OpenAIDeployedModel = $New);
+  call microflow GenAICommons.DeployedModel_Commit(DeployedModel = $New);
+  return $New;
+end;
+
+/** Creates the runtime support agent on the OpenRouter model, from Agent Commons export/import JSON, when it does not exist yet. An administrator maintains it on the Agents page afterwards. */
+create or modify microflow "ServiceDesk"."ASU_SeedRuntimeAgent" ()
+returns AgentCommons.Agent as $Agent
+folder 'Runtime agent'
+begin
+  $Agent = call microflow AgentCommons.Agent_GetCreate_Json(AgentTitle = 'Support Agent (runtime)', AgentJson = '{
+  "Title": "Support Agent (runtime)",
+  "Description": "The support agent, built at runtime in Agent Commons on an OpenAI-compatible endpoint (OpenRouter, free models).",
+  "UsageType": "Conversational",
+  "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a01",
+  "Versions": [
+    {
+      "Title": "First version",
+      "Description": "Same tools and rules as the design-time SupportAgent.",
+      "SystemPrompt": "You are the service-desk assistant of a web shop. You help customers and support staff with orders, tickets and refunds. Use GetOrderStatus to look up an order by its number (format SO-10001), SearchTickets to find tickets, CreateTicket to open a ticket and IssueRefund to request a refund (the user must approve both). Only report what the tools return; never invent orders, amounts or tracking codes. Keep answers short and friendly.",
+      "UserPrompt": "",
+      "VersionNumber": 1,
+      "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a02",
+      "EnableUIStreaming": false,
+      "EnableBackendStreaming": false,
+      "ToolChoice": "auto",
+      "Tools": [
+        { "Name": "GetOrderStatus", "Description": "Returns the status, order date, total, carrier and tracking code of one order. Input: OrderNumber, e.g. SO-10002.", "Microflow": "ServiceDesk.Tool_GetOrderStatus", "UserAccessApproval": "VisibleForUser", "IsEnabled": true, "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a11" },
+        { "Name": "SearchTickets", "Description": "Searches existing support tickets by a word or phrase. Input: SearchText.", "Microflow": "ServiceDesk.Tool_SearchTickets", "UserAccessApproval": "VisibleForUser", "IsEnabled": true, "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a12" },
+        { "Name": "CreateTicket", "Description": "Opens a new support ticket for an order. Inputs: Subject, Description, OrderNumber. Requires the user to approve.", "Microflow": "ServiceDesk.Tool_CreateTicket", "UserAccessApproval": "UserConfirmationRequired", "IsEnabled": true, "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a13" },
+        { "Name": "IssueRefund", "Description": "Requests a refund for an order, at most the order total. Inputs: OrderNumber, Amount (a decimal number), Reason. Requires the user to approve.", "Microflow": "ServiceDesk.Tool_IssueRefund", "UserAccessApproval": "UserConfirmationRequired", "IsEnabled": true, "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a14" }
+      ],
+      "DeployedModel": { "Architecture": "OpenAI", "Model": "' + @ServiceDesk.OpenRouterModel + '" }
+    }
+  ],
+  "Version_InUse": { "UUID": "7d4b1c52-3f0e-4a8e-9a1c-2b6f5d8e0a02" },
+  "DeployedModel": { "Architecture": "OpenAI", "Model": "' + @ServiceDesk.OpenRouterModel + '" }
+}');
+  return $Agent;
+end;
+
+/** The runtime support agent, or empty with a warning when it is not there. */
+create or modify microflow "ServiceDesk"."SUB_GetRuntimeAgent" ()
+returns AgentCommons.Agent as $Agent
+folder 'Runtime agent'
+begin
+  retrieve $Agent from AgentCommons.Agent where [Title = 'Support Agent (runtime)'] first;
+  if $Agent = empty then
+    log warning node 'ServiceDesk' 'The runtime support agent does not exist. Check the startup log of ASU_SeedRuntimeAgent.';
+  end if;
+  return $Agent;
+end;
+
+/** Conversational UI action microflow for the runtime agent: sends the conversation to it and stores its answer. */
+create or modify microflow "ServiceDesk"."ChatContext_RuntimeAgent_ActionMicroflow" ($ChatContext: ConversationalUI.ChatContext)
+returns Boolean as $Success
+folder 'Runtime agent'
+begin
+  $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext);
+  if $Request = empty then
+    return false;
+  end if;
+  $Agent = call microflow "ServiceDesk"."SUB_GetRuntimeAgent" ();
+  if $Agent = empty then
+    return false;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithHistory(Agent = $Agent, Request = $Request, OptionalContextObject = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Runtime agent call failed: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  if $Response = empty then
+    return false;
+  end if;
+  retrieve $Message from $Response/GenAICommons.Response_Message;
+  if $Message = empty then
+    return false;
+  end if;
+  call microflow ConversationalUI.ChatContext_UpdateAssistantResponse(ChatContext = $ChatContext, MessageStatus = ConversationalUI.ENUM_MessageStatus.Success, Response = $Response);
+  return true;
+end;
+
+/** A new chat session with the runtime support agent, or empty when the agent is missing or the chat cannot be created. */
+create or modify microflow "ServiceDesk"."SUB_RuntimeChat_Create" ()
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Runtime agent'
+begin
+  $Agent = call microflow "ServiceDesk"."SUB_GetRuntimeAgent" ();
+  if $Agent = empty then
+    return empty;
+  end if;
+  $ChatContext = call java action AgentCommons.ChatContext_Create_ForAgent(Agent = $Agent, ActionMicroflow = 'ServiceDesk.ChatContext_RuntimeAgent_ActionMicroflow', ContextObject = empty, OverwritingDeployedModel = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Could not start a chat with the runtime agent: {1}' with ({1} = $latestError/Message);
+    return empty;
+  end error;
+  return $ChatContext;
+end;
+
+/** Opens a full-screen chat with the runtime support agent (OpenRouter). */
+create or modify microflow "ServiceDesk"."ACT_RuntimeChat_Open" ()
+folder 'Runtime agent'
+begin
+  $ChatContext = call microflow "ServiceDesk"."SUB_RuntimeChat_Create" ();
+  if $ChatContext = empty then
+    return;
+  end if;
+  show page ConversationalUI.ConversationalUI_FullScreenChat (ChatContext = $ChatContext);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_RuntimeChat_Open" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ChatContext_RuntimeAgent_ActionMicroflow" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

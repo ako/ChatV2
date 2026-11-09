@@ -79,6 +79,7 @@ Demo users:
 | demo_customer | Ticket → Add attachment | Upload a PDF or image. The document agent writes a summary of it. |
 | demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |
 | demo_agent | Assistant | "How urgent is ticket 1005?" The support agent calls the triage agent as a tool. |
+| demo_agent | Assistant (OpenRouter) | The same questions, answered by the runtime agent on a free OpenRouter model. |
 | demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
 | demo_administrator | Token usage, Traces, Agents | GenAI usage, traces and the imported agents. |
 
@@ -108,3 +109,19 @@ sh tools/keycloak/start.sh
 ```
 
 MCP clients find the issuer themselves: the 401 response points to the protected-resource metadata, which names `http://localhost:8280/realms/servicedesk`. Sign in with client `mcp-client` (authorization code + PKCE, scope `mcp:tools`). Tokens without that scope, or issued to another client, get 401. `python3 tests-live/mcp/oauth_test.py` runs the whole flow headlessly. The Keycloak admin console is at http://localhost:8280/admin (admin/admin). Everything here is a local development setup: plain HTTP, and a known client secret.
+
+## Runtime agent on OpenRouter (free models)
+
+"Assistant (OpenRouter)", for support agents and administrators, chats with **Support Agent (runtime)**. It is built at runtime in Agent Commons and runs on a free OpenRouter model (`ServiceDesk.OpenRouterModel`) through the OpenAI Connector. It is created at startup from Agent Commons export JSON. Administrators can then change it, add versions and run tests on the **Agents** page without a redeploy.
+
+The API key:
+- **In this Claude Code environment** it is a saved network secret for `openrouter.ai`, injected by the proxy. The Mendix runtime only uses that proxy when started with:
+
+  ```bash
+  PORT=$(echo "$HTTPS_PROXY" | sed -E 's#.*:([0-9]+)/?$#\1#')
+  JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=$PORT" ./mxcli run --local ... (as above)
+  ```
+
+- **Elsewhere,** pass the key: `--constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_API_KEY`.
+
+Free models are often rate-limited. If the assistant answers with an error, try again, or set `ServiceDesk.OpenRouterModel` to another free model that supports tool calls.

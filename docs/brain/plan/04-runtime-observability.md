@@ -27,3 +27,9 @@ Anchors: `@ServiceDesk.ASU_SeedRuntimeAgent` · id `c6665c` · 2026-11-08
 ## An OpenAI-compatible endpoint is tested as the model for a runtime agent, with PgVector for its knowledge base
 
 Anchors: `@ServiceDesk.ASU_ConfigureOpenAICompatible` · id `e9f0cf` · 2026-11-08
+
+## PgVector knowledge base on the OpenAI-compatible endpoint is not possible with OpenRouter
+
+Anchors: none · id `d4584c` · 2026-11-09 · OPEN
+
+OpenRouter lists no embedding models (free or paid), and the local Postgres 16 has no vector extension. The knowledge-base half of the OpenAI-compatible requirement needs another embeddings provider, for example a Mendix Cloud GenAI knowledge base key or a local embeddings server.

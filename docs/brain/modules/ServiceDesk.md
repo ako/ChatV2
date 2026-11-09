@@ -76,3 +76,15 @@ A Python MCP SDK 2.x server on 127.0.0.1:8765 serves track_parcel for the demo o
 Anchors: `@ServiceDesk.MCP_Authenticate_OAuth` · id `1cca4e` · 2026-11-09
 
 tools/keycloak/start.sh runs Keycloak 26 (start-dev, port 8280) with tools/keycloak/servicedesk-realm.json: the demo users, a public client mcp-client (authorization code + PKCE, also password grant for tests), the mcp:tools scope that adds audience servicedesk-mcp, and the confidential client servicedesk-mcp the app introspects with. MCP_Authenticate_OAuth requires an active token whose aud is servicedesk-mcp and whose scope holds mcp:tools, then maps preferred_username to the app user by name, so Keycloak and Mendix user names must match. The introspection secret is a local development value, passed per run as ServiceDesk.OAuthClientSecret; a real issuer needs its own secret and https.
+
+## The runtime agent runs on OpenRouter free models through the OpenAI Connector, seeded from Agent Commons export JSON
+
+Anchors: `@ServiceDesk.ASU_SeedRuntimeAgent` · id `6c4338` · 2026-11-09
+
+ASU_SeedRuntimeAgent creates 'Support Agent (runtime)' with AgentCommons.Agent_GetCreate_Json, the same JSON the Agents page exports, so it is created once and then maintained by an administrator (versions, test cases, health check) without redeploying. The model is nvidia/nemotron-3.5-super-vl:free, the free OpenRouter model that answered a tool call; others were rate-limited (429) or failed upstream (502) on the day. The design-time agents stay on Mendix Cloud GenAI because Agent Editor supports no OpenAI-compatible provider.
+
+## A local run needs -Dhttp.proxyHost/-Dhttp.proxyPort for the Mendix runtime to reach OpenRouter with the saved key
+
+Anchors: `@ServiceDesk.ASU_ConfigureOpenAICompatible` · id `e879b1` · 2026-11-09
+
+The Claude Code network proxy injects the OpenRouter key only into requests that go through it. JAVA_TOOL_OPTIONS sets only https.proxyHost, and Mendix's Call REST did not use it: the call went direct and OpenRouter answered 'Missing Authentication header' to the placeholder key. Adding -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=<HTTPS_PROXY port> to JAVA_TOOL_OPTIONS for mxcli run made it go through the proxy. Outside this environment pass a real key as ServiceDesk.OpenRouterApiKey instead.

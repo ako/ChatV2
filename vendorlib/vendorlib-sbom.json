@@ -345,6 +345,183 @@
     },
     {
       "type" : "library",
+      "bom-ref" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jdk8@2.23.0?type=jar",
+      "group" : "com.fasterxml.jackson.datatype",
+      "name" : "jackson-datatype-jdk8",
+      "version" : "2.23.0",
+      "description" : "Add-on module for Jackson (https://github.com/FasterXML/jackson) to support JDK 8 data types.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e6abc5dd5ea6cf6f52d1bd92a5715eb1"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "44bb26ba71bc4d9cbd6b2310e9b94f3465fac518"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "90388031bbcc4b732e994085d3c8e7dcd5543a5c455ae6ac52137ab0f05a663b"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "76d0bc6915bb645784c1bb22b826940ed4ab8586548add8f1433d1d9a309c9cf0e9bbfd94152b4fe6c891b26f6d5a67717f4af634427df1f50a5569786d88d8e"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "9729e26c1c0e2340f26d8fca8fe47b59d9f74e2acdd25fb699c7de834ea9fb0d"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "0fabbcc45aee5ae84a95990d78688c5c9d06c093b6fcc0b9019984adddeaf3b2c1999dee4fa425a0880f20c2ca866c51d3abf7586da7f54c8de0902be83e9bff"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "d30dd4f70c013e9dd0e3a9182e521bb2167b460ec0577bfc1b4edabe0f651860a90e86c30ae433fa5bc06beb33529f4e"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "cdc32e45bce6f496a52c23165f56757e4f0e9ff0b86b0f3c071c74d72b1b74f3d113faf41718b62f89ad38c5e95a2c7f"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jdk8@2.23.0?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jsr310@2.23.0?type=jar",
+      "group" : "com.fasterxml.jackson.datatype",
+      "name" : "jackson-datatype-jsr310",
+      "version" : "2.23.0",
+      "description" : "Add-on module to support JSR-310 (Java 8 Date & Time API) data types.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "b62ba38693a0a11dc89a467bff26a821"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "f133f886c8b0794496ef666f3f505d0b77c9c1e0"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "f348f4de49644afa0ccbff6b018709a5f0f1468c76852e4217051890a0b8528c"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "c8cf2eb512a6d48593969ff3479531b5cfc5e4308a97e033df81ffd8a0e2157dab735935ccca2cd9d2d121102952dbf028f130ac022959cc105721ea676a08ef"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "2962e33c37f994472b3d941b9f7a8ed8079e455f07aee5d56809af4de3849c68"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "e17fd2a72ce8cda65226225cefd41860c4b2a93fd4fa9ff79340a19d1c0edc42b857d504fadba30025efeaf4568710960b973d66c9d33605761786973d803bc0"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "b6d249eb8847f295292a088c6a0733d464c588ebb276d07c60d607e92fb2f32e65aa6429fffcba994ed9f271eb71521a"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "7e6e73a9aa16f349d0bf81409038db1f2e4a7596423d2d1d61ae649efc455312503999538cfc0c8558117ea2c0dcb89e"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jsr310@2.23.0?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.fasterxml.jackson.module/jackson-module-kotlin@2.23.0?type=jar",
+      "group" : "com.fasterxml.jackson.module",
+      "name" : "jackson-module-kotlin",
+      "version" : "2.23.0",
+      "description" : "Add-on module for Jackson (https://github.com/FasterXML/jackson/) to support Kotlin language, specifically introspection of method/constructor parameter names, without having to add explicit property name annotation.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "98fcd7f420216a6464d98bdd48829e1d"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "988332a4e9006b3a6cb46e132f4b4c4b8e0c6d06"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2a4a60663eefeef16e056e8c9a1f9454f58e74c85ada798963b937491b9dcae5"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "7661f6682c914679a42cec3fddb1459e3ed9099e881f4b395dc968bc07fcb038e40631da662309e3e38529c91d3abbf1b462d6e216de849639df33f10fb32571"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "cf55bd2dbbb050b5484258444b48f2eb9ef0269a7e866552eb765169a3ae7b11"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "cf60c2cf5e36d662d6cfa45c679cbd4ea2169895fdf78a730818363a12659f46c728b875f1b834c1e969d41488279d18a4d06bd478ebafbdb5e243bb645d1b40"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "e5084be318f28ad0b4a8295126dceaf6813dae84faca6ef10dcdd89150de15a9a99538eb63f6cf262d566698433ae61d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "6c92bcc202fc3c3bdf56e49eabee89a736e842829a86cd6b0a4837e8ae7987b38fb5dc15e7726f88fb3e797309a72905"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.fasterxml.jackson.module/jackson-module-kotlin@2.23.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/FasterXML/jackson-module-kotlin"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
       "bom-ref" : "pkg:maven/com.fasterxml.jackson/jackson-bom@2.23.0?type=pom",
       "publisher" : "FasterXML",
       "group" : "com.fasterxml.jackson",
@@ -370,6 +547,245 @@
           "url" : "https://github.com/FasterXML/jackson-bom"
         }
       ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.fasterxml/classmate@1.7.0?type=jar",
+      "publisher" : "fasterxml.com",
+      "group" : "com.fasterxml",
+      "name" : "classmate",
+      "version" : "1.7.0",
+      "description" : "Library for introspecting types with full generic information including resolving of field and method types.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "3b8f14fe92feb865a8205aa63c5ed769"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "0e98374da1f2143ac8e6e0a95036994bb19137a3"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "cb868f231c5cceb89d795ea00e6e1b7a93b8f4ac1ce1d8be76dde322dff4a046"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "6761a0a8efe5ba89a812e49d8f7d2a9e1a100d4edd63ede79ee9a6d22758b2e2511653ea5964b4b9a2e5567ea062337ab581960acbe710aacac055770fbbcefd"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "cb65310b60ac600730344fc227d39a256d9211df612813ceea867a7c996a5486"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "08273ae03154eaf16984dcfca36df4d2ddb56a1a3fe8ce8cd120e2de308bc79a7e44fce00b6402e0b1c393ea35e619fe50acfd436c381ef96bd47fe3ce3da90d"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "4341387cdba9ca6d0e93f59e2321dedf0097baca043ff6e230a871a462dbe58164b85de9352c72e752aeb0918b83479b"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "848d338e572619cb6827e69ed6449764c53fa9c5da2f17c3d428aba7de3dd36c026a31485b09b786d0ea6bc92b181527"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.fasterxml/classmate@1.7.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "website",
+          "url" : "https://fasterxml.com"
+        },
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/FasterXML/java-classmate"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.github.victools/jsonschema-generator@4.38.0?type=jar",
+      "group" : "com.github.victools",
+      "name" : "jsonschema-generator",
+      "version" : "4.38.0",
+      "description" : "Java JSON Schema Generator – creating a JSON Schema (Draft 6, Draft 7 or Draft 2019-09) from your Java classes",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "85236afed8931d7b4cb719914df0359d"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "2b24dbc099c58c50aa8d9d2fa755d75d5e97f0e5"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "ade4aeb301db4028ac6bcba016c31405677e37aae6eebaf13c99de3fdb3531b4"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "78da88c528d51314e1e2a69ed197671e8d37c676dfc715513859c4735decddab38c0a75a7f4eefd42659f69b8553b7d928b93358a5bc486db2bd01fa57774b85"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "1a94f7a3d37084237d67cc1cfe5450b996ed44bda566e5e410be5c48b18899c8"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "0c7a4c79237f8999bb752d51c12f8071b2ba8beb508849a5976cd532bd2132fec2b9d4c916387a1fee9b77d6bb26ed51d6c324c1654553e042b042ceaa138743"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "d577288682f51fbb045671ce3f625b991ba7bcf3dc41c192fb5a94b4d78e4a36079813c676671bcc981c3306812e5e18"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "baa58b7c30e955c892768802dcb95d1fce3f615c271e6b20b1c782c4b807f7717a229060f1af20569b3551e833a596cc"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.github.victools/jsonschema-generator@4.38.0?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.github.victools/jsonschema-module-jackson@4.38.0?type=jar",
+      "group" : "com.github.victools",
+      "name" : "jsonschema-module-jackson",
+      "version" : "4.38.0",
+      "description" : "Module for the jsonschema-generator – deriving JSON Schema attributes from jackson annotations",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "04cedcb88a562ebe96b5e77ad13df5a1"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "c924f0d657ddf66b624f584e76edc0bfc50d2988"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "36fbd3f1c27379c3ba8420ac2cb0b42411f7bc3b3df8bdd11d8d7e024a1c28ca"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "d2d3b08a3367a0f35ae774aab0f90c77954dea5d5664105126e509643c63a5fbc471b88def4f0f3eb7d1a9585050521e914f6c34e92f8fb533ab9de318952903"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "324bd7782252298b3a22352f85bc9950fa448723bdcfe6fd2787be3bf5a1ff88"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "d6de986b8b30e3ab25541188e0f6ce6f5444072dc312eeefbfb4f6c6e3a93bcd6ef3e954fabddc11f081369a7452499e91b1b34a6c50cdfb950a6e23589e3c31"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "65fc03eb6622dff878b9a1ea84278cfeb468ea03b215c0ed817c981d69677dc9b10924cede3a7a243b58f13d83184868"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "e084e76d179ffa4283134357bce87b346e2aac86e5e1fe30860d8d296ee491f0c79143a81262d6402116c425e979d773"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.github.victools/jsonschema-module-jackson@4.38.0?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.github.victools/jsonschema-module-swagger-2@4.38.0?type=jar",
+      "group" : "com.github.victools",
+      "name" : "jsonschema-module-swagger-2",
+      "version" : "4.38.0",
+      "description" : "Module for the jsonschema-generator – Swagger (2.x)",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "de6082fcc431e072dc36778f5c5815a2"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "d6323edd3effc917ff8689f19f7f3d0dac889368"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "b76c0df657bcf88cca46d7ad540938552e10127a7c28d2136f62b631666997c1"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "0c5ff0fe4582262bdf16c47ecbf1d8cc384dd66252089345a3a3815a48b51ff3d143953c03d8a6022559da5fff016201550ee6f2d697eb2bf7e500fa10c3dde6"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "fe169c34d4de6d02fec750d268424f8b0caa14139f45d9e9578a05fc8d7027f8"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "815565304ed9b77f5ede782c52d2db87ef3d2da5de705cf5a74c4b76f1f7615f073180b4ac717bb1efefcec485849f3ba5fe63a6f6c08ac0f653ceca66c5a0a9"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "24b6da28a8205a7497bdd2fe79697761d908ee7244a230840400c4058aff3f3e8707ae5142b36d35c33b0490b0c9a601"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "2a3dd182d6f8b66b4a4b64c911eedbcdc8898e4f6cef48b5ed02734f68a19673fd85388749da3277f70e87c8ae842db1"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.github.victools/jsonschema-module-swagger-2@4.38.0?type=jar",
+      "modified" : false,
       "properties" : [
         {
           "name" : "cdx:maven:package:test",
@@ -904,6 +1320,261 @@
         {
           "type" : "vcs",
           "url" : "https://github.com/networknt/json-schema-validator.git"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.openai/openai-java-client-okhttp@4.13.0?type=jar",
+      "group" : "com.openai",
+      "name" : "openai-java-client-okhttp",
+      "version" : "4.13.0",
+      "description" : "The OpenAI REST API. Please see https://platform.openai.com/docs/api-reference for more details.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "2b7cd42a9a775e85ecfcd7cafbdd24b8"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "292f33bd5ab560e61dac324f1b59d87a33a9ecb4"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "411bdb3c835084008507d8643bf500757c485979df39b93d4335a737595524d7"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "2d00158288cbc7810db3b60fb7d39099e03b2d5344848c1397a4b3caefb3db1a57729745c996a7ca605e371313b002d04b460cdb510fda59f50cebd399eb6a84"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "e49447e239804bd878ceaf42a1306c81fa33196f0f93f0697fb700ac2766d498"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "3481ebaf75dcc8f7a005160a61388e70acf2ae5da56344fa26fbef97ea8f6cac4541179c9dceb204bbdc7f76934d83943730dc77e3d3b2bdf717add0ce5e7e2f"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "088061066078bfd83859e866a0b6c3276f74f523c3ce56e93ba3fe098fff7e7bad629d51ebd0c8b26e1f4a40f5db171c"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "e7e9f6064dce25e188ec8a603c4e5f11e0a52e78ab032c7df0f7d35491af954fa7b8eec5499e33c1a9b237866914ad29"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0",
+            "url" : "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.openai/openai-java-client-okhttp@4.13.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/openai/openai-java"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.openai/openai-java-core@4.13.0?type=jar",
+      "group" : "com.openai",
+      "name" : "openai-java-core",
+      "version" : "4.13.0",
+      "description" : "The OpenAI REST API. Please see https://platform.openai.com/docs/api-reference for more details.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "6c089787c1b54e63590de3ff90f65c3b"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "b463f3962c6d2a41318cdefac9f20bc7788a6bff"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "82f0280ca073bfa5e018470c2b60acd72f7712b795b97f90ce38e1475a5e0f3c"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "bdb208fee7ac69e218bc64fa754968c64673f7bab4ec939dad2101f0e547e6328f1f11f2ec208abe33b79fd0ced80b1e626e2883d78a118e4c827c6dfff0b2aa"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "bfbe604f354fb8b032e5bf304e42ca119e233cc4f00e162ef880edcc7ada4138"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "88d68ef8ea1f4e780a3d8f6650cdc30f186a0957947986990173dec231f09289c4d6cd464548270c577570f35e5ce0591134675dbd29b289ee48172fa7a355de"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "69b03e74de7d80aabd12a1e2b297ec980190e2e5ee0481c5e3473fc0f88cd5d8377cb84603fd093dad1d833fd8ff6c3f"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "5b611b68afa0b20719f93eb3d8954c8257b34970f5c45048442c95401042809cdab249ebb15f26be93227b00436e15b9"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0",
+            "url" : "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.openai/openai-java-core@4.13.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/openai/openai-java"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.openai/openai-java@4.13.0?type=jar",
+      "group" : "com.openai",
+      "name" : "openai-java",
+      "version" : "4.13.0",
+      "description" : "The OpenAI REST API. Please see https://platform.openai.com/docs/api-reference for more details.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "c5a7495635335010ce207aa3629ed9b0"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "09ac044b2315a51fb515a203fe875c54bfeaf2bd"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "bb2f4714bfc770428259ad3c3f1477a0fcf6239aef8173b2749678531fc793fb"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "02ecff75bbd8be43c9d3f23c729d70f2613db314c923837ed01998976ae61e72ad02664d90ad776bfd248b09bfb3fff17318f9759a45c7eca6540991d4ef6796"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "2fe2fe23d9c3f3597a3426391f5412b2ff79497375e58390167ae49b1da40c42"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9152c234e6d782bb6de3b3adc74dc746d92be379f48671cbcc08c3fa98d36cf7362bbb338e8ca988702904d983f0e5b42553164cc6a2cf2267b89c14ac471826"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "66bb4c38055fc953aec33fa97f0df636eb4a36471596cf1205db4a17f73697cf6e3dc8bfebc937e8666432f488fd2cb2"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "fb8989523c8d53900a940c3ddb106f64eebe2308522a03c01afbfa1b69731eee45dd00d43be0daa083228828166babc7"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0",
+            "url" : "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.openai/openai-java@4.13.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/openai/openai-java"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/com.squareup.okhttp3/logging-interceptor@4.12.0?type=jar",
+      "group" : "com.squareup.okhttp3",
+      "name" : "logging-interceptor",
+      "version" : "4.12.0",
+      "description" : "Square’s meticulous HTTP client for Java and Kotlin.",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "48029ba5a920bbb533503169cba8e498"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "e922c1f14d365c0f2bed140cc0825e18462c2778"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "f3e8d5f0903c250c2b55d2f47fcfe008e80634385da8385161c7a63aaed0c74c"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "a3c77d43197b0277204e5954d3bfb37921a1d9e388bbac66e7a35f8d5f5081805645c09119be2a7037dc41a18695cbd06d7599f111c97f8a1e37196b8f38a03c"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "dac8125f48acf2b5ab7e6c75df0c30fecb8a3258461c7a9eaa26a8ef89bae23e"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "1ce82428b992f6f99cf79d3e3c6225ce76ff41b66fb0d0562c9c4915eb775ae92b87f269317397a47463107ff23c61ab379aed373dfa1f64a5d7ad7a4032ea1f"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "7e13b871a10d57e2a1c9b70d47257b9a5c566794c10ff8ecd7d2c917499248a49151438d261313370b35efe1a4f13fe1"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "6289cd5955c89f5f273d691521cced0aed9f55fc617131fdedfbde4ecdbc44de2a27fa22254600dd726200d1d0289db9"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/com.squareup.okhttp3/logging-interceptor@4.12.0?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/square/okhttp"
         }
       ],
       "properties" : [
@@ -1552,6 +2223,64 @@
     },
     {
       "type" : "library",
+      "bom-ref" : "pkg:maven/io.swagger.core.v3/swagger-annotations@2.2.31?type=jar",
+      "group" : "io.swagger.core.v3",
+      "name" : "swagger-annotations",
+      "version" : "2.2.31",
+      "description" : "swagger-annotations",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "54855a704f7b72f2689c47ec16139036"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "6f9ffc1fbfce9d1d37420eef795821353a77b6af"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "8cb2155211480e5fbd24388a6dc81baeea6dd50f8fcc6504cf4f39e4e3acf96c"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "950abb3943cc5207824e167bf6e71205115773b84522d35c5da9e349d6ba107b20fc98e4ae13894567bdbee36e887c5877cc74619399fbcbb127a1e65ed6ec7f"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "0427bf0a353002343c447d802a3e4a4154f7e2362eb630e30c371d97a0e854d4"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "c2882076cf214d15bc7d730c0393a298842f815b65ce37824d30089224f0a43b9cee002830b6831bc327484df28e12dc4c10e7ba5d8166941e8e8cc934005134"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "f18208a2d651b1df4cc5bd8dea67e840b356ab27358f7c4dbeda7198cb8194887ab140e1bb5fe4876cc4973cd3dc6d0b"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f439c6372820f560b65cf78a6db84b88bd70539afc88e27de505912dea9a6fdaab01dfdaf80c1502e620a4a3efe0d3ff"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0",
+            "url" : "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/io.swagger.core.v3/swagger-annotations@2.2.31?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
       "bom-ref" : "pkg:maven/org.apache.commons/commons-lang3@3.20.0?type=jar",
       "group" : "org.apache.commons",
       "name" : "commons-lang3",
@@ -1687,6 +2416,177 @@
           "url" : "https://gitbox.apache.org/repos/asf?p=commons-text.git"
         }
       ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.3.1?type=jar",
+      "group" : "org.apache.httpcomponents.client5",
+      "name" : "httpclient5",
+      "version" : "5.3.1",
+      "description" : "Apache HttpComponents Client",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "de1810a606b27192cbf5bbad9c25a648"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "56b53c8f4bcdaada801d311cf2ff8a24d6d96883"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "08346a757c617f6ecc66af9f099260adde1f3a1351fa81cb22fc17482b31f823"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "4c2d75106af8470789f0e08305e64ad86528f2f737da230e561892d33dbca0b6e2dbced2a075f0744cee7801c06ef174481540661b3c9a1bec6d6f93938b05bc"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "9e22ce6935e71d12d1be70ef0b7cea9a87191c767de2904cb82fcb6e58d0e9b2"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9d36e201e469dd357ef715bba7beba62dbea98daefcea3b793fd285c2ffade97d72b35a07f05015fbc2d5b4fa5db58ff5ecf40e1269582a6c3e53ed62cbf97f4"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "27470f74660b89f8a0af562a4edbd244afff4947b0fa7364c61e53ca49713efbca49e661214590f532c4acf9cfd66eac"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "d25be0f1c5e0c02de0adf7113e591f10bd7fab20c168a20b7d15c859b252a6dc3ae3a24098e838d95c179ab3107f07b6"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.3.1?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.2.4?type=jar",
+      "group" : "org.apache.httpcomponents.core5",
+      "name" : "httpcore5-h2",
+      "version" : "5.2.4",
+      "description" : "Apache HttpComponents HTTP/2 Core Components",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "d407b8144029db656ac5ba3d54ef801f"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "2872764df7b4857549e2880dd32a6f9009166289"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "dc1a95e73eb04db93451533d390ce02c53b301a10dc343d08c862f2934b3d30e"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "72fbee55f173c43d9ffc0cc5a83d59e60be1002c06ab81de39ba700cc30b04e84fdfed73d3a8985d561a1aa8ac3ca905f9259d01b431e1ff14da6fae622f787d"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "da34ed59342e368229b74245d2268a457588adea9e276a1ac2fb57419c605f31"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "ca5b03cf34c7e344fd0b809c582e60f0eaea796372cf68e2e95087ac5943154e51472595f6554b810a5ac4789ba6f7c06cae46437badecbf31c57907123a49fc"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "2f96537af2866fa96aae46138febe3009dca97cc9b4284cf18510c12d159ad3f5d34c3c9bafc8026215da81520331660"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "9900a3aeaf434d7f32a7500e29e16d354857ef34e6af3fb7de9e1ab7683b6a1c4bfa9b9f70bb779a8ec8d8be82b6bca4"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.2.4?type=jar",
+      "modified" : false,
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar",
+      "group" : "org.apache.httpcomponents.core5",
+      "name" : "httpcore5",
+      "version" : "5.2.4",
+      "description" : "Apache HttpComponents HTTP/1.1 core components",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "5a3d417ea4e65e0f74194263dc5c6c43"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "34d8332b975f9e9a8298efe4c883ec43d45b7059"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "a7f62496113f66f9e27c26b84c44f5ce4555c6270083cdf2d45f255336cd52af"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "9fb4134d85e665e15410af005b21cd2f9b5e60d75112945d37b879f96f769a70be034557526ea7d05f8b83dda91c56d00f946763c44a183d7aea2857549b4481"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "23fb185f22dac603ba579c4f707671f43b3b08ab049ae519fb492ea0232c5ba9"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "8371cd7e6f94ccb1590bd90d5868a90a3344123b0e6a4f7113d76b816c16d58efc6f2cab124a45ffd93739990fed05201f294f890aa989345f52e736383b4261"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "8ec2da2fd22a23e9f740589947398a907795ab310d4ed166ecc1448ceea7035a50090cf645dad28f3c84c08599f1e57e"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "e52f4f1c073ec9d893cffa353a27939054a0b537fe49e4aacfdd6c265dfba037309913a001c025d85ccbb06a1e9e72b0"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar",
+      "modified" : false,
       "properties" : [
         {
           "name" : "cdx:maven:package:test",
@@ -2165,43 +3065,43 @@
     },
     {
       "type" : "library",
-      "bom-ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@1.9.10?type=jar",
+      "bom-ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-reflect@2.1.21?type=jar",
       "group" : "org.jetbrains.kotlin",
-      "name" : "kotlin-stdlib-common",
-      "version" : "1.9.10",
-      "description" : "Kotlin Common Standard Library",
+      "name" : "kotlin-reflect",
+      "version" : "2.1.21",
+      "description" : "Kotlin Full Reflection Library",
       "hashes" : [
         {
           "alg" : "MD5",
-          "content" : "de4024a53c843e959f2d50ecd1f0e951"
+          "content" : "0ed84417501a7c7f015dcc9be623bb22"
         },
         {
           "alg" : "SHA-1",
-          "content" : "dafaf2c27f27c09220cee312df10917d9a5d97ce"
+          "content" : "4929da533b3f04a101e4bb9ae0ee51a1d8107614"
         },
         {
           "alg" : "SHA-256",
-          "content" : "cde3341ba18a2ba262b0b7cf6c55b20c90e8d434e42c9a13e6a3f770db965a88"
+          "content" : "bcd75a36ca4ad8e06117214ed807f8dea2fe61a71e07f91ca14f4335024b8463"
         },
         {
           "alg" : "SHA-512",
-          "content" : "e7166112e27edcbc1fb7b918bf66120b35f82311016f944472ebc23c848b81d7016660d5d1a3e7a1679e599c555d796d73c520a0d8178e00b36aa3668415170e"
+          "content" : "b3f93ed791b0d47bab3e50ca789c3d1d90010fa37cc9c4a05f53537fdb9c7a998a8ed53be425bd55f43019374abd1a53c51d0f2ad9d717597f91d09170e4f5f9"
         },
         {
           "alg" : "SHA3-256",
-          "content" : "e6788f12612e7ba42187b1f8ad6a9fd316c2ef91ca917dca8093fe5696094b54"
+          "content" : "e80844c3665335920964528a186c8fbf3f1902e1aadc1824ca9d00c99e0dca33"
         },
         {
           "alg" : "SHA3-512",
-          "content" : "628d660c681fdcc2750a47b131a046409997b95cb2417f9ebcd69946fa678c6e15f1079008f9be6b7d356a0d6e9b6b27bcb6fd01cd5d0c47fc583690c081f6b9"
+          "content" : "058f8a4626fc6f415b88d8b674211b4fc8718d270750305f243ba16cf85ca74b26b7b654f2f0377b5f5d472d823647fe2c277a82a195711aebe1b18f4f4622a4"
         },
         {
           "alg" : "SHA-384",
-          "content" : "f2d3a3c33cc3d9f2c554b1afce255b885fc7914fe13ef316d743d9300e4231556250fd691306f4feae356e8f21c4f777"
+          "content" : "239283157074d4622664a2b46076d8ba46bdcf5912924b97ae226cb6c45cd9c8ad1baeaca5c134865d35b4f0952ba873"
         },
         {
           "alg" : "SHA3-384",
-          "content" : "48ee306c706fe0579610e5105cd9688a25dd9f964ad1ba47b5da25f1e9dc686fb6e4703b5950cdfca28d33ad92e7817e"
+          "content" : "445f50d002f48aacfddf9538dffb22fd7e5b3d03e53c3517aa751cbda57e2986defa3c56381355729539471e773b5f8d"
         }
       ],
       "licenses" : [
@@ -2211,7 +3111,36 @@
           }
         }
       ],
-      "purl" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@1.9.10?type=jar",
+      "purl" : "pkg:maven/org.jetbrains.kotlin/kotlin-reflect@2.1.21?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https://github.com/JetBrains/kotlin"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
+      "bom-ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@2.1.21?type=pom",
+      "group" : "org.jetbrains.kotlin",
+      "name" : "kotlin-stdlib-common",
+      "version" : "2.1.21",
+      "description" : "Kotlin Common Standard Library (legacy, use kotlin-stdlib instead)",
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "Apache-2.0"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@2.1.21?type=pom",
       "modified" : false,
       "externalReferences" : [
         {
@@ -2354,43 +3283,43 @@
     },
     {
       "type" : "library",
-      "bom-ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.10?type=jar",
+      "bom-ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar",
       "group" : "org.jetbrains.kotlin",
       "name" : "kotlin-stdlib",
-      "version" : "1.9.10",
-      "description" : "Kotlin Standard Library for JVM",
+      "version" : "2.1.21",
+      "description" : "Kotlin Standard Library",
       "hashes" : [
         {
           "alg" : "MD5",
-          "content" : "da8348128b101f854fafa9a31e3806bd"
+          "content" : "01269975f32698511a6062a4db034d00"
         },
         {
           "alg" : "SHA-1",
-          "content" : "72812e8a368917ab5c0a5081b56915ffdfec93b7"
+          "content" : "97a0975aa19d925e109537af60eb46902920015c"
         },
         {
           "alg" : "SHA-256",
-          "content" : "55e989c512b80907799f854309f3bc7782c5b3d13932442d0379d5c472711504"
+          "content" : "263bdc679e1f62012db7b091796279b6d71cf36f4797a98ff1ace05835f201c8"
         },
         {
           "alg" : "SHA-512",
-          "content" : "6eab000f55dd196a074d1d97df9d285bccace31f0cae8db1846b1c9a55a6ea5e401307a95922a1d758b4152916de47fe36d31551ad0250918e6e07ce710a83a2"
+          "content" : "6f7962827c16cb87223a7fe3b2a8498619c501bd2f64e09377a0e8ba8d59b9adcfe11f6eaa429d91c7bfb8c96435de159f75d22156d0b234a2ddad33558aa209"
         },
         {
           "alg" : "SHA3-256",
-          "content" : "2d7bd20511dd96069425e81bdb03573bca1f9e0a4b95bc64d061c349db84cb4d"
+          "content" : "de0012f7133abd96bb18f98827ed62c357ce96c4a4dbeddae1ed6b9e4f3461c5"
         },
         {
           "alg" : "SHA3-512",
-          "content" : "c45aa810f250916e3839de5cb1cff99cd482cf6c693540842be9f8e18aa6c238271da00e2af85897687c29d3795a810404780050539cfa24fa82da27eb8c3a1f"
+          "content" : "8b7a36a971cada864ee257f668eb7af77e974b118c0976c55c9d2df252c30ad9bc4fe7dff6ffbcb97236662a86d39cbda7002d06009c006bccdf4d2f8d23afbd"
         },
         {
           "alg" : "SHA-384",
-          "content" : "5f34959bd398c5e6c15d8caa21068b337b851fdd8ae7ebc915853909d71d3fedd2e6542e63730c5199cbcc03b48f5e81"
+          "content" : "bfef81718cb62c7536af55f57ee1b236dc43968cdd4d2ce6ded42a840c5594edc09d4e5c8f77c111a3edbe0d9b56db6b"
         },
         {
           "alg" : "SHA3-384",
-          "content" : "afea5f6f39a136a859d8f3d1ae5ee1e8cf7356b4069b0a41f77069a7d001f0ba402c666286296a0c609fca25b277d210"
+          "content" : "9f6672c059b46d44ac9c3bb049110655ac8a00a07469c3c1d4a3b0f71f983a9cf3541f2b9f16d5f855b7032ed19fccf3"
         }
       ],
       "licenses" : [
@@ -2400,7 +3329,7 @@
           }
         }
       ],
-      "purl" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.10?type=jar",
+      "purl" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar",
       "modified" : false,
       "externalReferences" : [
         {
@@ -2762,8 +3691,59 @@
       ]
     },
     {
+      "ref" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jdk8@2.23.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.fasterxml.jackson/jackson-bom@2.23.0?type=pom",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.23.0?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jsr310@2.23.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.fasterxml.jackson/jackson-bom@2.23.0?type=pom",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.23?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.23.0?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.fasterxml.jackson.module/jackson-module-kotlin@2.23.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.fasterxml.jackson/jackson-bom@2.23.0?type=pom",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.23?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.23.0?type=jar",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-reflect@2.1.21?type=jar"
+      ]
+    },
+    {
       "ref" : "pkg:maven/com.fasterxml.jackson/jackson-bom@2.23.0?type=pom",
       "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:maven/com.fasterxml/classmate@1.7.0?type=jar",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:maven/com.github.victools/jsonschema-generator@4.38.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml/classmate@1.7.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.23.0?type=jar",
+        "pkg:maven/org.slf4j/slf4j-api@2.0.17?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.github.victools/jsonschema-module-jackson@4.38.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/org.slf4j/slf4j-api@2.0.17?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.github.victools/jsonschema-module-swagger-2@4.38.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/org.slf4j/slf4j-api@2.0.17?type=jar"
+      ]
     },
     {
       "ref" : "pkg:maven/com.google.errorprone/error_prone_annotations@2.41.0?type=jar",
@@ -2821,6 +3801,7 @@
         "pkg:maven/org.apache.commons/commons-text@1.14.0?type=jar",
         "pkg:maven/org.bouncycastle/bcpkix-jdk18on@1.85?type=jar",
         "pkg:maven/org.bouncycastle/bcpg-jdk18on@1.85?type=jar",
+        "pkg:maven/com.openai/openai-java@4.13.0?type=jar",
         "pkg:maven/org.apache.pdfbox/pdfbox-io@3.0.7?type=jar",
         "pkg:maven/org.apache.pdfbox/pdfbox@3.0.7?type=jar",
         "pkg:maven/org.bouncycastle/bcprov-jdk18on@1.85?type=jar",
@@ -2834,6 +3815,48 @@
         "pkg:maven/com.ethlo.time/itu@1.14.0?type=jar",
         "pkg:maven/org.slf4j/slf4j-api@2.0.17?type=jar",
         "pkg:maven/com.fasterxml.jackson.dataformat/jackson-dataformat-yaml@2.23.0?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.openai/openai-java-client-okhttp@4.13.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.squareup.okhttp3/logging-interceptor@4.12.0?type=jar",
+        "pkg:maven/com.squareup.okhttp3/okhttp@4.12.0?type=jar",
+        "pkg:maven/com.openai/openai-java-core@4.13.0?type=jar",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.openai/openai-java-core@4.13.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.github.victools/jsonschema-module-swagger-2@4.38.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jsr310@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.module/jackson-module-kotlin@2.23.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.datatype/jackson-datatype-jdk8@2.23.0?type=jar",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar",
+        "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.3.1?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.23.0?type=jar",
+        "pkg:maven/com.github.victools/jsonschema-module-jackson@4.38.0?type=jar",
+        "pkg:maven/com.google.errorprone/error_prone_annotations@2.41.0?type=jar",
+        "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar",
+        "pkg:maven/io.swagger.core.v3/swagger-annotations@2.2.31?type=jar",
+        "pkg:maven/com.github.victools/jsonschema-generator@4.38.0?type=jar",
+        "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.23?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.openai/openai-java@4.13.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.openai/openai-java-client-okhttp@4.13.0?type=jar",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/com.squareup.okhttp3/logging-interceptor@4.12.0?type=jar",
+      "dependsOn" : [
+        "pkg:maven/com.squareup.okhttp3/okhttp@4.12.0?type=jar",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar"
       ]
     },
     {
@@ -2853,8 +3876,8 @@
     {
       "ref" : "pkg:maven/com.squareup.okio/okio-jvm@3.6.0?type=jar",
       "dependsOn" : [
-        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar",
-        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@1.9.10?type=jar"
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@2.1.21?type=pom",
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar"
       ]
     },
     {
@@ -2900,6 +3923,10 @@
       ]
     },
     {
+      "ref" : "pkg:maven/io.swagger.core.v3/swagger-annotations@2.2.31?type=jar",
+      "dependsOn" : [ ]
+    },
+    {
       "ref" : "pkg:maven/org.apache.commons/commons-lang3@3.20.0?type=jar",
       "dependsOn" : [ ]
     },
@@ -2908,6 +3935,24 @@
       "dependsOn" : [
         "pkg:maven/org.apache.commons/commons-lang3@3.20.0?type=jar"
       ]
+    },
+    {
+      "ref" : "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.3.1?type=jar",
+      "dependsOn" : [
+        "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar",
+        "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.2.4?type=jar",
+        "pkg:maven/org.slf4j/slf4j-api@2.0.17?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.2.4?type=jar",
+      "dependsOn" : [
+        "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.2.4?type=jar",
+      "dependsOn" : [ ]
     },
     {
       "ref" : "pkg:maven/org.apache.pdfbox/fontbox@3.0.7?type=jar",
@@ -2954,27 +3999,34 @@
       ]
     },
     {
-      "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@1.9.10?type=jar",
-      "dependsOn" : [ ]
+      "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-reflect@2.1.21?type=jar",
+      "dependsOn" : [
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar"
+      ]
+    },
+    {
+      "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@2.1.21?type=pom",
+      "dependsOn" : [
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar"
+      ]
     },
     {
       "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.10?type=jar",
       "dependsOn" : [
-        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.10?type=jar"
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar"
       ]
     },
     {
       "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk8@1.9.10?type=jar",
       "dependsOn" : [
         "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-jdk7@1.9.10?type=jar",
-        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.10?type=jar"
+        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar"
       ]
     },
     {
-      "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@1.9.10?type=jar",
+      "ref" : "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.1.21?type=jar",
       "dependsOn" : [
-        "pkg:maven/org.jetbrains/annotations@13.0?type=jar",
-        "pkg:maven/org.jetbrains.kotlin/kotlin-stdlib-common@1.9.10?type=jar"
+        "pkg:maven/org.jetbrains/annotations@13.0?type=jar"
       ]
     },
     {
