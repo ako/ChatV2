@@ -45,3 +45,7 @@ Anchors: `@ServiceDesk.Ticket_Overview` · id `59283b` · 2026-11-08
 ## Customers, Orders and Tickets exist with demo data; a Customer has many Orders, a Ticket belongs to a Customer and optionally an Order
 
 Anchors: `@ServiceDesk.Customer`, `@ServiceDesk.Order`, `@ServiceDesk.Ticket` · id `98578d` · 2026-11-08
+
+## The SupportAgent answers policy questions from the Mendix Cloud GenAI knowledge base, collection 'policies'
+
+Anchors: `@ServiceDesk.SUB_PolicyDocument_Ingest` · id `344193` · 2026-11-09

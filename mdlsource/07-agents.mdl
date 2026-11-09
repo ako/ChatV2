@@ -102,6 +102,16 @@ Rules:
     Description: 'Asks the triage agent to classify an existing ticket by category and priority and summarise it. Input: TicketNumber (a whole number, e.g. 1003).'
   )
 
+  knowledge base PolicyDocs (
+    Source: "ServiceDesk"."PolicyKnowledgeBase",
+    Collection: 'policies',
+    MaxResults: 4,
+    MinSimilarity: 0.3,
+    IsVisible: true,
+    Enabled: true,
+    Description: 'The shop policies and FAQ: returns, refunds, delivery times, warranty, account help. Search it for any policy or how-to question.'
+  )
+
   mcp service "ServiceDesk"."CarrierTracking" (
     Enabled: true,
     UserAccessApproval: VisibleForUser

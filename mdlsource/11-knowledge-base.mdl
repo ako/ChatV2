@@ -1,0 +1,116 @@
+mdl 1;
+
+-- Slice 01: the policy and FAQ knowledge base (Mendix Cloud GenAI). Staff
+-- upload .txt or .md documents; "Load into knowledge base" splits a document
+-- into paragraphs and embeds them into the collection 'policies', linked to the
+-- document, so reloading replaces its chunks. The SupportAgent retrieves from
+-- that collection (knowledge base block in 07-agents.mdl).
+-- Key: --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY
+
+/** Splits a policy document into paragraph chunks and embeds them into the 'policies' collection, replacing the chunks it loaded before. Returns the number of chunks, or -1 on failure. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns Integer as $ChunkCount
+folder 'Knowledge'
+begin
+  retrieve $Resource from MxGenAIConnector.MxCloudKnowledgeBaseResource where [_QualifiedName = 'ServiceDesk.PolicyKnowledgeBase'] first;
+  if $Resource = empty then
+    log warning node 'ServiceDesk' 'The knowledge base is not loaded. Pass ServiceDesk.MxGenAIKnowledgeBaseKey and restart.';
+    return -1;
+  end if;
+  $Text = call java action CommunityCommons.StringFromFile(source = $PolicyDocument, encoding = CommunityCommons.StandardEncodings.UTF_8) on error without rollback begin
+    log error node 'ServiceDesk' 'Policy document is not readable as UTF-8 text: {1}' with ({1} = $latestError/Message);
+    return -1;
+  end error;
+  $Paragraphs = call java action CommunityCommons.StringSplit(inputString = $Text, splitParameter = '\n\s*\n') on error without rollback begin
+    log error node 'ServiceDesk' 'Splitting the policy document failed: {1}' with ({1} = $latestError/Message);
+    return -1;
+  end error;
+  $Chunks = call microflow GenAICommons.ChunkCollection_Create();
+  declare $Count Integer = 0;
+  loop $Paragraph in $Paragraphs begin
+    if trim($Paragraph/Value) != '' then
+      $Chunk = call java action GenAICommons.ChunkCollection_AddKnowledgeBaseChunk(ChunkCollection = $Chunks, InputText = $PolicyDocument/Title + ': ' + trim($Paragraph/Value), HumanReadableID = $PolicyDocument/Title + ' #' + toString($Paragraph/Index + 1), MxObject = $PolicyDocument, MetadataCollection = empty);
+      set $Count = $Count + 1;
+    end if;
+  end loop;
+  if $Count = 0 then
+    return 0;
+  end if;
+  $Collection = call microflow MxGenAIConnector.Collection_GetCreate(MxCloudKnowledgeBaseResource = $Resource, CollectionName = 'policies');
+  $Replaced = call microflow MxGenAIConnector.ChunkCollection_Embed_Replace(DeployedKnowledgeBase = $Collection, ChunkCollection = $Chunks) on error without rollback begin
+    log error node 'ServiceDesk' 'Loading {1} into the knowledge base failed: {2}' with ({1} = $PolicyDocument/Title, {2} = $latestError/Message);
+    return -1;
+  end error;
+  change $PolicyDocument ("IngestedOn" = [%CurrentDateTime%]) commit;
+  return $Count;
+end;
+
+/** "Load into knowledge base" button on the policy documents page. */
+create or modify microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+folder 'Knowledge'
+begin
+  $ChunkCount = call microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" (PolicyDocument = $PolicyDocument);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup page: upload a policy or FAQ document. */
+create or modify page "ServiceDesk"."PolicyDocument_NewEdit" folder 'Knowledge'
+(
+  params: ( $PolicyDocument: "ServiceDesk"."PolicyDocument" ),
+  title: 'Policy document',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+      dataview dvPolicy (datasource: $PolicyDocument) {
+          textbox txtTitle (label: 'Title', attribute: "Title")
+          filemanager fmFile (label: 'File', Type: Both, MaxFileSize: 5, AllowedExtensions: '.txt,.md')
+          datepicker dpIngested (label: 'Loaded into knowledge base', attribute: "IngestedOn", DateFormat: DateTime, Editable: Never)
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Policy and FAQ documents (.txt or .md) for the knowledge base, with the action that loads one into it. */
+create or modify page "ServiceDesk"."PolicyDocument_Overview" folder 'Knowledge'
+(
+  title: 'Policy documents',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'policies'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Policy documents', rendermode: H2)
+        actionbutton btnNew (caption: 'Upload document', action: create object "ServiceDesk"."PolicyDocument" then show page "ServiceDesk"."PolicyDocument_NewEdit", buttonstyle: primary)
+        datagrid dgPolicies (
+          datasource: database from "ServiceDesk"."PolicyDocument" sort by "Title" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Title", caption: 'Title') { textfilter tfTitle }
+          column (attribute: "Name", caption: 'File')
+          column (attribute: "IngestedOn", caption: 'Loaded')
+          column (caption: '') {
+            actionbutton btnLoad (caption: 'Load into knowledge base', action: call microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase"("PolicyDocument" = $currentObject))
+          }
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."PolicyDocument_NewEdit"("PolicyDocument" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."PolicyDocument_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."PolicyDocument_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

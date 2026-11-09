@@ -88,3 +88,9 @@ ASU_SeedRuntimeAgent creates 'Support Agent (runtime)' with AgentCommons.Agent_G
 Anchors: `@ServiceDesk.ASU_ConfigureOpenAICompatible` · id `e879b1` · 2026-11-09
 
 The Claude Code network proxy injects the OpenRouter key only into requests that go through it. JAVA_TOOL_OPTIONS sets only https.proxyHost, and Mendix's Call REST did not use it: the call went direct and OpenRouter answered 'Missing Authentication header' to the placeholder key. Adding -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=<HTTPS_PROXY port> to JAVA_TOOL_OPTIONS for mxcli run made it go through the proxy. Outside this environment pass a real key as ServiceDesk.OpenRouterApiKey instead.
+
+## Policy documents are .txt or .md, split into paragraph chunks, and loaded with Embed_Replace
+
+Anchors: `@ServiceDesk.SUB_PolicyDocument_Ingest` · id `200941` · 2026-11-09
+
+PDF text extraction is not available without extra Java work, so uploads are limited to .txt and .md. CommunityCommons.StringSplit on blank lines gives one chunk per paragraph (SplitItem holds 2000 characters, under the 2048-character embedding limit), each prefixed with the document title and linked to the PolicyDocument, so Embed_Replace replaces a document's chunks when it is loaded again. New chunks become searchable 60-120 seconds after loading: a question asked 30 seconds after loading found nothing, one asked 90 seconds after found the right paragraphs.
