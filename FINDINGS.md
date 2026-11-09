@@ -725,3 +725,25 @@ extension), the chats and the `.mxcli/` secret files all survived. The carrier M
 (`python3 tools/carrier-mcp/server.py`) and the app need starting again. Because the secrets are
 passed as `@env:`/`@file:` references, one `run --hub …` command brings the preview back at the same
 URL.
+
+## Traces, Token usage and Agents pages clipped with the menu open (2026-11-09)
+
+Reported: the Traces page does not fit the screen. The title read "races", and the Custom period button
+and the Error column were cut off.
+
+Cause: Conversational UI sizes these pages in **viewport** units: `.traces-content` and
+`.traces-breadcrumb` 91vw, `.convui-pagecontainer` 95vw, `.agents-container--overview` 91vw,
+`.convui-breadcrumb` 91vw. That ignores the app's sidebar. With the menu open, the content area is
+narrower than the viewport, and the centered page spills over both edges. Measured with Playwright
+(the widest element against the content region), with the menu open:
+- at 1000×580: Traces 71 px, Token usage 182 px, Agents 142 px;
+- with the menu closed: none.
+
+Fix: `theme/web/_genai-pages.scss`, imported from `theme/web/main.scss` (compiles last), sets those
+containers to `width: 100%`. The selectors are prefixed with `body`, so they also outrank the module's
+rules inside media queries. It lives in the app theme, not in `themesource/conversationalui`, so a
+module update does not overwrite it. After the fix: no overflow on any of the three pages, with the menu
+open or closed, at 1000×580 and 2000×1150.
+
+Not fixed (module behaviour): in a short window (about 580 px tall) the Traces chart is squashed,
+because the module sets its height in `vh`.

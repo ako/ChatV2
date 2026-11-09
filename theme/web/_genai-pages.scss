@@ -1,0 +1,16 @@
+// Conversational UI and Agent Commons pages (Traces, Token usage, Agents) size
+// themselves in viewport units (91vw / 95vw). That ignores the app's sidebar:
+// with the menu open the content area is narrower than the viewport, so the
+// pages overflow it and are clipped on both sides. Size them to the content
+// area instead. Kept here, not in themesource/conversationalui, so a module
+// update does not overwrite it; `body` outranks the module's own selectors,
+// including the ones inside its media queries.
+body {
+    .convui-pagecontainer,
+    .convui-breadcrumb,
+    .traces-page-content-container .traces-breadcrumb,
+    .traces-page-content-container .traces-content,
+    .agents-page-content-container .agents-container--overview {
+        width: 100%;
+    }
+}
