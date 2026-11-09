@@ -407,3 +407,27 @@ Surprises:
   it, and the persisted data directory kept the seeded data.
 - OAuth 2.0 is not set up: it needs an external authorization server. The Published MCP Service
   document (model configuration) is still not writable from MDL ([ako/mxcli#2020](https://github.com/ako/mxcli/issues/2020)).
+
+## Switched to mxcli nightly 2026-11-09 (2026-11-09)
+
+ako/mxcli [#2037](https://github.com/ako/mxcli/pull/2037) and [#2038](https://github.com/ako/mxcli/pull/2038)
+are merged and in `nightly-20261109-a88c4d94f`. It is installed in place of the pre-installed 11-07
+build, which is also an ako/mxcli nightly. Note that `.claude/bootstrap-mxcli.sh` downloads from
+`mendixlabs/mxcli` when no mxcli is present.
+
+What changed:
+- `mdlsource/07-agents.mdl` now writes tool approval (`UserAccessApproval`) and streaming
+  (`EnableBackendStreaming`, `EnableUIStreaming`) itself.
+- `scripts/agent-document-fields.json` holds only `selectedModel`, which mxcli still cannot write
+  ([#2031](https://github.com/ako/mxcli/issues/2031)).
+
+Verified:
+- A second exec of **every** script, 01–09 including the agents, writes nothing. That is the first
+  time the whole sequence is idempotent without the patch step.
+- `docker check`: 0 errors. `test --local`: 16/16. `lint`: unchanged at 0 errors and 20 warnings.
+- Live: all three agents import. The approval settings in Agent Commons match the script. A chat
+  question calls GetOrderStatus. The MCP server answers.
+- The same tests on a copy, with mxcli built from merged `main`:
+  - Recreating the agents from the script alone stores each tool's document, id and approval, plus
+    the streaming switches.
+  - `selectedModel` stays empty until the patch sets it, and later execs keep it.

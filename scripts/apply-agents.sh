@@ -1,6 +1,6 @@
 #!/bin/sh
-# Apply the agent documents, then fill in the fields mxcli does not write yet
-# (selected model, tool microflow references and approval, streaming).
+# Apply the agent documents, then set the selected model of any agent that
+# lacks one (mxcli cannot write it yet, ako/mxcli#2031).
 # Use this instead of running mdlsource/07-agents.mdl on its own.
 set -e
 cd "$(dirname "$0")/.."

@@ -1,9 +1,12 @@
 mdl 1;
 
 -- Agent Editor documents: the Mendix Cloud GenAI model and knowledge base,
--- the conversational support agent and the triage task agent.
+-- the conversational support agent and the triage and document task agents.
 -- Key constants carry no value in the model; pass them per run, e.g.
 --   --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
+-- Tool approval and streaming are written here (mxcli nightly 2026-11-09+,
+-- ako/mxcli#2037 and #2038). Only the selected model of a new agent is set
+-- afterwards by scripts/patch-agent-documents.py (ako/mxcli#2031).
 
 /** Mendix Cloud GenAI text generation key. Never commit a value; pass it per run or per environment. */
 create or modify constant "ServiceDesk"."MxGenAIKey" folder 'Agents' (
@@ -33,6 +36,8 @@ create or modify agent "ServiceDesk"."SupportAgent" folder 'Agents' (
   Model: "ServiceDesk"."SupportModel",
   Description: 'Answers questions about orders and tickets, opens tickets and requests refunds after the user approves.',
   ToolChoice: Auto,
+  EnableBackendStreaming: true,
+  EnableUIStreaming: true,
   SystemPrompt: $$You are the service-desk assistant of a web shop. You help customers and support staff with orders, tickets and refunds.
 
 Tools:
@@ -54,6 +59,7 @@ Rules:
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_GetOrderStatus",
     Enabled: true,
+    UserAccessApproval: VisibleForUser,
     Description: 'Returns the status, order date, total, carrier and tracking code of one order. Input: OrderNumber, e.g. SO-10002.'
   )
 
@@ -61,6 +67,7 @@ Rules:
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_SearchTickets",
     Enabled: true,
+    UserAccessApproval: VisibleForUser,
     Description: 'Searches existing support tickets by a word or phrase and returns up to ten with their number, subject, status and priority. Input: SearchText.'
   )
 
@@ -68,6 +75,7 @@ Rules:
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_CreateTicket",
     Enabled: true,
+    UserAccessApproval: UserConfirmationRequired,
     Description: 'Opens a new support ticket for an order. Inputs: Subject, Description, OrderNumber. Requires the user to approve.'
   )
 
@@ -75,6 +83,7 @@ Rules:
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_TriageTicket",
     Enabled: true,
+    UserAccessApproval: VisibleForUser,
     Description: 'Asks the triage agent to classify an existing ticket by category and priority and summarise it. Input: TicketNumber (a whole number, e.g. 1003).'
   )
 
@@ -82,6 +91,7 @@ Rules:
     ToolType: Microflow,
     Document: "ServiceDesk"."Tool_IssueRefund",
     Enabled: true,
+    UserAccessApproval: UserConfirmationRequired,
     Description: 'Requests a refund for an order, at most the order total. Inputs: OrderNumber, Amount (a decimal number), Reason. Requires the user to approve; a support agent reviews it afterwards.'
   )
 };
@@ -90,6 +100,8 @@ Rules:
 create or modify agent "ServiceDesk"."TriageAgent" folder 'Agents' (
   UsageType: Task,
   Model: "ServiceDesk"."SupportModel",
+  EnableBackendStreaming: true,
+  EnableUIStreaming: false,
   Description: 'Classifies a support ticket by category and priority and writes a one-sentence summary.',
   Entity: "ServiceDesk"."Ticket",
   Variables: ("Subject": EntityAttribute, "Description": EntityAttribute),
@@ -107,6 +119,8 @@ Description: {{Description}}$$
 create or modify agent "ServiceDesk"."DocumentAgent" folder 'Agents' (
   UsageType: Task,
   Model: "ServiceDesk"."SupportModel",
+  EnableBackendStreaming: true,
+  EnableUIStreaming: false,
   Description: 'Describes an attachment (invoice, receipt, photo, screenshot) for a support ticket.',
   SystemPrompt: $$You help service-desk staff by reading files that customers attach to support tickets: invoices, receipts, shipping labels, photos of damaged goods and screenshots.
 

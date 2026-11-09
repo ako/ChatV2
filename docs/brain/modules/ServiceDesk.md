@@ -23,11 +23,11 @@ Anchors: `@ServiceDesk.SUB_EnsureDemoCustomerAccount` · id `10285b` · 2026-11-
 
 The runtime had not created demo users when the after-startup microflow ran, so the Customer link stayed empty. SUB_EnsureDemoCustomerAccount creates the account with the Customer role when it is missing, then SUB_SeedCustomers links it to Ada Jansen.
 
-## Agent documents need scripts/apply-agents.sh, not 07-agents.mdl alone
+## A new agent needs scripts/apply-agents.sh once, to set its selected model
 
 Anchors: `@ServiceDesk.SupportAgent` · id `b486f6` · 2026-11-08
 
-mxcli does not write selectedModel, tool microflow references, tool approval or streaming into agent documents, and create or modify drops them again. scripts/patch-agent-documents.py fills them in from scripts/agent-document-fields.json after every exec of 07-agents.mdl; without it the agents fail to import or the model call fails with HTTP 400.
+Since mxcli nightly 2026-11-09 (ako/mxcli#2037, #2038), 07-agents.mdl writes tool microflow references, tool approval and streaming, and create or modify keeps fields it does not model. Only selectedModel cannot be written yet (ako/mxcli#2031); without it Agent Editor refuses the agent and aborts the import of all agents. scripts/apply-agents.sh runs the script and then scripts/patch-agent-documents.py, which sets selectedModel from scripts/agent-document-fields.json where it is missing. An older mxcli drops these fields again on every exec.
 
 ## SupportAgent runs on Claude Sonnet 5.5, TriageAgent on Claude Haiku 5.5, without temperature
 

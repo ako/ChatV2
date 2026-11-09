@@ -1,24 +1,18 @@
 #!/usr/bin/env python3
-"""Fill in the Agent Editor agent-document fields mxcli does not write yet.
+"""Set the selected model of Agent Editor agent documents.
 
-Stop-gap until mxcli writes them (issues linked in FINDINGS.md). Studio Pro
-stores these in an agent document; mxcli's `create agent` leaves them out:
+Stop-gap until mxcli can write it (ako/mxcli#2031). Since Mendix Cloud GenAI
+multi-model resources (Studio Pro 11.12), an agent document stores
+`selectedModel: {id, name}`: the model ID within the model resource. The Agent
+Editor import refuses an agent without it ("Model with name  is referenced but
+could not be found for the Agent"), and that aborts the import of every agent.
 
-  selectedModel          {id, name}: the model ID within a multi-model Mendix
-                         Cloud GenAI resource. Without it the Agent Editor
-                         import refuses the agent ("Model with name  is
-                         referenced but could not be found for the Agent").
-  tools[].document       {documentId, qualifiedName} of the tool microflow.
-                         Without it the connector sends the tool without a
-                         toolSpec and the model call fails with HTTP 400.
-  tools[].id             a stable UUID per tool.
-  tools[].userAccessApproval  VisibleForUser | HiddenForUser | UserConfirmationRequired
-                         (import defaults to HiddenForUser when absent).
-  enableBackendStreaming / enableUIStreaming
-
-The values per agent are in scripts/agent-document-fields.json. A later
-`create or modify agent` drops them again, so scripts/apply-agents.sh runs
-mdlsource/07-agents.mdl and then this script.
+Since mxcli nightly 2026-11-09 (ako/mxcli#2037, #2038), `create agent` writes
+tool microflow references, ids, tool approval and streaming, and `create or
+modify` keeps fields it does not model. So a new agent needs this script once,
+and later runs of mdlsource/07-agents.mdl keep the field. The script can still
+fill `tools` and the streaming switches from the spec file, for older mxcli
+builds, but scripts/agent-document-fields.json now holds only selectedModel.
 
 Usage:
   python3 scripts/patch-agent-documents.py <project.mpr> <fields.json>
