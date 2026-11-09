@@ -90,6 +90,7 @@ Demo users:
 | As | Where | What happens |
 |---|---|---|
 | demo_customer | Assistant | Ask about an order (SO-10001 to SO-10003), ask where a late parcel is (uses the carrier MCP server), or ask for a refund. The refund waits for your Confirm. |
+| demo_customer | Assistant | Your chats are listed on the left: pick an earlier chat, start a **New chat**, or delete one. Opening the assistant again, or the floating chat on Tickets, continues your latest chat. |
 | demo_customer | Tickets → New ticket | The ticket-handling workflow starts, and AI triage fills in category, priority and summary. |
 | demo_customer | Ticket → Add attachment | Upload a PDF or image. The document agent writes a summary of it. |
 | demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |

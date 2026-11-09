@@ -1,0 +1,202 @@
+mdl 1;
+
+-- Chat history for both assistants (the support agent and the runtime agent on
+-- OpenRouter). Opening an assistant shows the user's latest chat with it, with
+-- the user's other chats beside it: pick one, start a new chat or delete one.
+-- Also here, because they open this page: ACT_SupportChat_Open,
+-- ACT_RuntimeChat_Open and Ticket_Overview with its floating chat.
+
+/** A new chat for the given action microflow: the runtime agent's or the support agent's. */
+create or modify microflow "ServiceDesk"."SUB_Chat_CreateNew" ($ActionMicroflow: String)
+returns ConversationalUI.ChatContext as $New
+folder 'Chat'
+begin
+  if $ActionMicroflow = 'ServiceDesk.ChatContext_RuntimeAgent_ActionMicroflow' then
+    $RuntimeChat = call microflow "ServiceDesk"."SUB_RuntimeChat_Create" ();
+    return $RuntimeChat;
+  end if;
+  $SupportChat = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  return $SupportChat;
+end;
+
+/** A new chat with the same agent as the given chat. */
+create or modify microflow "ServiceDesk"."SUB_Chat_CreateLike" ($ChatContext: ConversationalUI.ChatContext)
+returns ConversationalUI.ChatContext as $New
+folder 'Chat'
+begin
+  retrieve $ProviderConfig from $ChatContext/ConversationalUI.ChatContext_ProviderConfig_Active;
+  $Created = call microflow "ServiceDesk"."SUB_Chat_CreateNew" (ActionMicroflow = $ProviderConfig/ActionMicroflow);
+  return $Created;
+end;
+
+/** The current user's chats with the same agent as the given chat, most recent first. A chat with no question yet (no topic) is only listed when it is the open one. */
+create or modify microflow "ServiceDesk"."DS_ChatHistory" ($ChatContext: ConversationalUI.ChatContext)
+returns List of ConversationalUI.ChatContext as $History
+folder 'Chat'
+begin
+  retrieve $ProviderConfig from $ChatContext/ConversationalUI.ChatContext_ProviderConfig_Active;
+  declare $ActionMicroflow String = $ProviderConfig/ActionMicroflow;
+  retrieve $History from ConversationalUI.ChatContext where [System.owner = $currentUser][ConversationalUI.ChatContext_ProviderConfig_Active/ConversationalUI.ProviderConfig/ActionMicroflow = $ActionMicroflow][Topic != empty or id = $ChatContext] sort by changedDate desc;
+  return $History;
+end;
+
+/** Opens a chat from the history. */
+create or modify microflow "ServiceDesk"."ACT_Chat_Show" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat'
+begin
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $ChatContext);
+end;
+
+/** Starts a new chat with the same agent as the open one. Does nothing when the open chat has no question yet. */
+create or modify microflow "ServiceDesk"."ACT_Chat_New" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat'
+begin
+  if $ChatContext/Topic = empty or trim($ChatContext/Topic) = '' then
+    return;
+  end if;
+  $New = call microflow "ServiceDesk"."SUB_Chat_CreateLike" (ChatContext = $ChatContext);
+  if $New = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $New);
+end;
+
+/** Deletes a chat and returns the chat to show next: the open chat when another chat was deleted; otherwise the most recent remaining chat with the same agent, or a new one. */
+create or modify microflow "ServiceDesk"."SUB_Chat_Delete" ($ChatContext: ConversationalUI.ChatContext, $OpenChat: ConversationalUI.ChatContext)
+returns ConversationalUI.ChatContext as $Next
+folder 'Chat'
+begin
+  if $ChatContext != $OpenChat then
+    call microflow ConversationalUI.ChatContext_Delete(ChatContext = $ChatContext);
+    return $OpenChat;
+  end if;
+  retrieve $ProviderConfig from $ChatContext/ConversationalUI.ChatContext_ProviderConfig_Active;
+  declare $ActionMicroflow String = $ProviderConfig/ActionMicroflow;
+  call microflow ConversationalUI.ChatContext_Delete(ChatContext = $ChatContext);
+  $Latest = call microflow "ServiceDesk"."SUB_Chat_GetLatest" (ActionMicroflow = $ActionMicroflow);
+  if $Latest != empty then
+    return $Latest;
+  end if;
+  $New = call microflow "ServiceDesk"."SUB_Chat_CreateNew" (ActionMicroflow = $ActionMicroflow);
+  return $New;
+end;
+
+/** Delete button in the chat history: deletes the chat and shows the next one. */
+create or modify microflow "ServiceDesk"."ACT_Chat_Delete" ($ChatContext: ConversationalUI.ChatContext, $OpenChat: ConversationalUI.ChatContext)
+folder 'Chat'
+begin
+  $Next = call microflow "ServiceDesk"."SUB_Chat_Delete" (ChatContext = $ChatContext, OpenChat = $OpenChat);
+  if $Next = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $Next);
+end;
+
+/** Opens the support agent chat with the chat history: the latest chat, or a new one. */
+create or modify microflow "ServiceDesk"."ACT_SupportChat_Open" ()
+folder 'Chat'
+begin
+  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_GetOrCreate" ();
+  if $ChatContext = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $ChatContext);
+end;
+
+/** Opens the runtime support agent (OpenRouter) chat with the chat history: the latest chat, or a new one. */
+create or modify microflow "ServiceDesk"."ACT_RuntimeChat_Open" ()
+folder 'Runtime agent'
+begin
+  $ChatContext = call microflow "ServiceDesk"."SUB_RuntimeChat_GetOrCreate" ();
+  if $ChatContext = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $ChatContext);
+end;
+
+/** A chat with the user's chat history beside it: pick an earlier chat, start a new one or delete one. Used by both assistants. */
+create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
+(
+  params: ( $ChatContext: ConversationalUI.ChatContext ),
+  title: 'Assistant',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgChat (Class: 'chat-history-page') {
+    row {
+      column (desktopwidth: 3, tabletwidth: 4) {
+        actionbutton btnNewChat (caption: 'New chat', action: call microflow "ServiceDesk"."ACT_Chat_New"(ChatContext = $ChatContext), buttonstyle: primary, icon: Atlas_Core.Atlas."message-bubble-add")
+        dynamictext txtHistory (content: 'Your chats', rendermode: H5)
+        listview lvHistory (Class: 'chat-history-list', datasource: microflow "ServiceDesk"."DS_ChatHistory"(ChatContext = $ChatContext)) {
+          layoutgrid lgHistoryItem {
+            row (verticalalignment: Center) {
+              column (desktopwidth: autofill) {
+                container ctOpenChat (OnClick: call microflow "ServiceDesk"."ACT_Chat_Show"(ChatContext = $currentObject), Class: 'text-break-word') {
+                  dynamictext txtTopicOpen (content: '{1}', contentparams: ({1} = Topic), rendermode: H6, Visible: $currentObject = $ChatContext)
+                  dynamictext txtTopic (content: '{1}', contentparams: ({1} = Topic), Class: 'text-clamp--2-lines', Visible: $currentObject != $ChatContext)
+                  dynamictext txtNewChat (content: 'New chat', rendermode: H6, Visible: $currentObject/Topic = empty)
+                }
+              }
+              column (desktopwidth: autofit, tabletwidth: autofit, phonewidth: autofit) {
+                actionbutton btnDeleteChat (Tooltip: 'Delete chat', action: call microflow "ServiceDesk"."ACT_Chat_Delete"(ChatContext = $currentObject, OpenChat = $ChatContext) with (Confirmation: 'Delete this chat?', ProceedCaption: 'Delete', CancelCaption: 'Cancel'), icon: glyph 57376, Class: 'btn-image')
+              }
+            }
+          }
+        }
+      }
+      column (desktopwidth: 9, tabletwidth: 8, Class: 'chat-history-pane') {
+        dataview dvChat (datasource: $ChatContext, Class: 'chat-dataview--display-contents') {
+          container ctChat (Class: 'card chat-container') {
+            snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Tickets: all of them for staff, only their own for a customer, with the floating chat button. */
+create or modify page "ServiceDesk"."Ticket_Overview" folder 'Tickets'
+(
+  title: 'Tickets',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'tickets'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Tickets', rendermode: H2)
+        actionbutton btnNew (caption: 'New ticket', action: create object "ServiceDesk"."Ticket" then show page "ServiceDesk"."Ticket_NewEdit", buttonstyle: primary)
+        actionbutton btnChat (caption: 'Ask the assistant', action: call microflow "ServiceDesk"."ACT_SupportChat_Open")
+        datagrid dgTickets (
+          datasource: database from "ServiceDesk"."Ticket" sort by "TicketNumber" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "TicketNumber", caption: '#') { numberfilter nfNumber }
+          column (attribute: "Subject", caption: 'Subject') { textfilter tfSubject }
+          column (attribute: Ticket_Customer/"Name", caption: 'Customer')
+          column (attribute: "Category", caption: 'Category') { dropdownfilter ddCategory }
+          column (attribute: "Priority", caption: 'Priority') { dropdownfilter ddPriority }
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+          column (caption: '') {
+            actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."Ticket_NewEdit"("Ticket" = $currentObject))
+          }
+        }
+        dataview dvChat (datasource: microflow "ServiceDesk"."DS_SupportChat") {
+          snippetcall scFloatingChat (snippet: ConversationalUI.Snippet_FloatingChatButton, params: (ChatContext = $currentObject))
+        }
+      }
+    }
+  }
+};
+
+grant execute on microflow "ServiceDesk"."ACT_SupportChat_Open" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_ChatHistory" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Chat_Show" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Chat_New" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Chat_Delete" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Chat_WithHistory" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_RuntimeChat_Open" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Ticket_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

@@ -49,3 +49,7 @@ Anchors: `@ServiceDesk.Customer`, `@ServiceDesk.Order`, `@ServiceDesk.Ticket` ·
 ## The SupportAgent answers policy questions from the Mendix Cloud GenAI knowledge base, collection 'policies'
 
 Anchors: `@ServiceDesk.SUB_PolicyDocument_Ingest` · id `344193` · 2026-11-09
+
+## Users keep a history of their chats with each assistant and can switch between them, start a new chat or delete one
+
+Anchors: `@ServiceDesk.Chat_WithHistory`, `@ServiceDesk.DS_ChatHistory` · id `5544a2` · 2026-11-09

@@ -197,7 +197,6 @@ create or modify page "ServiceDesk"."Home" folder 'Home'
 };
 
 grant view on page "ServiceDesk"."Home" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-grant view on page "ServiceDesk"."Ticket_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."RefundRequest_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
@@ -205,7 +204,7 @@ grant view on page "ServiceDesk"."RefundRequest_NewEdit" to "ServiceDesk"."Custo
 grant view on page "ServiceDesk"."Customer_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Customer_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
--- The PolicyDocument pages live in 11-knowledge-base.mdl; the Ticket_NewEdit and Attachment_NewEdit pages in 05-ticket-workflow.mdl; Ticket_Overview and the navigation menu in 08-chat.mdl.
+-- The PolicyDocument pages live in 11-knowledge-base.mdl; the Ticket_NewEdit and Attachment_NewEdit pages in 05-ticket-workflow.mdl; Ticket_Overview in 12-chat-history.mdl; the navigation menu in 99-app-shell.mdl.
 
 -- Dashboard: aggregations as view entities, so the database counts and sums
 -- instead of a microflow loading every ticket or refund.

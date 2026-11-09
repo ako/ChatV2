@@ -663,3 +663,52 @@ Surprises:
   ("package mxtest.actions does not exist"), then recovered with a full restart, which drops browser
   sessions (also on the hub preview). It is related to ako/mxcli#2033. Until it is fixed, run the
   test gate while the app is stopped, or expect one restart.
+
+## Chat history: pick, start and delete chats (2026-11-09)
+
+Requested: keep a history of chats and let the user choose between them.
+
+Built (`mdlsource/12-chat-history.mdl`):
+- `Chat_WithHistory`, used by both assistants. On the left: **New chat** and the user's chats with
+  the same agent, newest first, by topic. The open chat is shown in bold, and each chat has a delete
+  button. On the right: the chat itself (Conversational UI's `Snippet_ChatContext_ConversationalUI`).
+- The list (`DS_ChatHistory`) is filtered on owner and the chat's action microflow. Chats without a
+  question yet (no topic) are left out, unless the chat is the open one.
+- **New chat** does nothing while the open chat is still empty, so empty chats do not pile up.
+  Deleting the open chat moves to the most recent remaining chat, or to a new chat if none is left.
+- The chat topic is the first question. Conversational UI's `ChatContext_Preprocessing` sets it.
+- `ACT_SupportChat_Open`, `ACT_RuntimeChat_Open` and `Ticket_Overview` moved here from 08 and 10. "New
+  chat" has to create a chat for **either** agent, and the runtime agent's chat builder is only defined
+  in 10.
+
+Verified in the browser for demo_customer (Assistant) and demo_agent (Assistant (OpenRouter)): open,
+New chat, ask, the new chat is listed at the top, switch to an older chat (its messages show), switch
+back (the answer is there), delete another chat (the list shrinks by one), and delete the open chat. No
+console errors except the known first-call `llm-streaming` 404. The test chats were removed
+afterwards.
+
+Gates:
+- A second exec of 04, 08, 10 and 12 writes nothing.
+- `docker check`: 0 errors. `test --local`: 16/16. `report`: 72/100.
+- `lint`: 0 errors, 21 warnings. The new warning is ARCH001 on the chat data view, which uses
+  Conversational UI's `ChatContext`. That is the module's own pattern
+  (`ConversationalUI_FullScreenChat` does the same), and is related to ako/mxcli#2034.
+
+Surprises:
+- **The message list collapses to zero height outside the module's full-screen page.**
+  `.chat-container` is `height: 100%` with a `flex: 1 1 0` message list, so it needs a parent with
+  a real height. In a layout grid column, the chat showed only its input box. The text was in the
+  DOM, so a text-based check passed while nothing was visible; only the screenshot showed it.
+  Fixed in `themesource/servicedesk/web/main.scss` (the ServiceDesk module's theme source, which
+  compiles): the column gets `height: calc(100vh - 140px)`, and the data view inside it 100%.
+- **`ChatContext_Create_ForAgent`'s `ActionMicroflow` parameter is a microflow *reference*, not a
+  string.** `mxcli check --references` refused passing `$ProviderConfig/ActionMicroflow` (it would have
+  stored the text as the reference). So "new chat like this one" dispatches to the two known creators.
+- **The trial runtime's session cap.** Test browsers that do not log out use up the trial license's
+  concurrent sessions ("Maximum number of sessions exceeded"). Logins then fail for everyone,
+  including the hub preview. Test scripts now log out in a `finally`, and a restart clears the
+  sessions.
+- **The watch build reports CE0108 after a `drop microflow` + `create` (twice now).** It reported
+  `ACT_RuntimeChat_Open` and `ACT_Chat_Delete` as "Variable defined but not in scope", while
+  `docker check` on the same model reports 0 errors and a fresh start builds cleanly. It looks like
+  `mxbuild --serve`'s incremental state going stale. Workaround: `mxcli run restart`.

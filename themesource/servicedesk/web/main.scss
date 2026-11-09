@@ -1,2 +1,20 @@
 @import '../../../theme/web/custom-variables';
 
+
+// Chat with history (ServiceDesk.Chat_WithHistory). Conversational UI's chat
+// card fills 100% of its parent, so the parent needs a real height; without one
+// the message list collapses to zero and only the input box shows.
+.chat-history-page {
+    .chat-history-list {
+        max-height: calc(100vh - 220px);
+        overflow-y: auto;
+    }
+    .chat-history-pane {
+        height: calc(100vh - 140px);
+        min-height: 420px;
+        // the data view around the chat card sizes to its content otherwise
+        > .mx-dataview {
+            height: 100%;
+        }
+    }
+}
