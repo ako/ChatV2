@@ -44,11 +44,36 @@ begin
   return $ChatContext;
 end;
 
+/** The current user's most recent chat that runs on the given action microflow, or empty when there is none. Lets the user come back to a conversation after visiting another page. */
+create or modify microflow "ServiceDesk"."SUB_Chat_GetLatest" ($ActionMicroflow: String)
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Chat'
+begin
+  if $currentUser = empty then
+    return empty;
+  end if;
+  retrieve $ChatContext from ConversationalUI.ChatContext where [System.owner = $currentUser][ConversationalUI.ChatContext_ProviderConfig_Active/ConversationalUI.ProviderConfig/ActionMicroflow = $ActionMicroflow] sort by changedDate desc first;
+  return $ChatContext;
+end;
+
+/** The user's ongoing chat with the support agent, or a new one when there is none. "Clear chat" on the chat page starts over. */
+create or modify microflow "ServiceDesk"."SUB_SupportChat_GetOrCreate" ()
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Chat'
+begin
+  $Latest = call microflow "ServiceDesk"."SUB_Chat_GetLatest" (ActionMicroflow = 'ServiceDesk.ChatContext_SupportAgent_ActionMicroflow');
+  if $Latest != empty then
+    return $Latest;
+  end if;
+  $New = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  return $New;
+end;
+
 /** Opens the full-screen chat with the support agent. */
 create or modify microflow "ServiceDesk"."ACT_SupportChat_Open" ()
 folder 'Chat'
 begin
-  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_GetOrCreate" ();
   show page ConversationalUI.ConversationalUI_FullScreenChat (ChatContext = $ChatContext);
 end;
 
@@ -57,7 +82,7 @@ create or modify microflow "ServiceDesk"."DS_SupportChat" ()
 returns ConversationalUI.ChatContext as $ChatContext
 folder 'Chat'
 begin
-  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_Create" ();
+  $ChatContext = call microflow "ServiceDesk"."SUB_SupportChat_GetOrCreate" ();
   return $ChatContext;
 end;
 

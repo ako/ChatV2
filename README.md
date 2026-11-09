@@ -55,10 +55,16 @@ Then start the app. Keys are read from environment variables and never written t
 | `ServiceDesk.MxGenAIEmbeddingsKey` | `MX_EMBEDDINGS_KEY` | embeddings for the PgVector knowledge base (runtime agent) |
 | `ServiceDesk.OpenRouterApiKey` | `OPENROUTER_KEY` | the runtime agent on OpenRouter |
 
-Each one is optional: without it, that part is skipped and the app still starts.
+Each one is optional: without it, that part is skipped and the app still starts. The two local-only secrets go in git-ignored files, so `mxcli run restart` works:
 
 ```bash
-./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=mendix --constant ServiceDesk.OAuthClientSecret=local-dev-introspection-secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
+(umask 077; printf mendix > .mxcli/pgvector.password; printf local-dev-introspection-secret > .mxcli/oauth-client.secret)
+```
+
+To share a preview, run with `--hub https://hub.mxcli.org` instead of `--local` (with `MXCLI_HUB_KEY` set), and leave out `ApplicationRootUrl`, because the hub sets it. While the hub is on, test locally at `http://127.0.0.1:8080`, not `localhost`. Chat streaming fails on `localhost` then; see `FINDINGS.md`.
+
+```bash
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=@file:.mxcli/pgvector.password --constant ServiceDesk.OAuthClientSecret=@file:.mxcli/oauth-client.secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
 ```
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.

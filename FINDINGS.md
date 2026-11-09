@@ -624,3 +624,42 @@ Surprises:
   was found … Nothing could be deleted"). This is expected, and the insert still happens.
 - The PgVector table is named after the knowledge base (`policies`), not after the configuration,
   and the vector column is `vector`, not `embedding`.
+
+## Chats survive page navigation; streaming behind an https root URL (2026-11-09)
+
+Reported: as a customer, switching from the chat to Tickets and back lost the conversation.
+
+Cause: each time the chat opened (`ACT_SupportChat_Open`, the floating chat's `DS_SupportChat` and
+`ACT_RuntimeChat_Open`), the app created a **new** `ChatContext`. The old one stayed in the database
+(`ChatContext` is persistent): demo_customer had 7 abandoned support chats.
+
+Fix: `SUB_Chat_GetLatest` returns the user's most recently changed chat that runs on a given action
+microflow (`System.owner` = `$currentUser`, `ChatContext_ProviderConfig_Active/ProviderConfig/ActionMicroflow`).
+`SUB_SupportChat_GetOrCreate` and `SUB_RuntimeChat_GetOrCreate` reuse it and only create a chat when
+there is none. The page's own **Clear chat** starts over. The full-page chat and the floating chat on
+Tickets now share one conversation.
+
+Verified in the browser: question → Tickets → back. The question and the answer are still there,
+for both the support agent (as demo_customer) and the OpenRouter agent (as demo_agent). The model
+also gets the earlier turns: it remarked that the same question had been asked before.
+
+Surprises:
+- **Conversational UI's streaming handler picks the session cookie by the `Host` header.**
+  `InitAsyncStreamHandler.create_userContext_from_session` reads `XASSESSIONID` when the host
+  contains "localhost", and `__Host-XASSESSIONID` otherwise. With `run --hub`, the root URL is https,
+  so the runtime issues `__Host-XASSESSIONID`. A browser on `http://localhost:8080` then makes the
+  handler read the wrong cookie, and every streamed answer shows **Error**
+  (`NullPointerException … UUID.fromString`). Through the hub URL, or on `http://127.0.0.1:8080`, it
+  works. When testing locally while the hub is on, use 127.0.0.1, not localhost.
+- `sort by ChangedDate` on a module entity fails with CE1613; the system member is `changedDate`.
+  `mxcli check --references` caught this before exec.
+- `run restart` refuses a run that was started with a literal secret (`--constant X=value`). The local
+  PgVector password and the Keycloak client secret are now passed as `@file:.mxcli/…`
+  (git-ignored, mode 600).
+- One watch build failed with CE0108 between the execs of two scripts (an intermediate state). A
+  fresh start built cleanly, and `docker check` reports 0 errors.
+- **`mxcli test --local` disturbs a `run --watch` app on the same project.** The test run briefly
+  adds the `mxtest` test-endpoint Java action. The watcher rebuilt in the middle and failed
+  ("package mxtest.actions does not exist"), then recovered with a full restart, which drops browser
+  sessions (also on the hub preview). It is related to ako/mxcli#2033. Until it is fixed, run the
+  test gate while the app is stopped, or expect one restart.

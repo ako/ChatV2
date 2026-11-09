@@ -167,11 +167,24 @@ begin
   return $ChatContext;
 end;
 
-/** Opens a full-screen chat with the runtime support agent (OpenRouter). */
+/** The user's ongoing chat with the runtime support agent, or a new one when there is none. "Clear chat" on the chat page starts over. */
+create or modify microflow "ServiceDesk"."SUB_RuntimeChat_GetOrCreate" ()
+returns ConversationalUI.ChatContext as $ChatContext
+folder 'Runtime agent'
+begin
+  $Latest = call microflow "ServiceDesk"."SUB_Chat_GetLatest" (ActionMicroflow = 'ServiceDesk.ChatContext_RuntimeAgent_ActionMicroflow');
+  if $Latest != empty then
+    return $Latest;
+  end if;
+  $New = call microflow "ServiceDesk"."SUB_RuntimeChat_Create" ();
+  return $New;
+end;
+
+/** Opens the user's ongoing chat with the runtime support agent (OpenRouter), or a new one. */
 create or modify microflow "ServiceDesk"."ACT_RuntimeChat_Open" ()
 folder 'Runtime agent'
 begin
-  $ChatContext = call microflow "ServiceDesk"."SUB_RuntimeChat_Create" ();
+  $ChatContext = call microflow "ServiceDesk"."SUB_RuntimeChat_GetOrCreate" ();
   if $ChatContext = empty then
     return;
   end if;
