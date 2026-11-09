@@ -747,3 +747,72 @@ open or closed, at 1000×580 and 2000×1150.
 
 Not fixed (module behaviour): in a short window (about 580 px tall) the Traces chart is squashed,
 because the module sets its height in `vh`.
+
+## Agent grounded in a SPARQL product graph through MCP, and SQL to the vector database (2026-11-09)
+
+Requested: show agent integration with a SPARQL graph that grounds the agent in data, reached through
+an MCP server, as Mendix describes for agentic apps on a knowledge graph. Also add a traditional SQL
+connection, to the vector database.
+
+**Graph.** Apache Jena Fuseki 6.2.0 (Apache 2.0, a single jar from Maven Central, runs on the
+container's Java 25), serving `tools/fuseki/products.ttl` read-only (`--file`, no `--update`; an update
+returns HTTP 405). It holds 381 triples:
+- 3 bikes, 14 parts, 7 accessories and 4 suppliers;
+- compatibility, and what each bike ships with;
+- 2 known issues and 1 batch-scoped recall;
+- the contents of all 15 demo orders, with battery batches.
+
+A SPARQL `SUM` over each order's lines equals the app's `TotalAmount` for all 15 orders, so the two
+systems agree.
+
+**MCP server** (`tools/product-graph-mcp/server.py`, Python MCP SDK 2.x, port 8766). It has curated tools:
+- `order_products`: the lines of an order, with the issues and recalls that apply to *that unit's* batch;
+- `find_product`, `compatible_parts`, `known_issues`;
+- `sparql_query`: read-only. It refuses anything but SELECT and ASK, and also `SERVICE` (federation),
+  and adds `LIMIT 50`.
+
+I wrote it myself rather than using a published SPARQL MCP server (mcp-server-sparql, mcp-proto-okn,
+SIB sparql-mcp). Those mostly hand the model a raw query tool for public endpoints, while the point
+here is that the MCP server decides what the agent may see. `tests-live/mcp/product_graph_test.py`:
+8/8, including the write and `SERVICE` refusals.
+
+**Agent.** The consumed MCP service `ServiceDesk.ProductGraph` is on the SupportAgent only, as requested.
+Its endpoint is set by `scripts/patch-agent-documents.py`, because mxcli still cannot write it
+(ako/mxcli#2060). Verified in the browser as demo_customer: "Is the e-bike from my order SO-10003
+affected by any recall? And which suspension seat post fits it?" The agent called `GetOrderStatus`,
+`order_products` and `compatible_parts`. It answered: not affected (the recall is batch B2603, the bike
+is B2605), and SSP-27 fits, EUR 129.00. For SO-10005 (another customer's order) it stopped after
+`GetOrderStatus` found nothing.
+
+**Access caveat.** The graph and its MCP server do not know the user, so `order_products` would show
+any order. The guard ("look the order up with GetOrderStatus first, which applies the app's entity
+access") is in the system prompt only. A production setup would pass the user's identity to the MCP
+server (OAuth, as on the app's own MCP server) or keep order data out of the graph.
+
+**SQL.** The External Database Connector, `ServiceDesk.VectorDatabase` (PostgreSQL), on
+`servicedesk_vectors` as `servicedesk_reader`, which has SELECT only (a `delete` is refused). It
+needed no new module: the Database Connector that PgVector installed is the one this uses, and the
+PostgreSQL driver was already in `vendorlib/`. Two queries:
+- `ChunksForDocument(documentId)`: matches `mxobjectid` against `CommunityCommons.getGUID`.
+- `ChunkCounts`.
+
+Verified: "Chunks (SQL)" shows 6 and 6 chunks for the two policies. The agent's
+`GetKnowledgeBaseStatus` tool answered staff with both counts and load times, and refused a customer.
+
+Gates:
+- `docker check`: 0 errors. `test --local`: 16/16. `report`: 71/100.
+- A second exec of 06b and 11, and of `apply-agents.sh`, writes nothing.
+- `lint`: 0 errors, 23 warnings. The 2 new ones are CONV013 on the `getGUID` Java call, the same rule
+  already accepted for the MCP calls.
+
+Surprises:
+- mxcli refused `$Count = find($Counts, …)` under `mdl 1` (string function versus list operation). The
+  list form is `find $Counts where $currentObject/… = …`.
+- A doc comment on a `database connection` cannot be stored (MDL089); it is a `--` comment now.
+- `execute database query` only supports rollback error handling. The SQL calls sit in SUB microflows,
+  and their callers catch errors with `on error without rollback`, so a database outage gives a
+  message, not an error dialog.
+- MCP servers started with `( nohup … & )` from a tool call did not survive (the carrier server was
+  found dead; Fuseki, started by its script, lived). They are now started with `setsid nohup`.
+- The model again said it had answered "before the lookups came back", although the trace shows the
+  tool calls first; the earlier note on this quirk stands.

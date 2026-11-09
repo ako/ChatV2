@@ -34,6 +34,20 @@ create or modify consumed mcp service "ServiceDesk"."CarrierTracking" folder 'Ag
   Documentation: 'Parcel tracking for PostNL, DHL and UPS (tools/carrier-mcp).'
 );
 
+/** URL of the product knowledge graph MCP server (tools/product-graph-mcp, over Apache Jena Fuseki). */
+create or modify constant "ServiceDesk"."ProductGraphMcpEndpoint" folder 'Agents' (
+  Type: String,
+  DefaultValue: 'http://127.0.0.1:8766/mcp'
+);
+
+/** External MCP server over the shop's product knowledge graph (SPARQL): find_product, compatible_parts, known_issues, order_products, sparql_query. Its endpoint constant is set by scripts/patch-agent-documents.py until mxcli can write it. */
+create or modify consumed mcp service "ServiceDesk"."ProductGraph" folder 'Agents' (
+  ProtocolVersion: v2025_03_26,
+  Version: '1.0.0',
+  ConnectionTimeoutSeconds: 30,
+  Documentation: 'Product knowledge graph: catalog, parts and compatibility, suppliers, known issues and recalls, order contents (tools/product-graph-mcp).'
+);
+
 create or modify ai model "ServiceDesk"."SupportModel" folder 'Agents' (
   Provider: MxCloudGenAI,
   Key: @"ServiceDesk"."MxGenAIKey"
@@ -61,9 +75,18 @@ Tools:
 - TriageTicket: have the triage agent classify an existing ticket by its number, when someone asks how urgent a ticket is or what it is about.
 - track_parcel (carrier tracking service): the scan history of a parcel by its tracking code. Use it after GetOrderStatus when someone asks where a parcel is or why it is late.
 - IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
+- GetKnowledgeBaseStatus (staff only): how many knowledge chunks each policy document has in the PgVector database and when it was last loaded. Use it when staff ask whether a policy document is in the knowledge base.
+- Product graph service (the shop's product knowledge graph, the system of record for product data):
+  - order_products: what an order contains (products, quantities, prices, production batch) and any known issue or recall that applies to that exact unit. Use it whenever someone asks what they bought or whether a recall or problem affects their order.
+  - find_product: look up a product by SKU or name (price, warranty, supplier, components).
+  - compatible_parts: which parts and accessories fit a bike, or what a part fits on. Use it for "does X fit my bike" and replacement-part questions; find the bike first with order_products.
+  - known_issues: known issues and recalls for a product and its components.
+  - sparql_query: a read-only SPARQL query, only for product questions the other product tools cannot answer.
 
 Rules:
-- Only report what the tools return. Never invent orders, tickets, amounts or tracking codes.
+- Only report what the tools return. Never invent orders, tickets, amounts, tracking codes, products, compatibility or recalls.
+- A recall applies only to the production batch it names: say whether the customer's unit is affected, based on order_products.
+- The product graph does not know who the user is. Before calling order_products for an order, look it up with GetOrderStatus; if GetOrderStatus does not find it, do not call order_products for it and say the order was not found.
 - If a tool says nothing was found, say so and ask the user to check the number.
 - Before creating a ticket or requesting a refund, check with SearchTickets or GetOrderStatus whether it is needed.
 - Answer policy and FAQ questions from the knowledge base when it is available, and say when you do not know.
@@ -115,6 +138,19 @@ Rules:
   mcp service "ServiceDesk"."CarrierTracking" (
     Enabled: true,
     UserAccessApproval: VisibleForUser
+  )
+
+  mcp service "ServiceDesk"."ProductGraph" (
+    Enabled: true,
+    UserAccessApproval: VisibleForUser
+  )
+
+  tool GetKnowledgeBaseStatus (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_GetKnowledgeBaseStatus",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'Staff only: per policy document, how many knowledge chunks are stored in the PgVector database (read over SQL) and when it was last loaded. No inputs.'
   )
 
   tool IssueRefund (

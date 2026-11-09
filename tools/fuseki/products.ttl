@@ -1,0 +1,132 @@
+# Product knowledge graph of the demo bike shop. The system of record for
+# product data: catalog, parts and compatibility, suppliers, known issues and
+# recalls, and which products (and battery batches) each order contains.
+# Order numbers match the ServiceDesk app's demo orders; order lines add up to
+# each order's TotalAmount there.
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ---- Schema -------------------------------------------------------------
+shop:Product       a rdfs:Class ; rdfs:label "Product" .
+shop:Bike          rdfs:subClassOf shop:Product ; rdfs:label "Bike" .
+shop:EBike         rdfs:subClassOf shop:Bike ; rdfs:label "E-bike" .
+shop:Part          rdfs:subClassOf shop:Product ; rdfs:label "Part" .
+shop:Accessory     rdfs:subClassOf shop:Product ; rdfs:label "Accessory" .
+shop:Supplier      a rdfs:Class ; rdfs:label "Supplier" .
+shop:KnownIssue    a rdfs:Class ; rdfs:label "Known issue" .
+shop:Recall        rdfs:subClassOf shop:KnownIssue ; rdfs:label "Recall" .
+shop:Order         a rdfs:Class ; rdfs:label "Order" .
+shop:OrderLine     a rdfs:Class ; rdfs:label "Order line" .
+
+shop:sku           rdfs:label "SKU" .
+shop:price         rdfs:label "price in EUR" .
+shop:warrantyYears rdfs:label "warranty in years" .
+shop:suppliedBy    rdfs:label "supplied by" .
+shop:hasComponent  rdfs:label "has component (ships with)" .
+shop:compatibleWith rdfs:label "compatible with (fits on / works with)" .
+shop:affects       rdfs:label "known issue affects product" .
+shop:affectsBatch  rdfs:label "recall affects production batch" .
+shop:orderNumber   rdfs:label "order number" .
+shop:hasLine       rdfs:label "order has line" .
+shop:product       rdfs:label "order line product" .
+shop:quantity      rdfs:label "quantity" .
+shop:unitPrice     rdfs:label "unit price in EUR" .
+shop:batch         rdfs:label "production batch of the delivered unit" .
+
+# ---- Suppliers ------------------------------------------------------------
+shop:Voltera   a shop:Supplier ; rdfs:label "Voltera Bikes BV" ; shop:country "Netherlands" .
+shop:Hollandia a shop:Supplier ; rdfs:label "Hollandia Cycles" ; shop:country "Netherlands" .
+shop:CellPower a shop:Supplier ; rdfs:label "CellPower GmbH" ; shop:country "Germany" .
+shop:LumaParts a shop:Supplier ; rdfs:label "LumaParts" ; shop:country "Belgium" .
+
+# ---- Bikes ----------------------------------------------------------------
+shop:EB-200 a shop:EBike ; shop:sku "EB-200" ; rdfs:label "Voltera City E-bike" ; shop:price 1299.00 ;
+    shop:wheelSize "28 inch" ; shop:seatPostDiameter "27.2 mm" ; shop:brakes "hydraulic disc" ; shop:rackMount true ;
+    shop:warrantyYears 5 ; shop:suppliedBy shop:Voltera ;
+    shop:hasComponent shop:BAT-418 , shop:MOT-250H , shop:CHG-2A .
+shop:EB-500 a shop:EBike ; shop:sku "EB-500" ; rdfs:label "Voltera Trekking E-bike" ; shop:price 2150.00 ;
+    shop:wheelSize "28 inch" ; shop:seatPostDiameter "30.9 mm" ; shop:brakes "hydraulic disc" ; shop:rackMount false ;
+    shop:warrantyYears 5 ; shop:suppliedBy shop:Voltera ;
+    shop:hasComponent shop:BAT-500 , shop:MOT-250M , shop:CHG-4A .
+shop:BK-100 a shop:Bike ; shop:sku "BK-100" ; rdfs:label "Urban Classic 7" ; shop:price 899.00 ;
+    shop:wheelSize "28 inch" ; shop:seatPostDiameter "27.2 mm" ; shop:brakes "rim" ; shop:rackMount true ;
+    shop:warrantyYears 5 ; shop:suppliedBy shop:Hollandia .
+
+# ---- Parts ----------------------------------------------------------------
+shop:BAT-418 a shop:Part ; shop:sku "BAT-418" ; rdfs:label "Battery 418 Wh" ; shop:price 410.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:CellPower ; shop:compatibleWith shop:EB-200 .
+shop:BAT-500 a shop:Part ; shop:sku "BAT-500" ; rdfs:label "Battery 500 Wh" ; shop:price 549.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:CellPower ; shop:compatibleWith shop:EB-500 .
+shop:CVR-500 a shop:Part ; shop:sku "CVR-500" ; rdfs:label "Battery cover 500 Wh" ; shop:price 11.40 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:Voltera ; shop:compatibleWith shop:BAT-500 .
+shop:MOT-250H a shop:Part ; shop:sku "MOT-250H" ; rdfs:label "Rear hub motor 250 W" ; shop:price 389.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:Voltera ; shop:compatibleWith shop:EB-200 .
+shop:MOT-250M a shop:Part ; shop:sku "MOT-250M" ; rdfs:label "Mid-drive motor 250 W" ; shop:price 649.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:Voltera ; shop:compatibleWith shop:EB-500 .
+shop:CHG-2A a shop:Part ; shop:sku "CHG-2A" ; rdfs:label "Standard charger 2 A" ; shop:price 49.95 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:CellPower ; shop:compatibleWith shop:BAT-418 .
+shop:CHG-4A a shop:Part ; shop:sku "CHG-4A" ; rdfs:label "Fast charger 4 A" ; shop:price 89.50 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:CellPower ; shop:compatibleWith shop:BAT-418 , shop:BAT-500 .
+shop:SSP-27 a shop:Part ; shop:sku "SSP-27" ; rdfs:label "Suspension seat post 27.2 mm" ; shop:price 129.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:BK-100 .
+shop:SSP-31 a shop:Part ; shop:sku "SSP-31" ; rdfs:label "Suspension seat post 30.9 mm" ; shop:price 139.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-500 .
+shop:TYR-28 a shop:Part ; shop:sku "TYR-28" ; rdfs:label "Tyre 28 inch" ; shop:price 27.10 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:EB-500 , shop:BK-100 .
+shop:TUB-28 a shop:Part ; shop:sku "TUB-28" ; rdfs:label "Inner tube 28 inch" ; shop:price 9.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:EB-500 , shop:BK-100 .
+shop:BRK-PAD a shop:Part ; shop:sku "BRK-PAD" ; rdfs:label "Disc brake pad set" ; shop:price 32.75 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:EB-500 .
+shop:BRK-RIM a shop:Part ; shop:sku "BRK-RIM" ; rdfs:label "Rim brake pad set" ; shop:price 14.95 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:BK-100 .
+
+# ---- Accessories ------------------------------------------------------------
+shop:CHS-MAXI a shop:Accessory ; shop:sku "CHS-MAXI" ; rdfs:label "Child seat Maxi (rack mount)" ; shop:price 249.95 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:BK-100 , shop:RCK-26 .
+shop:RCK-26 a shop:Accessory ; shop:sku "RCK-26" ; rdfs:label "Rear rack" ; shop:price 59.95 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:BK-100 .
+shop:PAN-20 a shop:Accessory ; shop:sku "PAN-20" ; rdfs:label "Pannier bag set 2x20 l" ; shop:price 99.95 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:RCK-26 .
+shop:BSK-FR a shop:Accessory ; shop:sku "BSK-FR" ; rdfs:label "Front basket" ; shop:price 80.70 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:EB-200 , shop:BK-100 .
+shop:LGT-USB a shop:Accessory ; shop:sku "LGT-USB" ; rdfs:label "USB light set" ; shop:price 44.90 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts ; shop:compatibleWith shop:BK-100 , shop:EB-200 , shop:EB-500 .
+shop:LCK-CHAIN a shop:Accessory ; shop:sku "LCK-CHAIN" ; rdfs:label "Chain lock 110 cm" ; shop:price 75.00 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts .
+shop:HLM-SPD a shop:Accessory ; shop:sku "HLM-SPD" ; rdfs:label "Speed pedelec helmet" ; shop:price 199.99 ; shop:warrantyYears 2 ;
+    shop:suppliedBy shop:LumaParts .
+
+# ---- Known issues and recalls ---------------------------------------------
+shop:REC-2026-07 a shop:Recall ; rdfs:label "Battery 418 Wh, batch B2603: cells may swell" ;
+    shop:issueId "REC-2026-07" ; shop:affects shop:BAT-418 ; shop:affectsBatch "B2603" ; shop:announced "2026-07-14"^^xsd:date ;
+    shop:advice "Stop charging and riding with the battery. CellPower replaces it free of charge; the shop arranges collection. Other batches are not affected." .
+shop:ISS-CHG-80 a shop:KnownIssue ; rdfs:label "Fast charger stops at 80% on older 418 Wh batteries" ;
+    shop:issueId "ISS-CHG-80" ; shop:affects shop:CHG-4A ; shop:announced "2026-09-02"^^xsd:date ;
+    shop:advice "Batteries 418 Wh with firmware below 2.1 stop charging at 80% on the fast charger. A dealer updates the battery firmware in 10 minutes, free of charge." .
+shop:ISS-EB500-LIGHT a shop:KnownIssue ; rdfs:label "Trekking e-bike rear light flickers" ;
+    shop:issueId "ISS-EB500-LIGHT" ; shop:affects shop:EB-500 ; shop:announced "2026-08-20"^^xsd:date ;
+    shop:advice "A loose connector under the rear rack. Reseat the connector; covered by warranty if it recurs." .
+
+# ---- Orders (numbers and totals match the ServiceDesk demo orders) ----------
+shop:SO-10001 a shop:Order ; shop:orderNumber "SO-10001" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:CHS-MAXI ; shop:quantity 1 ; shop:unitPrice 249.95 ] .
+shop:SO-10002 a shop:Order ; shop:orderNumber "SO-10002" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:CHG-4A ; shop:quantity 1 ; shop:unitPrice 89.50 ] .
+shop:SO-10003 a shop:Order ; shop:orderNumber "SO-10003" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:EB-200 ; shop:quantity 1 ; shop:unitPrice 1299.00 ; shop:batch "B2605" ] .
+shop:SO-10004 a shop:Order ; shop:orderNumber "SO-10004" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:TYR-28 ; shop:quantity 2 ; shop:unitPrice 27.10 ] .
+shop:SO-10005 a shop:Order ; shop:orderNumber "SO-10005" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:BAT-418 ; shop:quantity 1 ; shop:unitPrice 410.00 ; shop:batch "B2603" ] .
+shop:SO-10006 a shop:Order ; shop:orderNumber "SO-10006" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:LCK-CHAIN ; shop:quantity 1 ; shop:unitPrice 75.00 ] .
+shop:SO-10007 a shop:Order ; shop:orderNumber "SO-10007" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:HLM-SPD ; shop:quantity 1 ; shop:unitPrice 199.99 ] .
+shop:SO-10008 a shop:Order ; shop:orderNumber "SO-10008" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:BRK-PAD ; shop:quantity 1 ; shop:unitPrice 32.75 ] .
+shop:SO-10009 a shop:Order ; shop:orderNumber "SO-10009" ;
+    shop:hasLine [ a shop:OrderLine ; shop:product shop:BAT-500 ; shop:quantity 1 ; shop:unitPrice 549.00 ; shop:batch "C2609" ] ,
+                 [ a shop:OrderLine ; shop:product shop:CVR-500 ; shop:quantity 1 ; shop:unitPrice 11.40 ] .
+shop:SO-10010 a shop:Order ; shop:orderNumber "SO-10010" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:BK-100 ; shop:quantity 1 ; shop:unitPrice 899.00 ] .
+shop:SO-10011 a shop:Order ; shop:orderNumber "SO-10011" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:SSP-27 ; shop:quantity 1 ; shop:unitPrice 129.00 ] .
+shop:SO-10012 a shop:Order ; shop:orderNumber "SO-10012" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:LGT-USB ; shop:quantity 1 ; shop:unitPrice 44.90 ] .
+shop:SO-10013 a shop:Order ; shop:orderNumber "SO-10013" ;
+    shop:hasLine [ a shop:OrderLine ; shop:product shop:RCK-26 ; shop:quantity 1 ; shop:unitPrice 59.95 ] ,
+                 [ a shop:OrderLine ; shop:product shop:PAN-20 ; shop:quantity 1 ; shop:unitPrice 99.95 ] ,
+                 [ a shop:OrderLine ; shop:product shop:LCK-CHAIN ; shop:quantity 1 ; shop:unitPrice 75.00 ] ,
+                 [ a shop:OrderLine ; shop:product shop:BSK-FR ; shop:quantity 1 ; shop:unitPrice 80.70 ] .
+shop:SO-10014 a shop:Order ; shop:orderNumber "SO-10014" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:TUB-28 ; shop:quantity 2 ; shop:unitPrice 9.00 ] .
+shop:SO-10015 a shop:Order ; shop:orderNumber "SO-10015" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:EB-500 ; shop:quantity 1 ; shop:unitPrice 2150.00 ; shop:batch "C2604" ] .

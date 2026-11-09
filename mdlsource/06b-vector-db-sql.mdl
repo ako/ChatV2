@@ -1,0 +1,147 @@
+mdl 1;
+
+-- Traditional SQL integration: the app reads the PgVector database
+-- (servicedesk_vectors) through Mendix's External Database Connector, as a
+-- read-only user (servicedesk_reader, SELECT only). Two named queries:
+--   * ChunksForDocument: the knowledge chunks stored for one policy document,
+--     shown on the Policy documents page ("Chunks (SQL)").
+--   * ChunkCounts: chunks per document, behind the support agent's
+--     GetKnowledgeBaseStatus tool (staff only).
+-- The table is named after the PgVector knowledge base ('policies', see
+-- 11-knowledge-base.mdl). The password is not in the model; pass it per run:
+--   --constant ServiceDesk.VectorDbReaderPassword=@file:.mxcli/vectordb-reader.password
+
+/** JDBC URL of the PgVector database, read over SQL. */
+create or modify constant "ServiceDesk"."VectorDbReaderUrl" folder 'Knowledge/SQL' ( Type: String, DefaultValue: 'jdbc:postgresql://127.0.0.1:5432/servicedesk_vectors' );
+/** Read-only database user (SELECT only). */
+create or modify constant "ServiceDesk"."VectorDbReaderUser" folder 'Knowledge/SQL' ( Type: String, DefaultValue: 'servicedesk_reader' );
+/** Password of the read-only database user. No value in the model; pass it per run. */
+create or modify constant "ServiceDesk"."VectorDbReaderPassword" folder 'Knowledge/SQL' ( Type: String, DefaultValue: '' );
+
+/** One knowledge chunk as stored in the PgVector table. */
+create or modify non-persistent entity "ServiceDesk"."KnowledgeChunkRow" (
+  "ChunkId": String(36),
+  "HumanReadableId": String(400),
+  "ChunkText": String(unlimited)
+);
+
+/** Number of knowledge chunks stored for one document (its Mendix object id). */
+create or modify non-persistent entity "ServiceDesk"."KnowledgeChunkCount" (
+  "DocumentObjectId": String(200),
+  "Chunks": Integer
+);
+
+grant read * on entity "ServiceDesk"."KnowledgeChunkRow" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."KnowledgeChunkCount" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+-- The PgVector database, read-only, over the External Database Connector.
+create or modify database connection "ServiceDesk"."VectorDatabase" folder 'Knowledge/SQL' (
+  Type: 'PostgreSQL',
+  ConnectionString: @"ServiceDesk"."VectorDbReaderUrl",
+  Username: @"ServiceDesk"."VectorDbReaderUser",
+  Password: @"ServiceDesk"."VectorDbReaderPassword"
+) {
+  query ChunksForDocument (
+    Sql: $$select id as chunk_id, humanreadableid as human_readable_id, key as chunk_text from policies where mxobjectid = {documentId} order by length(humanreadableid), humanreadableid$$,
+    Parameters: ( documentId: String ),
+    Returns: "ServiceDesk"."KnowledgeChunkRow",
+    Map: ( "ChunkId" = chunk_id, "HumanReadableId" = human_readable_id, "ChunkText" = chunk_text )
+  )
+  query ChunkCounts (
+    Sql: $$select mxobjectid as document_object_id, count(*)::int as chunks from policies group by mxobjectid$$,
+    Returns: "ServiceDesk"."KnowledgeChunkCount",
+    Map: ( "DocumentObjectId" = document_object_id, "Chunks" = chunks )
+  )
+};
+
+/** The knowledge chunks stored in PgVector for a policy document, read over SQL. Raises an error when the database is unreachable; callers handle it. */
+create or modify microflow "ServiceDesk"."SUB_VectorDb_ChunksForDocument" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns List of "ServiceDesk"."KnowledgeChunkRow" as $Chunks
+folder 'Knowledge/SQL'
+begin
+  $ObjectId = call java action CommunityCommons.getGUID(item = $PolicyDocument);
+  $Chunks = execute database query "ServiceDesk"."VectorDatabase"."ChunksForDocument" (documentId = toString($ObjectId));
+  return $Chunks;
+end;
+
+/** Chunks per document in PgVector, read over SQL. Raises an error when the database is unreachable; callers handle it. */
+create or modify microflow "ServiceDesk"."SUB_VectorDb_ChunkCounts" ()
+returns List of "ServiceDesk"."KnowledgeChunkCount" as $Counts
+folder 'Knowledge/SQL'
+begin
+  $Counts = execute database query "ServiceDesk"."VectorDatabase"."ChunkCounts";
+  return $Counts;
+end;
+
+/** Data source of the chunks popup: the document's chunks, or none (with a log line) when the database cannot be read. */
+create or modify microflow "ServiceDesk"."DS_PolicyDocument_Chunks" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns List of "ServiceDesk"."KnowledgeChunkRow" as $Chunks
+folder 'Knowledge/SQL'
+begin
+  $Rows = call microflow "ServiceDesk"."SUB_VectorDb_ChunksForDocument" (PolicyDocument = $PolicyDocument) on error without rollback begin
+    log error node 'ServiceDesk' 'Reading knowledge chunks over SQL failed: {1}' with ({1} = $latestError/Message);
+    return empty;
+  end error;
+  return $Rows;
+end;
+
+/** Popup: the chunks of a policy document as stored in the PgVector database, read over SQL. */
+create or modify page "ServiceDesk"."PolicyDocument_Chunks" folder 'Knowledge/SQL'
+(
+  params: ( $PolicyDocument: "ServiceDesk"."PolicyDocument" ),
+  title: 'Knowledge chunks',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgChunks {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvDocument (datasource: $PolicyDocument) {
+          dynamictext txtTitle (content: '{1}', contentparams: ({1} = "Title"), rendermode: H4)
+          dynamictext txtSource (content: 'Read over SQL from the PgVector database (External Database Connector, read-only user).', rendermode: Paragraph)
+          listview lvChunks (datasource: microflow "ServiceDesk"."DS_PolicyDocument_Chunks"(PolicyDocument = $PolicyDocument)) {
+            container ctChunk (Class: 'text-break-word') {
+              dynamictext txtChunkId (content: '{1}', contentparams: ({1} = "HumanReadableId"), rendermode: H6)
+              dynamictext txtChunkText (content: '{1}', contentparams: ({1} = "ChunkText"))
+            }
+          }
+          footer {
+            actionbutton btnClose (caption: 'Close', action: close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Agent tool (staff only): how many knowledge chunks each policy document has in the PgVector database, read over SQL. */
+create or modify microflow "ServiceDesk"."Tool_GetKnowledgeBaseStatus" ()
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  if $Customer != empty then
+    return 'The knowledge base status is only available to service-desk staff.';
+  end if;
+  $Counts = call microflow "ServiceDesk"."SUB_VectorDb_ChunkCounts" () on error without rollback begin
+    log error node 'ServiceDesk' 'Reading the knowledge base status over SQL failed: {1}' with ({1} = $latestError/Message);
+    return 'The knowledge base database cannot be read right now.';
+  end error;
+  retrieve $Documents from "ServiceDesk"."PolicyDocument" sort by "Title" asc;
+  declare $Lines String = '';
+  loop $Document in $Documents begin
+    $ObjectId = call java action CommunityCommons.getGUID(item = $Document);
+    $Count = find $Counts where $currentObject/DocumentObjectId = toString($ObjectId);
+    set $Lines = $Lines + $Document/Title + ': '
+      + (if $Count = empty then 'not in the PgVector knowledge base' else toString($Count/Chunks) + ' chunks in PgVector')
+      + (if $Document/IngestedOn = empty then ', never loaded' else ', last loaded ' + formatDateTime($Document/IngestedOn, 'yyyy-MM-dd HH:mm'))
+      + '; ';
+  end loop;
+  if $Lines = '' then
+    return 'There are no policy documents.';
+  end if;
+  return $Lines;
+end;
+
+grant execute on microflow "ServiceDesk"."DS_PolicyDocument_Chunks" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."PolicyDocument_Chunks" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

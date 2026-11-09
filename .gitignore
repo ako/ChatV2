@@ -36,3 +36,6 @@ mxcli.exe
 # mxcli test endpoint helper (exists only while the app runs with --test-endpoint)
 /javasource/mxtest/
 __pycache__/
+
+# Fuseki run directory, if started from tools/fuseki without FUSEKI_BASE
+/tools/fuseki/run/

@@ -19,5 +19,8 @@
   },
   "ServiceDesk.CarrierTracking": {
     "endpoint": "ServiceDesk.CarrierMcpEndpoint"
+  },
+  "ServiceDesk.ProductGraph": {
+    "endpoint": "ServiceDesk.ProductGraphMcpEndpoint"
   }
 }

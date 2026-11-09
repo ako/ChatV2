@@ -17,3 +17,7 @@ Anchors: `@ServiceDesk.CarrierTracking` · id `0e188f` · 2026-11-08
 ## The app publishes order status and ticket search over MCP, plus a ticket-reply prompt
 
 Anchors: `@ServiceDesk.MCP_Initialize` · id `27c8e1` · 2026-11-08
+
+## The support agent answers product questions (contents of an order, compatible parts, known issues and recalls) grounded in a SPARQL product knowledge graph (Apache Jena Fuseki), reached through an MCP server
+
+Anchors: `@ServiceDesk.ProductGraph` · id `4fbac4` · 2026-11-09

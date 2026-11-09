@@ -64,7 +64,7 @@ Each one is optional: without it, that part is skipped and the app still starts.
 To share a preview, run with `--hub https://hub.mxcli.org` instead of `--local` (with `MXCLI_HUB_KEY` set), and leave out `ApplicationRootUrl`, because the hub sets it. While the hub is on, test locally at `http://127.0.0.1:8080`, not `localhost`. Chat streaming fails on `localhost` then; see `FINDINGS.md`.
 
 ```bash
-./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=@file:.mxcli/pgvector.password --constant ServiceDesk.OAuthClientSecret=@file:.mxcli/oauth-client.secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=@file:.mxcli/pgvector.password --constant ServiceDesk.VectorDbReaderPassword=@file:.mxcli/vectordb-reader.password --constant ServiceDesk.OAuthClientSecret=@file:.mxcli/oauth-client.secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
 ```
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
@@ -95,6 +95,9 @@ Demo users:
 | demo_customer | Ticket → Add attachment | Upload a PDF or image. The document agent writes a summary of it. |
 | demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |
 | demo_agent | Assistant | "How urgent is ticket 1005?" The support agent calls the triage agent as a tool. |
+| demo_customer | Assistant | "Is the e-bike from my order SO-10003 affected by any recall, and which suspension seat post fits it?" The answer comes from the product knowledge graph (SPARQL, through an MCP server). The battery recall covers batch B2603 only, and this bike is batch B2605. |
+| demo_agent | Assistant | "Are both policy documents in the knowledge base?" The GetKnowledgeBaseStatus tool reads the PgVector database over SQL. Customers are refused. |
+| demo_agent | Policy documents → Chunks (SQL) | The chunks stored for a document, read from the PgVector database through the External Database Connector. |
 | demo_agent | Assistant (OpenRouter) | The same questions, answered by the runtime agent on a free OpenRouter model. |
 | demo_agent | Policy documents | Upload `docs/demo-policies/*.md` and click *Load into knowledge base*. After about two minutes, ask either assistant "Can a customer return an e-bike after 10 days and 30 km?" |
 | demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
@@ -151,3 +154,31 @@ su postgres -c "psql -c 'create database servicedesk_vectors owner mendix' -d po
 ```
 
 Change the database with the `ServiceDesk.PgVectorJdbcUrl`, `ServiceDesk.PgVectorUser` and `ServiceDesk.PgVectorPassword` constants.
+
+## Product knowledge graph (SPARQL, through MCP)
+
+The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains (with battery production batches). The graph is `tools/fuseki/products.ttl`, served read-only by **Apache Jena Fuseki** (Apache 2.0). The agent reaches it through an **MCP server**, `tools/product-graph-mcp`. The MCP server decides what the agent can see. It offers curated tools (`order_products`, `find_product`, `compatible_parts`, `known_issues`) plus a read-only `sparql_query` that refuses anything but SELECT and ASK. This follows the pattern in Mendix's [agentic apps with a knowledge graph](https://www.mendix.com/blog/beyond-chatbots-building-agentic-apps-with-altair-mendix/) post.
+
+Start both next to the app (Fuseki needs Java 21+ and downloads itself from Maven Central the first time):
+
+```bash
+sh tools/fuseki/start.sh
+```
+
+```bash
+setsid nohup python3 tools/product-graph-mcp/server.py > /tmp/product-graph.log 2>&1 &
+```
+
+The SPARQL endpoint is `http://localhost:3030/products/sparql`, and the MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The graph does not know who is asking, so the agent is told to find an order with `GetOrderStatus`, which applies the app's access rules, before calling `order_products`. That guard is in the prompt only.
+
+## SQL to the vector database
+
+The app also reads the PgVector database (`servicedesk_vectors`) with plain SQL, through Mendix's **External Database Connector** (`mdlsource/06b-vector-db-sql.mdl`), as a read-only user. Create the user once, with its password in a git-ignored file:
+
+```bash
+(umask 077; python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(24)), end='')" > .mxcli/vectordb-reader.password)
+```
+
+```bash
+su postgres -c "psql -d servicedesk_vectors -c \"create role servicedesk_reader login password '$(cat .mxcli/vectordb-reader.password)'; grant connect on database servicedesk_vectors to servicedesk_reader; grant usage on schema public to servicedesk_reader; grant select on all tables in schema public to servicedesk_reader; alter default privileges for role mendix in schema public grant select on tables to servicedesk_reader\""
+```

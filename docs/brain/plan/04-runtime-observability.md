@@ -39,3 +39,7 @@ OpenRouter lists no embedding models (free or paid), and the local Postgres 16 h
 ## The runtime agent answers policy questions from a PgVector knowledge base, embedded with a Mendix Cloud GenAI embeddings model and loaded from the same Policy documents page
 
 Anchors: `@ServiceDesk.ASU_ConfigurePgVector`, `@ServiceDesk.SUB_RuntimeAgent_AttachPolicies` · id `a49174` · 2026-11-09
+
+## The app reads the PgVector database over SQL with the External Database Connector, as a read-only user: chunks per policy document on a page, and chunk counts as a staff-only agent tool
+
+Anchors: `@ServiceDesk.VectorDatabase` · id `a24e41` · 2026-11-09

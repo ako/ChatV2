@@ -209,6 +209,9 @@ create or modify page "ServiceDesk"."PolicyDocument_Overview" folder 'Knowledge'
             actionbutton btnLoad (caption: 'Load into knowledge base', action: call microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase"("PolicyDocument" = $currentObject))
           }
           column (caption: '') {
+            actionbutton btnChunks (caption: 'Chunks (SQL)', action: show page "ServiceDesk"."PolicyDocument_Chunks"("PolicyDocument" = $currentObject))
+          }
+          column (caption: '') {
             actionbutton btnOpen (caption: 'Open', action: show page "ServiceDesk"."PolicyDocument_NewEdit"("PolicyDocument" = $currentObject))
           }
         }
