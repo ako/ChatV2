@@ -3,8 +3,10 @@ mdl 1;
 -- Slice 03: publish the service desk as an MCP server (runtime configuration,
 -- MCP Server module 5.4). External agents such as Claude Code can then look up
 -- orders and tickets, as the signed-in user, and use a reply-drafting prompt.
--- Pattern from the mcp-server skill (ako/mxcli#2041). The Published MCP Service
--- document (model configuration, OAuth) is not writable from MDL yet (ako/mxcli#2020).
+-- Pattern from the mcp-server skill (ako/mxcli#2041). Two servers: /servicedesk/mcp
+-- (app-account headers) and /servicedesk-oauth/mcp (OAuth 2.0 bearer tokens from a
+-- local Keycloak, tools/keycloak). The Published MCP Service document (model
+-- configuration) is not writable from MDL yet (ako/mxcli#2020).
 
 /** Authenticates an MCP request with the app's own accounts: headers Username and Password. Returns empty to refuse the request. */
 create or modify microflow "ServiceDesk"."MCP_Authenticate" (
@@ -56,23 +58,80 @@ begin
   return $Message;
 end;
 
-/** Starts the MCP server and registers its tools and prompt. Called from the after-startup microflow; a failure is logged and does not stop the app from starting. */
-create or modify microflow "ServiceDesk"."MCP_Initialize" ()
-returns Boolean as $Started
+/** OAuth issuer the OAuth-protected MCP server sends clients to (local Keycloak, tools/keycloak). */
+create or modify constant "ServiceDesk"."OAuthIssuerUrl" folder 'MCP' ( Type: String, DefaultValue: 'http://localhost:8280/realms/servicedesk' );
+/** Token introspection endpoint of the OAuth issuer (RFC 7662). */
+create or modify constant "ServiceDesk"."OAuthIntrospectionUrl" folder 'MCP' ( Type: String, DefaultValue: 'http://localhost:8280/realms/servicedesk/protocol/openid-connect/token/introspect' );
+/** Client the app uses to introspect tokens; also the audience a token must carry. */
+create or modify constant "ServiceDesk"."OAuthClientId" folder 'MCP' ( Type: String, DefaultValue: 'servicedesk-mcp' );
+/** Secret of the introspection client. No value in the model; pass it per run or per environment. */
+create or modify constant "ServiceDesk"."OAuthClientSecret" folder 'MCP' ( Type: String, DefaultValue: '' );
+/** Scope a token must hold to call the MCP server. */
+create or modify constant "ServiceDesk"."OAuthRequiredScope" folder 'MCP' ( Type: String, DefaultValue: 'mcp:tools' );
+
+/** The issuer's answer about a bearer token (RFC 7662 introspection). */
+create or modify non-persistent entity "ServiceDesk"."TokenIntrospection" (
+  "Active": Boolean,
+  "Audience": String(500),
+  "UserName": String(200),
+  "Scope": String(2000)
+);
+
+create or modify json structure "ServiceDesk"."JSON_TokenIntrospection" folder 'MCP'
+  sample '{"active": true, "aud": "servicedesk-mcp", "preferred_username": "demo_customer", "scope": "openid mcp:tools"}';
+
+create or modify import mapping "ServiceDesk"."IMM_TokenIntrospection"
+  with json structure "ServiceDesk"."JSON_TokenIntrospection"
+{
+  create "ServiceDesk"."TokenIntrospection" {
+    Active = active,
+    Audience = aud,
+    UserName = preferred_username,
+    Scope = scope
+  }
+};
+
+/** Authenticates an MCP request with an OAuth bearer token: introspects it at the issuer, requires it to be active, issued for this server (audience) and to hold the required scope, then maps preferred_username to the app user. Never throws: any failure returns empty, which the MCP module answers with 401. */
+create or modify microflow "ServiceDesk"."MCP_Authenticate_OAuth" (
+  $HttpRequest: System.HttpRequest,
+  $McpServer: MCPServer.McpServer
+)
+returns System.User as $User
 folder 'MCP'
 begin
-  $McpServer = call java action MCPServer.CreateMCPServer(
-    Path = 'servicedesk',
-    Name = 'ServiceDesk',
-    Version = '1.0.0',
-    ProtocolVersion = MCPServer.ENUM_ProtocolVersion.v2025_03_26,
-    AuthenticationMicroflow = 'ServiceDesk.MCP_Authenticate',
-    AuthorizationServerUrl = empty,
-    Scopes = empty
-  ) on error without rollback begin
-    log warning node 'ServiceDesk' 'MCP server not started: {1}. A local run needs --runtime-setting ApplicationRootUrl=http://localhost:8080/ (mxcli run --local ignores the stock root URL).' with ({1} = $latestError/Message);
-    return false;
+  retrieve $Headers from $HttpRequest/System.HttpHeaders;
+  $AuthHeader = find $Headers where toLowerCase($currentObject/Key) = 'authorization';
+  if $AuthHeader = empty or not(startsWith($AuthHeader/Value, 'Bearer ')) then
+    return empty;
+  end if;
+  declare $Token String = trim(substring($AuthHeader/Value, 7));
+  $Answer = call rest service post '{1}' with ({1} = @ServiceDesk.OAuthIntrospectionUrl) (
+    Headers: ('Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'),
+    Authentication: basic (Username: @ServiceDesk.OAuthClientId, Password: @ServiceDesk.OAuthClientSecret),
+    Body: template 'token={1}' with ({1} = urlEncode($Token)),
+    Timeout: 10,
+  ) returns string on error without rollback begin
+    log warning node 'ServiceDesk' 'Token introspection failed: {1}' with ({1} = $latestError/Message);
+    return empty;
   end error;
+  $Info = import from mapping "ServiceDesk"."IMM_TokenIntrospection"($Answer) on error without rollback begin
+    log warning node 'ServiceDesk' 'Token introspection answer not understood: {1}' with ({1} = $Answer);
+    return empty;
+  end error;
+  if not($Info/Active)
+    or $Info/Audience != @ServiceDesk.OAuthClientId
+    or not(contains(' ' + $Info/Scope + ' ', ' ' + @ServiceDesk.OAuthRequiredScope + ' ')) then
+    log info node 'ServiceDesk' 'MCP request refused: token inactive, for another audience or without scope {1}.' with ({1} = @ServiceDesk.OAuthRequiredScope);
+    return empty;
+  end if;
+  retrieve $Account from System.User where [Name = $Info/UserName] first;
+  return $Account;
+end;
+
+/** Registers the service-desk tools and the ticket-reply prompt on an MCP server. */
+create or modify microflow "ServiceDesk"."SUB_MCP_RegisterTools" ($McpServer: MCPServer.McpServer)
+folder 'MCP'
+begin
   $OrderTool = call java action MCPServer.AddTool(
     McpServer = $McpServer,
     Name = 'get_order_status',
@@ -98,6 +157,39 @@ begin
     Parameters = $Arguments,
     Microflow = 'ServiceDesk.MCPPrompt_TicketReply'
   );
+end;
+
+/** Starts both MCP servers and registers their tools and prompt: /servicedesk/mcp with app-account headers, and /servicedesk-oauth/mcp with OAuth bearer tokens from the issuer in OAuthIssuerUrl. Called from the after-startup microflow; a failure is logged and does not stop the app from starting. */
+create or modify microflow "ServiceDesk"."MCP_Initialize" ()
+returns Boolean as $Started
+folder 'MCP'
+begin
+  $McpServer = call java action MCPServer.CreateMCPServer(
+    Path = 'servicedesk',
+    Name = 'ServiceDesk',
+    Version = '1.0.0',
+    ProtocolVersion = MCPServer.ENUM_ProtocolVersion.v2025_03_26,
+    AuthenticationMicroflow = 'ServiceDesk.MCP_Authenticate',
+    AuthorizationServerUrl = empty,
+    Scopes = empty
+  ) on error without rollback begin
+    log warning node 'ServiceDesk' 'MCP server not started: {1}. A local run needs --runtime-setting ApplicationRootUrl=http://localhost:8080/ (mxcli run --local ignores the stock root URL).' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  call microflow "ServiceDesk"."SUB_MCP_RegisterTools" (McpServer = $McpServer);
+  $OAuthServer = call java action MCPServer.CreateMCPServer(
+    Path = 'servicedesk-oauth',
+    Name = 'ServiceDeskOAuth',
+    Version = '1.0.0',
+    ProtocolVersion = MCPServer.ENUM_ProtocolVersion.v2025_03_26,
+    AuthenticationMicroflow = 'ServiceDesk.MCP_Authenticate_OAuth',
+    AuthorizationServerUrl = @ServiceDesk.OAuthIssuerUrl,
+    Scopes = @ServiceDesk.OAuthRequiredScope
+  ) on error without rollback begin
+    log warning node 'ServiceDesk' 'OAuth MCP server not started: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  call microflow "ServiceDesk"."SUB_MCP_RegisterTools" (McpServer = $OAuthServer);
   return true;
 end;
 

@@ -465,3 +465,54 @@ Gap ([ako/mxcli#2060](https://github.com/ako/mxcli/issues/2060)):
 Note: `track_parcel` answers for any tracking code; it is not scoped to the signed-in customer, as
 with real carriers. To run the demo, start the carrier server next to the app:
 `python3 tools/carrier-mcp/server.py`.
+
+## Slice 03: OAuth 2.0 on the published MCP server, with a local Keycloak (2026-11-09)
+
+What it adds:
+- **`tools/keycloak/`**:
+  - `start.sh` downloads Keycloak 26.4.2 when it is missing and runs `start-dev` on port 8280 with
+    Java 25. Docker is installed, but its daemon is not running.
+  - `servicedesk-realm.json` imports the realm. It holds the demo users with the app's names and
+    passwords and the `mcp:tools` client scope, whose audience mapper adds `servicedesk-mcp`. Its
+    clients:
+
+    | Client | Type | Purpose |
+    |---|---|---|
+    | `mcp-client` | public | auth code + PKCE; also password grant for tests |
+    | `servicedesk-mcp` | confidential | the app introspects tokens with it |
+    | `other-app` | public | a negative control |
+- **`mdlsource/09-mcp-server.mdl`**:
+  - a second server, `/servicedesk-oauth/mcp`, created with `AuthorizationServerUrl` and
+    `Scopes = mcp:tools`;
+  - `MCP_Authenticate_OAuth`, which introspects the bearer token (RFC 7662) through an inline
+    REST call with basic auth. It requires `active`, `aud = servicedesk-mcp` and the scope, then
+    maps `preferred_username` to the app user. It never throws, so failures become 401;
+  - `SUB_MCP_RegisterTools`, which both servers share.
+- **`tests-live/mcp/`**: `basic_auth_test.py` and `oauth_test.py`.
+
+Verified with `tests-live/mcp/oauth_test.py`, which acts as an MCP client using only discovery:
+- **Discovery:**
+  - no token → 401 with `WWW-Authenticate: Bearer resource_metadata="…/servicedesk-oauth/.well-known/oauth-protected-resource", scope="mcp:tools"`;
+  - the metadata names Keycloak as the authorization server, with scope `mcp:tools`;
+  - Keycloak's metadata offers PKCE S256.
+  - The MCP Server module publishes all of this itself once `AuthorizationServerUrl` is set.
+- **Authorization code + PKCE login,** submitting Keycloak's form as a browser would, with
+  `resource` = the MCP URL:
+  - as `demo_customer`, SO-10002 is found and Bram's SO-10004 is "not found";
+  - as `demo_agent`, both orders are found.
+- **Refused with 401:** a garbage token, a token from `other-app` (no audience), and an `mcp-client`
+  token without `mcp:tools`. The same client with `mcp:tools` gets 200.
+
+Gates:
+- A second exec of every script writes nothing.
+- `docker check`: 0 errors. `test --local`: 16/16 (the first run printed no summary; the re-run
+  passed). `lint`: 0 errors, 20 warnings.
+
+Notes:
+- Keycloak sets its login cookies `Secure`. Browsers send those to `http://localhost`, but Python's
+  cookie jar does not, so the test client uses a cookie policy that accepts them.
+- A realm import that defines `clientScopes` replaces Keycloak's built-in scopes (`profile`,
+  `email`). `preferred_username` therefore comes from a mapper on `mcp:tools`.
+- Introspection returns `aud` as a string when there is one audience. A token with several audiences
+  returns an array, which the import mapping cannot read, so it is refused. That is safe, but
+  stricter than necessary.

@@ -49,7 +49,7 @@ python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_let
 Then start the app. The Mendix Cloud GenAI key is read from the `GENAI_TEXT_KEY` environment variable and never written to a file:
 
 ```bash
-./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.OAuthClientSecret=local-dev-introspection-secret
 ```
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
@@ -98,3 +98,13 @@ The app publishes `get_order_status`, `search_tickets` and a `ticket_reply` prom
 { "mcpServers": { "servicedesk": { "type": "http", "url": "http://localhost:8080/servicedesk/mcp",
   "headers": { "Username": "demo_customer", "Password": "DemoCustomer1!" } } } }
 ```
+
+### OAuth 2.0 (Keycloak)
+
+A second copy of the server, `http://localhost:8080/servicedesk-oauth/mcp`, takes OAuth 2.0 bearer tokens instead of app passwords. The issuer is a local Keycloak with the same demo users:
+
+```bash
+sh tools/keycloak/start.sh
+```
+
+MCP clients find the issuer themselves: the 401 response points to the protected-resource metadata, which names `http://localhost:8280/realms/servicedesk`. Sign in with client `mcp-client` (authorization code + PKCE, scope `mcp:tools`). Tokens without that scope, or issued to another client, get 401. `python3 tests-live/mcp/oauth_test.py` runs the whole flow headlessly. The Keycloak admin console is at http://localhost:8280/admin (admin/admin). Everything here is a local development setup: plain HTTP, and a known client secret.

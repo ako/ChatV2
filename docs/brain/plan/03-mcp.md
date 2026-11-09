@@ -8,7 +8,7 @@ stale. `mxcli brain plan` counts them against the model.
 
 ## The app publishes order and ticket lookup as an MCP service secured with OAuth 2.0, callable from Claude Desktop or Claude Code
 
-Anchors: `@ServiceDesk.ServiceDeskMCP` · id `e9d7d4` · 2026-11-08
+Anchors: `@ServiceDesk.MCP_Authenticate_OAuth` · id `e9d7d4` · 2026-11-08
 
 ## The support agent uses tools from an external MCP server via a consumed MCP service
 

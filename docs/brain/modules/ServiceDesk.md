@@ -70,3 +70,9 @@ MCP_Initialize registers the server with MCPServer.CreateMCPServer / AddTool / A
 Anchors: `@ServiceDesk.CarrierTracking` · id `e2f7f0` · 2026-11-09
 
 A Python MCP SDK 2.x server on 127.0.0.1:8765 serves track_parcel for the demo orders' tracking codes, so the demo needs no outside network. MDL cannot write a consumed MCP service's endpoint constant or credentials microflow yet; scripts/patch-agent-documents.py sets the endpoint (ServiceDesk.CarrierMcpEndpoint) once, and create or modify keeps it. track_parcel is not scoped to the signed-in customer: a tracking code works like a shared secret, as it does with real carriers.
+
+## OAuth 2.0 for the MCP server comes from a local Keycloak, checked by token introspection
+
+Anchors: `@ServiceDesk.MCP_Authenticate_OAuth` · id `1cca4e` · 2026-11-09
+
+tools/keycloak/start.sh runs Keycloak 26 (start-dev, port 8280) with tools/keycloak/servicedesk-realm.json: the demo users, a public client mcp-client (authorization code + PKCE, also password grant for tests), the mcp:tools scope that adds audience servicedesk-mcp, and the confidential client servicedesk-mcp the app introspects with. MCP_Authenticate_OAuth requires an active token whose aud is servicedesk-mcp and whose scope holds mcp:tools, then maps preferred_username to the app user by name, so Keycloak and Mendix user names must match. The introspection secret is a local development value, passed per run as ServiceDesk.OAuthClientSecret; a real issuer needs its own secret and https.
