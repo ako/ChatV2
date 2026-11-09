@@ -1,55 +1,160 @@
 mdl 1;
 
--- Slice 01: the policy and FAQ knowledge base (Mendix Cloud GenAI). Staff
--- upload .txt or .md documents; "Load into knowledge base" splits a document
--- into paragraphs and embeds them into the collection 'policies', linked to the
--- document, so reloading replaces its chunks. The SupportAgent retrieves from
--- that collection (knowledge base block in 07-agents.mdl).
--- Key: --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY
+-- Policy and FAQ knowledge bases. Staff upload .txt or .md documents; "Load
+-- into knowledge base" splits a document into paragraph chunks, linked to the
+-- document so a reload replaces them, and loads them into:
+--   * Mendix Cloud GenAI, collection 'policies'  -> the design-time SupportAgent
+--     (knowledge base block in 07-agents.mdl). Key: ServiceDesk.MxGenAIKnowledgeBaseKey
+--   * PgVector, knowledge base 'policies', embedded with a Mendix Cloud GenAI
+--     embeddings model -> the runtime agent (SUB_RuntimeAgent_AttachPolicies, below).
+--     Keys: ServiceDesk.MxGenAIEmbeddingsKey, ServiceDesk.PgVectorPassword
+-- Run with, e.g.:
+--   --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY
+--   --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY
+--   --constant ServiceDesk.PgVectorPassword=mendix   (the local database's password)
 
-/** Splits a policy document into paragraph chunks and embeds them into the 'policies' collection, replacing the chunks it loaded before. Returns the number of chunks, or -1 on failure. */
-create or modify microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
-returns Integer as $ChunkCount
+/** Mendix Cloud GenAI embeddings key, used for the PgVector knowledge base. No value in the model; pass it per run. */
+create or modify constant "ServiceDesk"."MxGenAIEmbeddingsKey" folder 'Knowledge' ( Type: String, DefaultValue: '' );
+/** JDBC URL of the PostgreSQL database with the pgvector extension. */
+create or modify constant "ServiceDesk"."PgVectorJdbcUrl" folder 'Knowledge' ( Type: String, DefaultValue: 'jdbc:postgresql://127.0.0.1:5432/servicedesk_vectors' );
+/** Database user for the PgVector knowledge base. */
+create or modify constant "ServiceDesk"."PgVectorUser" folder 'Knowledge' ( Type: String, DefaultValue: 'mendix' );
+/** Database password for the PgVector knowledge base. No value in the model; pass it per run. */
+create or modify constant "ServiceDesk"."PgVectorPassword" folder 'Knowledge' ( Type: String, DefaultValue: '' );
+
+/** Splits a policy document into paragraph chunks, each prefixed with the title and linked to the document. Returns an empty collection when the file is unreadable. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_BuildChunks" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns GenAICommons.ChunkCollection as $Chunks
+folder 'Knowledge'
+begin
+  $Chunks = call microflow GenAICommons.ChunkCollection_Create();
+  $Text = call java action CommunityCommons.StringFromFile(source = $PolicyDocument, encoding = CommunityCommons.StandardEncodings.UTF_8) on error without rollback begin
+    log error node 'ServiceDesk' 'Policy document is not readable as UTF-8 text: {1}' with ({1} = $latestError/Message);
+    return $Chunks;
+  end error;
+  $Paragraphs = call java action CommunityCommons.StringSplit(inputString = $Text, splitParameter = '\n\s*\n') on error without rollback begin
+    log error node 'ServiceDesk' 'Splitting the policy document failed: {1}' with ({1} = $latestError/Message);
+    return $Chunks;
+  end error;
+  loop $Paragraph in $Paragraphs begin
+    if trim($Paragraph/Value) != '' then
+      $Chunk = call java action GenAICommons.ChunkCollection_AddKnowledgeBaseChunk(ChunkCollection = $Chunks, InputText = $PolicyDocument/Title + ': ' + trim($Paragraph/Value), HumanReadableID = $PolicyDocument/Title + ' #' + toString($Paragraph/Index + 1), MxObject = $PolicyDocument, MetadataCollection = empty);
+    end if;
+  end loop;
+  return $Chunks;
+end;
+
+/** Embeds a policy document's chunks into the Mendix Cloud GenAI collection 'policies', replacing the chunks it loaded before. Returns false on failure. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" ($PolicyDocument: "ServiceDesk"."PolicyDocument", $Chunks: GenAICommons.ChunkCollection)
+returns Boolean as $Loaded
 folder 'Knowledge'
 begin
   retrieve $Resource from MxGenAIConnector.MxCloudKnowledgeBaseResource where [_QualifiedName = 'ServiceDesk.PolicyKnowledgeBase'] first;
   if $Resource = empty then
-    log warning node 'ServiceDesk' 'The knowledge base is not loaded. Pass ServiceDesk.MxGenAIKnowledgeBaseKey and restart.';
-    return -1;
-  end if;
-  $Text = call java action CommunityCommons.StringFromFile(source = $PolicyDocument, encoding = CommunityCommons.StandardEncodings.UTF_8) on error without rollback begin
-    log error node 'ServiceDesk' 'Policy document is not readable as UTF-8 text: {1}' with ({1} = $latestError/Message);
-    return -1;
-  end error;
-  $Paragraphs = call java action CommunityCommons.StringSplit(inputString = $Text, splitParameter = '\n\s*\n') on error without rollback begin
-    log error node 'ServiceDesk' 'Splitting the policy document failed: {1}' with ({1} = $latestError/Message);
-    return -1;
-  end error;
-  $Chunks = call microflow GenAICommons.ChunkCollection_Create();
-  declare $Count Integer = 0;
-  loop $Paragraph in $Paragraphs begin
-    if trim($Paragraph/Value) != '' then
-      $Chunk = call java action GenAICommons.ChunkCollection_AddKnowledgeBaseChunk(ChunkCollection = $Chunks, InputText = $PolicyDocument/Title + ': ' + trim($Paragraph/Value), HumanReadableID = $PolicyDocument/Title + ' #' + toString($Paragraph/Index + 1), MxObject = $PolicyDocument, MetadataCollection = empty);
-      set $Count = $Count + 1;
-    end if;
-  end loop;
-  if $Count = 0 then
-    return 0;
+    log warning node 'ServiceDesk' 'The Mendix Cloud knowledge base is not loaded. Pass ServiceDesk.MxGenAIKnowledgeBaseKey and restart.';
+    return false;
   end if;
   $Collection = call microflow MxGenAIConnector.Collection_GetCreate(MxCloudKnowledgeBaseResource = $Resource, CollectionName = 'policies');
   $Replaced = call microflow MxGenAIConnector.ChunkCollection_Embed_Replace(DeployedKnowledgeBase = $Collection, ChunkCollection = $Chunks) on error without rollback begin
-    log error node 'ServiceDesk' 'Loading {1} into the knowledge base failed: {2}' with ({1} = $PolicyDocument/Title, {2} = $latestError/Message);
-    return -1;
+    log error node 'ServiceDesk' 'Loading {1} into the Mendix Cloud knowledge base failed: {2}' with ({1} = $PolicyDocument/Title, {2} = $latestError/Message);
+    return false;
   end error;
+  return $Replaced;
+end;
+
+/** Embeds a policy document's chunks with the Mendix Cloud GenAI embeddings model and replaces them in the PgVector knowledge base 'policies'. Returns false on failure. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_IngestPgVector" ($PolicyDocument: "ServiceDesk"."PolicyDocument", $Chunks: GenAICommons.ChunkCollection)
+returns Boolean as $Loaded
+folder 'Knowledge'
+begin
+  declare $JdbcUrl String = @ServiceDesk.PgVectorJdbcUrl;
+  retrieve $Database from PgVectorKnowledgeBase.DatabaseConfiguration where [JdbcURL = $JdbcUrl] first;
+  if $Database = empty then
+    log warning node 'ServiceDesk' 'The PgVector knowledge base is not configured. Pass ServiceDesk.MxGenAIEmbeddingsKey and ServiceDesk.PgVectorPassword and restart.';
+    return false;
+  end if;
+  retrieve $EmbeddingsModel from $Database/PgVectorKnowledgeBase.DatabaseConfiguration_DeployedModel;
+  if $EmbeddingsModel = empty then
+    return false;
+  end if;
+  $Embeddings = call java action GenAICommons.Embeddings_ChunkCollection(DeployedModel = $EmbeddingsModel, ChunkCollection = $Chunks, EmbeddingsOptions = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Embedding {1} failed: {2}' with ({1} = $PolicyDocument/Title, {2} = $latestError/Message);
+    return false;
+  end error;
+  $KnowledgeBase = call microflow PgVectorKnowledgeBase.PgVectorKnowledgeBase_GetOrCreate(DatabaseConfiguration = $Database, KnowledgeBaseName = 'policies');
+  $Replaced = call microflow PgVectorKnowledgeBase.ChunkCollection_Replace(ChunkCollection = $Chunks, DeployedKnowledgeBase = $KnowledgeBase) on error without rollback begin
+    log error node 'ServiceDesk' 'Loading {1} into the PgVector knowledge base failed: {2}' with ({1} = $PolicyDocument/Title, {2} = $latestError/Message);
+    return false;
+  end error;
+  return $Replaced;
+end;
+
+/** Loads a policy document into both knowledge bases: Mendix Cloud GenAI (design-time SupportAgent) and PgVector (runtime agent). Sets IngestedOn when at least one succeeds. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_Load" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns Boolean as $Loaded
+folder 'Knowledge'
+begin
+  $Chunks = call microflow "ServiceDesk"."SUB_PolicyDocument_BuildChunks" (PolicyDocument = $PolicyDocument);
+  $ChunkList = call microflow GenAICommons.ChunkCollection_GetKnowledgeBaseChunkList(ChunkCollection = $Chunks);
+  $ChunkCount = count $ChunkList;
+  if $ChunkCount = 0 then
+    return false;
+  end if;
+  $InMxCloud = call microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" (PolicyDocument = $PolicyDocument, Chunks = $Chunks);
+  $InPgVector = call microflow "ServiceDesk"."SUB_PolicyDocument_IngestPgVector" (PolicyDocument = $PolicyDocument, Chunks = $Chunks);
+  if not($InMxCloud) and not($InPgVector) then
+    return false;
+  end if;
   change $PolicyDocument ("IngestedOn" = [%CurrentDateTime%]) commit;
-  return $Count;
+  log info node 'ServiceDesk' 'Loaded {1}: {2} chunks; Mendix Cloud {3}, PgVector {4}.' with ({1} = $PolicyDocument/Title, {2} = toString($ChunkCount), {3} = toString($InMxCloud), {4} = toString($InPgVector));
+  return true;
+end;
+
+/** Registers the Mendix Cloud GenAI embeddings key and creates or updates the PgVector database configuration that uses it. Called at startup; does nothing without the embeddings key or the database password. */
+create or modify microflow "ServiceDesk"."ASU_ConfigurePgVector" ()
+returns Boolean as $Configured
+folder 'Knowledge'
+begin
+  if trim(@ServiceDesk.MxGenAIEmbeddingsKey) = '' or trim(@ServiceDesk.PgVectorPassword) = '' then
+    return false;
+  end if;
+  $EmbeddingsConfig = call microflow MxGenAIConnector.Configuration_RegisterByString(ConfigurationStringImport = @ServiceDesk.MxGenAIEmbeddingsKey);
+  if $EmbeddingsConfig = empty then
+    log warning node 'ServiceDesk' 'The embeddings key was not accepted.';
+    return false;
+  end if;
+  retrieve $EmbeddingsModel from MxGenAIConnector.MxCloudDeployedModel where [MxGenAIConnector.MxCloudDeployedModel_Configuration = $EmbeddingsConfig][OutputModality = 'Embeddings'] first;
+  if $EmbeddingsModel = empty then
+    log warning node 'ServiceDesk' 'The embeddings key provides no embeddings model.';
+    return false;
+  end if;
+  declare $JdbcUrl String = @ServiceDesk.PgVectorJdbcUrl;
+  retrieve $Existing from PgVectorKnowledgeBase.DatabaseConfiguration where [JdbcURL = $JdbcUrl] first;
+  $Database = call microflow "ServiceDesk"."SUB_PgVector_GetCreateConfiguration" (Existing = $Existing);
+  change $Database (DisplayName = 'PgVector policies', JdbcURL = @ServiceDesk.PgVectorJdbcUrl, Username = @ServiceDesk.PgVectorUser, PgVectorKnowledgeBase.DatabaseConfiguration_DeployedModel = $EmbeddingsModel);
+  $Password = call microflow PgVectorKnowledgeBase.DatabasePassword_GetCreate(DatabaseConfiguration = $Database);
+  change $Password (Password = @ServiceDesk.PgVectorPassword);
+  call microflow PgVectorKnowledgeBase.DatabaseConfiguration_Commit(DatabaseConfiguration = $Database);
+  return true;
+end;
+
+/** The PgVector database configuration: the existing one, or a new one. */
+create or modify microflow "ServiceDesk"."SUB_PgVector_GetCreateConfiguration" ($Existing: PgVectorKnowledgeBase.DatabaseConfiguration)
+returns PgVectorKnowledgeBase.DatabaseConfiguration as $Database
+folder 'Knowledge'
+begin
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $New = call microflow PgVectorKnowledgeBase.DatabaseConfiguration_Create();
+  return $New;
 end;
 
 /** "Load into knowledge base" button on the policy documents page. */
 create or modify microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
 folder 'Knowledge'
 begin
-  $ChunkCount = call microflow "ServiceDesk"."SUB_PolicyDocument_Ingest" (PolicyDocument = $PolicyDocument);
+  $Loaded = call microflow "ServiceDesk"."SUB_PolicyDocument_Load" (PolicyDocument = $PolicyDocument);
 end;
 
 grant execute on microflow "ServiceDesk"."ACT_PolicyDocument_LoadIntoKnowledgeBase" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
@@ -114,3 +219,26 @@ create or modify page "ServiceDesk"."PolicyDocument_Overview" folder 'Knowledge'
 
 grant view on page "ServiceDesk"."PolicyDocument_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."PolicyDocument_NewEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Links the PgVector knowledge base 'policies' to the in-use version of the runtime support agent, when it is not linked yet. Administrators can change or disable the link on the Agents page afterwards. */
+create or modify microflow "ServiceDesk"."SUB_RuntimeAgent_AttachPolicies" ($Agent: AgentCommons.Agent)
+returns Boolean as $Attached
+folder 'Knowledge'
+begin
+  declare $JdbcUrl String = @ServiceDesk.PgVectorJdbcUrl;
+  retrieve $Database from PgVectorKnowledgeBase.DatabaseConfiguration where [JdbcURL = $JdbcUrl] first;
+  if $Database = empty then
+    return false;
+  end if;
+  retrieve $Version from $Agent/AgentCommons.Agent_Version_InUse;
+  if $Version = empty then
+    return false;
+  end if;
+  retrieve $Existing from AgentCommons.KnowledgeBase where [AgentCommons.KnowledgeBase_Version = $Version][Name = 'PolicyDocs'] first;
+  if $Existing != empty then
+    return true;
+  end if;
+  $KnowledgeBase = call microflow AgentCommons.KnowledgeBase_Create(Version = $Version);
+  change $KnowledgeBase (Name = 'PolicyDocs', Description = 'Return, refund, delivery and warranty policies of the shop. Search it before answering a question about what the policy allows.', DisplayTitle = 'Policy documents', CollectionIdentifier = 'policies', MaxNumberOfResults = 4, MinimumSimilarity = 0.3, IsEnabled = true, IsVisible = true, AgentCommons.KnowledgeBase_ConsumedKnowledgeBase = $Database) commit;
+  return true;
+end;

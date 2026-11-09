@@ -35,9 +35,11 @@ Anchors: `@ServiceDesk.SupportModel` · id `76c0ef` · 2026-11-08
 
 Both come from the one Mendix Cloud GenAI text resource (11 Claude models). Claude 5.5 models reject a temperature parameter with HTTP 400, so neither agent sets one. Haiku keeps the frequent triage calls cheap.
 
-## The knowledge base tool is not attached until a knowledge-base key exists
+## The knowledge-base key arrived (MX_KB_KEY). PolicyDocs is attached to SupportAgent and loaded from the Policy documents page; verified 2026-11-09.
 
-Anchors: `@ServiceDesk.PolicyKnowledgeBase` · id `2d15b5` · 2026-11-08 · OPEN
+Anchors: `@ServiceDesk.PolicyKnowledgeBase` · id `2d15b5` · 2026-11-09
+
+Resolves: The knowledge base tool is not attached until a knowledge-base key exists
 
 GENAI_TEXT_KEY is a text-generation key; a Mendix Cloud GenAI knowledge base needs its own resource and key (constant ServiceDesk.MxGenAIKnowledgeBaseKey). Attach the PolicyKnowledgeBase tool to SupportAgent once that key is available.
 

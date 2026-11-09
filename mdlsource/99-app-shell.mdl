@@ -16,6 +16,13 @@ begin
     log warning node 'ServiceDesk' 'Runtime agent not created: {1}' with ({1} = $latestError/Message);
     return false;
   end error;
+  $PgVectorReady = call microflow "ServiceDesk"."ASU_ConfigurePgVector" () on error without rollback begin
+    log warning node 'ServiceDesk' 'PgVector knowledge base not configured: {1}' with ({1} = $latestError/Message);
+    return true;
+  end error;
+  if $PgVectorReady then
+    $PoliciesAttached = call microflow "ServiceDesk"."SUB_RuntimeAgent_AttachPolicies" (Agent = $RuntimeAgent);
+  end if;
   return true;
 end;
 

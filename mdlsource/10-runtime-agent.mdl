@@ -8,16 +8,15 @@ mdl 1;
 --     JSON (Agent_GetCreate_Json); after that an administrator edits it, adds
 --     versions and test cases on the Agents page.
 --   * A chat on that agent for staff.
--- The API key: in the Claude Code environment the network proxy injects the
--- real OpenRouter key, so the constant holds a placeholder. Elsewhere pass the
--- key per run: --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_API_KEY
+-- The API key is not in the model; pass it per run:
+--   --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
 
 /** OpenAI-compatible endpoint (OpenRouter). */
 create or modify constant "ServiceDesk"."OpenRouterEndpoint" folder 'Runtime agent' ( Type: String, DefaultValue: 'https://openrouter.ai/api/v1' );
 /** Model ID on OpenRouter. A free model that supports tool calls. */
 create or modify constant "ServiceDesk"."OpenRouterModel" folder 'Runtime agent' ( Type: String, DefaultValue: 'nvidia/nemotron-3.5-super-vl:free' );
-/** OpenRouter API key. The default is a placeholder that the Claude Code network proxy replaces; pass a real key per run elsewhere. */
-create or modify constant "ServiceDesk"."OpenRouterApiKey" folder 'Runtime agent' ( Type: String, DefaultValue: 'proxy-injected' );
+/** OpenRouter API key. No value in the model; pass it per run. */
+create or modify constant "ServiceDesk"."OpenRouterApiKey" folder 'Runtime agent' ( Type: String, DefaultValue: '' );
 
 /** Creates or updates the OpenRouter configuration of the OpenAI Connector and its deployed model. Returns the deployed model. */
 create or modify microflow "ServiceDesk"."ASU_ConfigureOpenAICompatible" ()

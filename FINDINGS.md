@@ -563,3 +563,64 @@ Surprises:
 - **PgVector is not possible here.** OpenRouter has **no embedding models**, and the local Postgres 16
   has no `vector` extension. This is recorded as an open question in the brain.
 - A `retrieve` XPath cannot reference a constant (MDL-XPATH03 / CE0161); assign it to a variable first.
+
+## Knowledge bases: Mendix Cloud GenAI and PgVector (2026-11-09)
+
+The environment now provides three more keys: a knowledge-base key (`MX_KB_KEY`), an embeddings
+key (`MX_EMBEDDINGS_KEY`) and a fresh `OPENROUTER_KEY`. Each is passed per run as a constant
+(`@env:`) and never written to a file.
+
+What was built (`mdlsource/11-knowledge-base.mdl`):
+- **PolicyDocument** pages for staff: upload a `.txt` or `.md` file, then "Load into knowledge base".
+- The load splits the document into paragraphs. Each paragraph becomes one chunk, prefixed with the
+  title and linked to the document, so a reload replaces that document's chunks. The chunks go into
+  **both** knowledge bases:
+  - **Mendix Cloud GenAI**, collection `policies`, used by the design-time `SupportAgent` (the
+    `PolicyDocs` knowledge base in its agent document).
+  - **PgVector**, knowledge base `policies` in a local `servicedesk_vectors` database, embedded by a
+    Mendix Cloud GenAI embeddings model. The runtime agent on OpenRouter uses this one.
+- At startup `ASU_ConfigurePgVector` registers the embeddings key
+  (`MxGenAIConnector.Configuration_RegisterByString`). It then creates or updates the PgVector
+  `DatabaseConfiguration`, sets its password through `DatabasePassword_GetCreate` and
+  `DatabaseConfiguration_Commit` (which encrypts it), and links it to the embeddings model.
+  `SUB_RuntimeAgent_AttachPolicies` then adds a `PolicyDocs` knowledge base to the runtime agent's
+  in-use version, if it is not there yet. Both steps are skipped without the keys and wrapped in
+  error handlers, so the app still starts without them.
+
+Database: `apt-get install postgresql-16-pgvector` (pgvector 0.6.0), then
+`create database servicedesk_vectors owner mendix` and `create extension vector` as `postgres`. PgVector
+Knowledge Base 7.1.0 creates the tables itself (`policies` with a `vector(1536)` column, plus
+`policies_metadata`).
+
+Verified live as `demo_agent`:
+- **Mendix Cloud GenAI:** after loading both policies, "Assistant" answered the e-bike return
+  question correctly: within 14 days, under 25 km, 10% goodwill up to EUR 25 with agent approval.
+  A question asked about 30 s after loading found nothing. Chunks become searchable 60–120 s after
+  loading, as the docs say; it worked at about 90 s.
+- **PgVector:** the log shows "Loaded … 6 chunks; Mendix Cloud true, PgVector true" for both
+  documents, and Postgres holds 12 rows for 2 documents. "Assistant (OpenRouter)" (free Nemotron model)
+  answered "A customer wants to return an e-bike after 10 days; they rode it 30 km" with
+  "No… must have been ridden less than 25 kilometres", citing *Returns and refunds #2, #4, #6* and
+  *Delivery and warranty #4*. Retrieval runs in the app, so a model without embeddings (OpenRouter)
+  can still use a vector knowledge base.
+- Agent Commons shows one `PolicyDocs` row per agent version: SupportAgent v0 and v1 on Mendix
+  Cloud, and the runtime agent v1 on PgVector. A restart adds no duplicates.
+
+OpenRouter key: with the fresh key passed as `--constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY`,
+the runtime agent works **without** the extra `-Dhttp.proxyHost` JVM options and without proxy key
+injection. The constant's default changed from the `proxy-injected` placeholder to empty.
+
+Gates:
+- A second exec of 10, 11 and 99 writes nothing.
+- `docker check`: 0 errors. `test --local`: 16/16. `lint`: 0 errors, 20 warnings (unchanged).
+- `report`: 72/100.
+
+Surprises:
+- **Changing a microflow's signature, or adding a branch with a `return`, is refused as a splice**
+  (MDL-V1-REBUILD) for `SUB_PolicyDocument_Ingest` and `SUB_SetUpRuntimeAgent`, even though mxcli
+  wrote both. A one-off `drop microflow`, followed by the exec, rebuilds them; the grants come back
+  from the script.
+- `PgVectorKnowledgeBase.ChunkCollection_Replace` logs a WARNING the first time ("No knowledge base
+  was found … Nothing could be deleted"). This is expected, and the insert still happens.
+- The PgVector table is named after the knowledge base (`policies`), not after the configuration,
+  and the vector column is `vector`, not `embedding`.

@@ -46,10 +46,19 @@ Generate a local encryption key once. The file is git-ignored, and a fresh conta
 python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)), end='')" > .mxcli/encryption.key
 ```
 
-Then start the app. The Mendix Cloud GenAI key is read from the `GENAI_TEXT_KEY` environment variable and never written to a file:
+Then start the app. Keys are read from environment variables and never written to a file:
+
+| Constant | Environment variable | Needed for |
+|---|---|---|
+| `ServiceDesk.MxGenAIKey` | `GENAI_TEXT_KEY` | Mendix Cloud GenAI text model (design-time agents) |
+| `ServiceDesk.MxGenAIKnowledgeBaseKey` | `MX_KB_KEY` | Mendix Cloud GenAI knowledge base (SupportAgent) |
+| `ServiceDesk.MxGenAIEmbeddingsKey` | `MX_EMBEDDINGS_KEY` | embeddings for the PgVector knowledge base (runtime agent) |
+| `ServiceDesk.OpenRouterApiKey` | `OPENROUTER_KEY` | the runtime agent on OpenRouter |
+
+Each one is optional: without it, that part is skipped and the app still starts.
 
 ```bash
-./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.OAuthClientSecret=local-dev-introspection-secret
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=mendix --constant ServiceDesk.OAuthClientSecret=local-dev-introspection-secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
 ```
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
@@ -80,6 +89,7 @@ Demo users:
 | demo_agent | My tasks | Claim *Resolve the ticket*, choose Resolved or Refund needed, then approve or reject the refund. |
 | demo_agent | Assistant | "How urgent is ticket 1005?" The support agent calls the triage agent as a tool. |
 | demo_agent | Assistant (OpenRouter) | The same questions, answered by the runtime agent on a free OpenRouter model. |
+| demo_agent | Policy documents | Upload `docs/demo-policies/*.md` and click *Load into knowledge base*. After about two minutes, ask either assistant "Can a customer return an e-bike after 10 days and 30 km?" |
 | demo_agent / demo_administrator | Dashboard | Open tickets per category and priority, and refund totals. |
 | demo_administrator | Token usage, Traces, Agents | GenAI usage, traces and the imported agents. |
 
@@ -114,14 +124,23 @@ MCP clients find the issuer themselves: the 401 response points to the protected
 
 "Assistant (OpenRouter)", for support agents and administrators, chats with **Support Agent (runtime)**. It is built at runtime in Agent Commons and runs on a free OpenRouter model (`ServiceDesk.OpenRouterModel`) through the OpenAI Connector. It is created at startup from Agent Commons export JSON. Administrators can then change it, add versions and run tests on the **Agents** page without a redeploy.
 
-The API key:
-- **In this Claude Code environment** it is a saved network secret for `openrouter.ai`, injected by the proxy. The Mendix runtime only uses that proxy when started with:
-
-  ```bash
-  PORT=$(echo "$HTTPS_PROXY" | sed -E 's#.*:([0-9]+)/?$#\1#')
-  JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=$PORT" ./mxcli run --local ... (as above)
-  ```
-
-- **Elsewhere,** pass the key: `--constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_API_KEY`.
+Pass the API key per run: `--constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY`.
 
 Free models are often rate-limited. If the assistant answers with an error, try again, or set `ServiceDesk.OpenRouterModel` to another free model that supports tool calls.
+
+## Policy knowledge bases
+
+*Load into knowledge base* on the **Policy documents** page splits a document into paragraphs and loads them twice:
+
+- into a **Mendix Cloud GenAI** knowledge base (collection `policies`), used by the design-time SupportAgent. It needs `MX_KB_KEY`.
+- into a **PgVector** knowledge base in a local PostgreSQL database, used by the runtime agent. It is embedded by a Mendix Cloud GenAI embeddings model, because OpenRouter has no embedding models. It needs `MX_EMBEDDINGS_KEY` and a database with pgvector. Set the database up once, on the app's local PostgreSQL 16:
+
+```bash
+apt-get install -y postgresql-16-pgvector
+```
+
+```bash
+su postgres -c "psql -c 'create database servicedesk_vectors owner mendix' -d postgres && psql -d servicedesk_vectors -c 'create extension vector'"
+```
+
+Change the database with the `ServiceDesk.PgVectorJdbcUrl`, `ServiceDesk.PgVectorUser` and `ServiceDesk.PgVectorPassword` constants.
