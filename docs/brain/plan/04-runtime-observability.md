@@ -8,7 +8,7 @@ stale. `mxcli brain plan` counts them against the model.
 
 ## Administrators see token usage and traces of model, tool, knowledge base and MCP calls
 
-Anchors: `@ServiceDesk.Admin_Observability` · id `1df8e4` · 2026-11-08
+Anchors: `@ConversationalUI.Trace_Overview`, `@ConversationalUI.TokenConsumptionMonitor` · id `1df8e4` · 2026-11-08
 
 ## An admin dashboard shows open tickets per category and priority and refund totals
 

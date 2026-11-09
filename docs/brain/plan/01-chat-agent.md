@@ -36,7 +36,7 @@ Anchors: `@ServiceDesk.SupportModel` · id `db6691` · 2026-11-08
 
 ## A full-screen chat page with conversation history
 
-Anchors: `@ServiceDesk.Chat_FullScreen` · id `eb0cf4` · 2026-11-08
+Anchors: `@ServiceDesk.Chat_WithHistory`, `@ServiceDesk.ACT_SupportChat_Open` · id `eb0cf4` · 2026-11-08
 
 ## A floating pop-up chat on the ticket overview page
 

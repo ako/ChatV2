@@ -98,6 +98,9 @@ Returned by `layouts()`.
 | `layout_type` | string | `"Responsive"`, `"Phone"`, `"Tablet"`, `"Popup"`, `"ModalPopup"`, `"Default"`, `"Legacy"` |
 | `platform` | string | `"Web"` or `"Native"` — the platform the layout (and every page on it) renders on. `layout_type` cannot tell: a native popup shares its value with a web one. React-client errors (CE0582) apply to `"Web"` only |
 | `description` | string | Documentation text |
+| `class_name` | string | The layout's own `Class` (Appearance), e.g. `"layout-atlas layout-atlas-responsive-default"`, else `""` (full catalog — auto-detected). Its widgets are `widgets()` rows with `container_type` `"LAYOUT"` |
+| `style` | string | The layout's own inline `Style` (Appearance), else `""` (full catalog) |
+| `dynamic_classes` | string | The layout's own `Dynamic classes` expression, else `""` (full catalog) |
 
 ### published_rest_operation
 Returned by `published_rest_operations()`.
@@ -123,13 +126,14 @@ Returned by `widgets()` (full catalog — auto-detected).
 | `widget_type` | string | The widget's storage type, e.g. `"Forms$DataView"`, `"Forms$DivContainer"`, `"Forms$ActionButton"`; a pluggable widget's id, e.g. `"com.mendix.widget.web.datagrid.Datagrid"` |
 | `container_id` | string | Container UUID |
 | `container_qualified_name` | string | `"Sales.Customer_Overview"` |
-| `container_type` | string | `"PAGE"` or `"SNIPPET"` |
+| `container_type` | string | `"PAGE"`, `"SNIPPET"` or `"LAYOUT"`. A layout's widgets reach every page on it, so a styling rule that skips `"LAYOUT"` misses the widest-reaching cases; a page-only rule (a data source, a page parameter) should filter on `"PAGE"` |
 | `module_name` | string | `"Sales"` |
 | `entity_ref` | string | Referenced entity qualified name |
 | `attribute_ref` | string | Referenced attribute path |
 | `microflow_ref` | string | Action/datasource microflow qualified name (e.g. a microflow-datasource ListView), else `""`. **One name only**: a widget that names several — a data grid 2 with a microflow datasource *and* an on-click microflow — shows the alphabetically smallest. Every one is in `refs` (kind `action`), so ask `refs_to(name)` whether a microflow is used, never this column. The same holds for `entity_ref`, `nanoflow_ref` and `page_ref` |
 | `nanoflow_ref` | string | Action/datasource nanoflow qualified name, else `""` |
 | `page_ref` | string | The page the widget's action opens (show page, create object then open page), else `""` |
+| `snippet_ref` | string | The snippet a snippet call places, else `""`. Its edge in `refs` is `snippet_call` to a `SNIPPET` |
 | `parent_widget_id` | string | `id` of the nearest catalogued ancestor widget; `""` at the page or snippet root. Wrappers the catalog skips (the synthetic `conditionalVisibilityWidget…` container) and non-widget holders (layout grid rows and columns, tab pages, a pluggable widget's properties and object-list items) are transparent: a widget in a layout grid column or a data grid 2 column has the grid as its parent |
 | `depth` | int | Number of catalogued ancestors: `0` at the page or snippet root. A list view **template** is a catalogued row of its own, so a widget inside one is two below the list view. Depth does **not** cross a snippet call: a snippet's widgets start at `0` in the snippet, whichever page calls it |
 | `class_name` | string | The widget's `Class` (Appearance), e.g. `"card mx-2"`, else `""`. Named `class_name` because `class` is a Starlark keyword |

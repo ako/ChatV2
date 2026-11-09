@@ -12,10 +12,10 @@ description: "Write custom Starlark lint rules in .claude/lint-rules/ that run b
 |---|---|
 | 25-67 | Rule File Structure |
 | 68-163 | Available Query Functions |
-| 164-545 | Object Properties |
-| 546-559 | Helper Functions |
-| 560-646 | Common Patterns |
-| 647-655 | Validation |
+| 164-548 | Object Properties |
+| 549-562 | Helper Functions |
+| 563-649 | Common Patterns |
+| 650-658 | Validation |
 
 <!-- /skill-index -->
 # Writing Custom Starlark Lint Rules
@@ -143,7 +143,7 @@ SEVERITY = "error"
 def check():
     out = []
     for d in module_dependencies():
-        if d.ref_kind in ("layout", "show_page"):  # ignore UI navigation
+        if d.ref_kind in ("layout", "show_page", "snippet_call"):  # ignore UI navigation
             continue
         ls, lt = layer_of(d.source_module + ".x"), layer_of(d.target_module + ".x")
         # (resolve a real asset per module in practice; shown simplified)
@@ -245,6 +245,9 @@ def check():
 | `url` | string | Page URL |
 | `description` | string | Documentation text |
 | `widget_count` | int | Number of widgets (full catalog — auto-detected) |
+| `class_name` | string | The page's own `Class` (Appearance), else `""` (full catalog — auto-detected). Named `class_name` because `class` is a Starlark keyword |
+| `style` | string | The page's own inline `Style` (Appearance), else `""` (full catalog) |
+| `dynamic_classes` | string | The page's own `Dynamic classes` expression, else `""` (full catalog) |
 
 ### enumeration
 | Property | Type | Example |
@@ -495,7 +498,7 @@ def count_not(node):
 | `module_name` | string | `"Sales"` |
 | `entity_ref` | string | Entity qualified name, for a create object, a database retrieve, and a delete — the entity of the deleted variable when the flow types it (a parameter, a create or retrieve output, a loop iterator); empty when it cannot |
 | `service_ref` | string | Called service document (REST / web service / OData client); empty when the activity calls none |
-| `action_ref` | string | Operation or action within that service; for a microflow, nanoflow, Java action or JavaScript action call, the called document, e.g. `"Sales.SUB_Process"` (`service_ref` then empty). Empty when the activity calls nothing |
+| `action_ref` | string | Operation or action within that service; for a microflow, nanoflow, Java action or JavaScript action call, the called document, e.g. `"Sales.SUB_Process"` (`service_ref` then empty). For an import or export action, the mapping; for a REST call with mappings, the response mapping, else the request one. Empty when the activity calls nothing |
 | `queue_ref` | string | Microflow or Java action call run in a task queue: the queue, e.g. `"Sales.OrderQueue"`. The call runs asynchronously, outside the loop and transaction it appears in. Empty for a call that runs in place |
 | `use_request_timeout` | bool | Call REST service or Call web service: whether "Use a timeout" is enabled. False for other action types |
 | `timeout_expression` | string | Call REST service or Call web service: the timeout in seconds, stored as an expression, e.g. `"300"` |
