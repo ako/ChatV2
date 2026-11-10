@@ -851,3 +851,30 @@ Question: do the catalog tables give the agent-related information a review need
   folder and description. There are no tables for tools, knowledge bases or MCP services, and no columns
   for usage type, model, streaming or approval. `CATALOG.STRINGS` indexes only agent documentation, not
   prompts or tool descriptions.
+
+## mxcli's agent fixes tested before adoption (2026-11-10)
+
+Built from source: ako/mxcli PR #2086 (`fix/2060-consumed-mcp-endpoint`, open), which has current
+`main` merged in (#2079, #2080, #2082, #2083, #2085). Today's nightly (10:34) only contains #2079.
+Tested on a scratch clone of this project, not the real one.
+
+| Issue | Fix | Result here |
+|---|---|---|
+| #2073 `CATALOG.AGENTS` empty | #2080 | Works: returns the 3 ServiceDesk agents (8 in total). |
+| #2074 refs from agents and microflow-typed Java action parameters | #2079 | Works. `show callers` of `Tool_GetOrderStatus` gives SupportAgent and `SUB_MCP_RegisterTools`; of `MCP_Authenticate`, `MCP_Initialize`. No ServiceDesk microflow is listed as dead any more (11 before). |
+| #2075 agent details and prompt search | #2080, #2082 | Works. New tables: `AGENT_TOOLS`, `AGENT_KNOWLEDGE_BASES`, `AGENT_MCP_SERVICES`, `PUBLISHED_MCP_SERVICES`. New columns: model, selected model, streaming, approval, collection, key constant. Values match the agent documents. `CATALOG.STRINGS` has system prompts and tool descriptions. |
+| #2069 ARCH001 on the chat page | #2083 | Works after `init --sync-skills` (the rule is a bundled lint rule copied into the project). Lint: 17 warnings. |
+| #2031 selected model | #2085 | Works. `SelectedModel:` in `07-agents.mdl` gives exactly the documents the patch script produced ("11 documents already in sync"). A new agent created with it needs no patch ("already up to date"). |
+| #2060 consumed MCP endpoint | #2086 (open) | Works, with the same two checks as #2031, for `Endpoint: @Module.Constant`. |
+
+All 14 scripts, run with this build, write nothing and report no errors, and `docker check` reports 0
+errors. `describe` output for agents and consumed MCP services re-executes as "Unchanged".
+
+Gaps left:
+- MDL-AGENT02 (no selected model) and MDL-AGENT03 (no endpoint) only fire on a plain `create`. A
+  `create or modify` of a **new** document, which is how every script here writes agents, gets no
+  warning. Lint does not flag a stored agent without a selected model either, although
+  `CATALOG.AGENTS.SelectedModel` now shows it empty.
+- `CATALOG.AGENTS.ToolCount` (6 for SupportAgent) counts microflow tools only. `AGENT_TOOLS` also lists
+  the agent's MCP services as `ToolType: MCP` rows (8), and so does `AGENT_MCP_SERVICES`.
+- `CATALOG.CONSUMED_MCP_SERVICES` has no Endpoint or AuthenticationMicroflow column, even with #2086.
