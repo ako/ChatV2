@@ -979,3 +979,19 @@ Tested on this project with both PRs merged onto `main` (bb14c543f, merged clean
   `ServiceDesk.ASU_App`.
 
 Reviews posted: [ako/mxcli#2104](https://github.com/ako/mxcli/pull/2104) (results, plus the app restart when a test needs building) and [ako/mxcli#2105](https://github.com/ako/mxcli/pull/2105) (both fixes confirmed with controls; merged 20:08 UTC).
+
+## mxcli rebuilt from main with #2104, #2105 and #2102 (2026-11-10)
+
+#2105 merged at 20:25 and #2104 at 20:43, both unchanged from what was tested above. The restart of the
+running app when a test needs building was not addressed, so it is filed as
+[ako/mxcli#2116](https://github.com/ako/mxcli/issues/2116).
+
+`/usr/local/bin/mxcli` is now `main` at b88dc5b9b (`nightly-174-gb88dc5b9b`); the previous build is kept as
+`mxcli.main-c0c8b4d2e`. `init --sync-skills` refreshed 6 skills and added **genai-runtime** (#2102, for
+#2068): the runtime side of Agents Kit 2, including the encryption-key, vector-extension, indexing-delay
+and collapsed-chat gotchas found here.
+
+Gates with this build: all 14 scripts write nothing; `lint` 0 errors, 17 warnings; `docker check` 0 errors;
+`test --local` 16/16. The app runs on it, with the helper servers restarted after another container recycle.
+For the inner loop, run the app with `--test-endpoint --allow-call` and use `mxcli test tests/ --attach`
+(about 0.5 s for the whole suite; it runs against the live database).
