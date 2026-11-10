@@ -977,3 +977,5 @@ Tested on this project with both PRs merged onto `main` (bb14c543f, merged clean
   `run stop`; the installed build (control) says nothing. The next plain `run` reported "test endpoint
   removed; project restored". `git status` was clean again, with the after-startup microflow back to
   `ServiceDesk.ASU_App`.
+
+Reviews posted: [ako/mxcli#2104](https://github.com/ako/mxcli/pull/2104) (results, plus the app restart when a test needs building) and [ako/mxcli#2105](https://github.com/ako/mxcli/pull/2105) (both fixes confirmed with controls; merged 20:08 UTC).
