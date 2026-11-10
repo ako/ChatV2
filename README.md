@@ -69,7 +69,7 @@ To share a preview, run with `--hub https://hub.mxcli.org` instead of `--local` 
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
 
-Run the scripts in `mdlsource/` in file order. Change the agents with `scripts/apply-agents.sh`, not by running `mdlsource/07-agents.mdl` on its own. The script also fills in the agent fields mxcli does not write yet; see `FINDINGS.md`.
+Run the scripts in `mdlsource/` in file order. They need an mxcli built from `main` after 2026-11-10 13:45 UTC, or a nightly from 2026-11-11 on: `07-agents.mdl` writes each agent's selected model and the MCP services' endpoints, which older builds reject.
 
 Live model tests cost GenAI units, so they are kept apart from `tests/`. Start the app as above with `--test-endpoint`, then run:
 

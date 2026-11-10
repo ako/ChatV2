@@ -2,8 +2,8 @@ mdl 1;
 
 -- Chat with the support agent: the action microflow Conversational UI runs
 -- on every send, the full-screen chat page, the floating chat button on the
--- ticket overview. Tool approval and streaming are stored in the agent
--- document by scripts/patch-agent-documents.py until mxcli writes them.
+-- ticket overview. Tool approval and streaming are set on the agent itself
+-- (07-agents.mdl).
 
 drop microflow if exists "ServiceDesk"."SUB_ApplyAgentRuntimeSettings";
 drop microflow if exists "ServiceDesk"."ACT_ChatContext_SupportAgent_Action";

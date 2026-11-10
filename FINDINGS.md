@@ -883,3 +883,27 @@ Filed: [ako/mxcli#2089](https://github.com/ako/mxcli/issues/2089) (MDL-AGENT02/0
 of a new document; no lint rule for stored ones) and [ako/mxcli#2090](https://github.com/ako/mxcli/issues/2090)
 (ToolCount versus AGENT_TOOLS, and no endpoint column). #2086 merged at 13:45 with the code tested here;
 the next nightly should carry all six fixes.
+
+## mxcli built from main; the agent patch script is gone (2026-11-10)
+
+`/usr/local/bin/mxcli` (which `./mxcli` points to) is now mxcli built from `main` at c0c8b4d2e
+(`nightly-142-gc0c8b4d2e`), with #2085 (selected model) and #2086 (consumed MCP endpoint). The
+released nightly is kept as `/usr/local/bin/mxcli.nightly-20261109`.
+
+- `07-agents.mdl` now sets `SelectedModel:` on the three agents and `Endpoint: @…` on the two consumed
+  MCP services. `scripts/patch-agent-documents.py`, `agent-document-fields.json` and `apply-agents.sh`
+  are deleted.
+- Exec wrote only the two MCP services' documentation text (the "set by the patch script" sentence
+  was removed). Every agent document was unchanged, so the MDL produces exactly the patched documents.
+  A second run writes nothing. `describe` shows the endpoints, and `CATALOG.AGENTS` the selected models.
+- Live: Agent Editor's startup import finished with no "Model … could not be found". As demo_customer,
+  one question used `GetOrderStatus`, `track_parcel` (carrier MCP) and `order_products` (product graph
+  MCP), and answered correctly.
+- Gates: `check` passed; `docker check` 0 errors; `test --local` 16/16; `lint` 0 errors, 17 warnings;
+  `report` 75/100. Skills synced to the new build.
+
+**Caveat for fresh sessions:** an mxcli older than main@80039bc64 (the 2026-11-10 nightly and earlier)
+rejects `SelectedModel` and `Endpoint`, so `07-agents.mdl` fails to parse with it. The tooling stamp is
+now a dev version, which the bootstrap's version guard cannot compare. A fresh container therefore
+keeps whatever mxcli it gets. Use a nightly from 2026-11-11 on, or build `main`. The README and the
+brain (b486f6) say the same.

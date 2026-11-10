@@ -23,11 +23,11 @@ Anchors: `@ServiceDesk.SUB_EnsureDemoCustomerAccount` · id `10285b` · 2026-11-
 
 The runtime had not created demo users when the after-startup microflow ran, so the Customer link stayed empty. SUB_EnsureDemoCustomerAccount creates the account with the Customer role when it is missing, then SUB_SeedCustomers links it to Ada Jansen.
 
-## A new agent needs scripts/apply-agents.sh once, to set its selected model
+## 07-agents.mdl writes each agent's selected model and the MCP services' endpoints; no patch script any more
 
 Anchors: `@ServiceDesk.SupportAgent` · id `b486f6` · 2026-11-08
 
-Since mxcli nightly 2026-11-09 (ako/mxcli#2037, #2038), 07-agents.mdl writes tool microflow references, tool approval and streaming, and create or modify keeps fields it does not model. Only selectedModel cannot be written yet (ako/mxcli#2031); without it Agent Editor refuses the agent and aborts the import of all agents. scripts/apply-agents.sh runs the script and then scripts/patch-agent-documents.py, which sets selectedModel from scripts/agent-document-fields.json where it is missing. An older mxcli drops these fields again on every exec.
+Since mxcli main after 2026-11-10 (ako/mxcli#2085 for #2031, #2086 for #2060), create or modify agent takes SelectedModel and create or modify consumed mcp service takes Endpoint: @Constant. The documents this writes are identical to what the old scripts/patch-agent-documents.py produced (verified: exec reported every document unchanged against the patched model, and the patch script found nothing to change on a newly created agent and service). An mxcli older than that rejects both properties, so a fresh session must not run the scripts with the 2026-11-10 nightly or older. Without a selected model Agent Editor refuses the agent and aborts the import of every agent; without an endpoint a consumed MCP service connects nowhere. Since the check warnings for these (MDL-AGENT02/03) do not fire on create or modify of a new document (ako/mxcli#2089), keep SelectedModel and Endpoint on every agent and service in the script.
 
 ## SupportAgent runs on Claude Sonnet 5.5, TriageAgent on Claude Haiku 5.5, without temperature
 
