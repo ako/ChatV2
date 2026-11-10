@@ -1056,3 +1056,5 @@ A long-running mxcli REPL does not see a write by another process, whether a new
 v2, with `main` as well, and there is no refresh command. It is above the reader, so it is not caused by
 these PRs, and it hides #2115's change detection from a CLI test. That path (a commit by another
 connection) is covered by #2115's `TestListUnitsByTypeV1ScansTableOncePerChange_Issue2094`, which passes.
+
+Reviews posted on [ako/mxcli#2115](https://github.com/ako/mxcli/pull/2115) and [ako/mxcli#2118](https://github.com/ako/mxcli/pull/2118). The REPL staleness is filed as [ako/mxcli#2121](https://github.com/ako/mxcli/issues/2121).
