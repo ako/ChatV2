@@ -878,3 +878,8 @@ Gaps left:
 - `CATALOG.AGENTS.ToolCount` (6 for SupportAgent) counts microflow tools only. `AGENT_TOOLS` also lists
   the agent's MCP services as `ToolType: MCP` rows (8), and so does `AGENT_MCP_SERVICES`.
 - `CATALOG.CONSUMED_MCP_SERVICES` has no Endpoint or AuthenticationMicroflow column, even with #2086.
+
+Filed: [ako/mxcli#2089](https://github.com/ako/mxcli/issues/2089) (MDL-AGENT02/03 skip `create or modify`
+of a new document; no lint rule for stored ones) and [ako/mxcli#2090](https://github.com/ako/mxcli/issues/2090)
+(ToolCount versus AGENT_TOOLS, and no endpoint column). #2086 merged at 13:45 with the code tested here;
+the next nightly should carry all six fixes.
