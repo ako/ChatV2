@@ -949,3 +949,31 @@ or the interpreter learning them. Keep `test --local` as the gate, since it star
 database.
 
 PR #2101 merged at 18:25 UTC (head a0e6dc24d, the commit tested above). A review with the timings, suggestions and the full list of statements the exec route does not run yet (40 of 48 statement types, plus restrictions on the 8 it does run) is posted on [ako/mxcli#2101](https://github.com/ako/mxcli/pull/2101).
+
+## mxcli PRs #2104 and #2105, the follow-ups to the #2101 review (2026-11-10)
+
+Tested on this project with both PRs merged onto `main` (bb14c543f, merged cleanly), app under
+`run --hub --test-endpoint --allow-call`.
+
+**#2104: per-test routing; aggregates and association retrieves in the app**
+- The **unmodified** suite now runs entirely in the app: "Running 16 test(s) in the running app (no
+  injection, no build)", **0.39 to 0.60 s** (about 78 s with #2101 alone, 52 s warm with `--local`). The
+  same 2 live-data failures, with the same actual values as the built route (10; 214.99).
+- Mixed file (2 plain tests, plus one `if` and one `call java action`): "Running 4 test(s): 2 in the
+  running app, 2 as built test microflows", all pass. Refusals now name the MDL ("the statement if", "the
+  statement call java action").
+- `run --hub --allow-call` prints the warning that the token is the only guard.
+- **Still disturbs the app when a test needs building:** the mixed run took 84 s, and the app's own
+  watcher picked up the injected test microflows (build #2 failed, build #3 applied via a runtime
+  restart, which drops sessions), although the run says it uses "a separate mxbuild --serve … the app's
+  own is left as it is". The injected microflows were removed afterwards. Runs entirely in the app
+  trigger no build.
+
+**#2105: no phantom "change pending"; leftover endpoint**
+- After boot under `--test-endpoint`, `run status` no longer says "change pending", and `run wait`
+  returns in 1 s (before: a 5-minute timeout).
+- With the app SIGKILLed (as in a container recycle), the model keeps `AfterStartupMicroflow:
+  'MxTest.RegisterEndpoint'`. `check -p` with the PR build warns "Do not commit it" and names
+  `run stop`; the installed build (control) says nothing. The next plain `run` reported "test endpoint
+  removed; project restored". `git status` was clean again, with the after-startup microflow back to
+  `ServiceDesk.ASU_App`.
