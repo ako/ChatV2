@@ -1021,3 +1021,38 @@ happens with both builds. `run stop` of the dev loop restored the project from i
 **Until it is fixed: stop the dev loop (or run it without `--test-endpoint`) before `test --local`.**
 
 #2117 merged at 21:27 UTC (head 5f562c59d, as tested). Review posted on [ako/mxcli#2117](https://github.com/ako/mxcli/pull/2117).
+
+## mxcli PRs #2115 and #2118: exec/check speed on large projects (#2094) (2026-11-10)
+
+Built four binaries from `main` (3f3d96013): `main` itself, `main` + #2115, `main` + #2118, and `main` + both.
+The merges only conflicted in CHANGELOG.md. Both PRs' unit tests pass on the combined build.
+- #2115 changes the MPR v1 reader (single-file `.mpr`); this project is v2.
+- #2118 changes the executor's entity and microflow lookups (v1 and v2).
+- For v1, I converted a copy of this app (2,389 units) by moving each `mprcontents/` file into a `Contents`
+  column of the `Unit` table. mxcli reads it (as v1); Studio Pro 11.16 would not.
+
+Benchmark: 50 × `create microflow` with an entity parameter and return type; 50 × `create or modify`
+adding one `log` activity; `check --references` of the modify script; the modify script again. Each run
+on a fresh copy:
+
+| Build | v2: create / modify / check | v1: create / modify / check |
+|---|---|---|
+| `main` | 9.2 / 22.2 / 8.2 s | 36.2 / 93.0 / 40.4 s |
+| #2115 | 8.5 / 19.5 / 7.8 s | 10.3 / 34.7 / 11.9 s |
+| #2118 | 5.5 / 5.8 / 5.6 s | 29.4 / 60.1 / 31.8 s |
+| both | 5.6 / 6.1 / 6.3 s | **8.0 / 14.4 / 8.5 s** |
+
+- Every run: 50 created, 50 modified, and the re-run writes nothing. A stored microflow's `describe`
+  (layout markers stripped) is identical across all 8 runs.
+- v1 with both: about 6.5× faster on modify (the PR says about 7.5×, on a larger project).
+- v2: #2118 alone gives about 3.6× on modify. #2115 has no effect on v2, as expected.
+
+This project with both PRs: all 14 scripts write nothing and report no errors; every `check --references`
+passes; `docker check` 0 errors. Checking all 14 scripts takes 37 s, against 38 s on `main` (mostly
+no-ops, where the per-statement cost is not what dominates).
+
+A long-running mxcli REPL does not see a write by another process, whether a new microflow
+(`show microflows` still lists 73) or a modified one (`describe` keeps the old one). This happens on v1 and
+v2, with `main` as well, and there is no refresh command. It is above the reader, so it is not caused by
+these PRs, and it hides #2115's change detection from a CLI test. That path (a commit by another
+connection) is covered by #2115's `TestListUnitsByTypeV1ScansTableOncePerChange_Issue2094`, which passes.
