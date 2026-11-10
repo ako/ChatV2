@@ -1019,3 +1019,5 @@ scratch runtime's after-startup then recurses (StackOverflowError; no tests run)
 project unbuildable: the after-startup setting names the removed `MxTest.RegisterEndpoint` (CE1613). It
 happens with both builds. `run stop` of the dev loop restored the project from its restore record.
 **Until it is fixed: stop the dev loop (or run it without `--test-endpoint`) before `test --local`.**
+
+#2117 merged at 21:27 UTC (head 5f562c59d, as tested). Review posted on [ako/mxcli#2117](https://github.com/ako/mxcli/pull/2117).
