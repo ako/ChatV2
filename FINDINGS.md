@@ -835,3 +835,19 @@ Checked and not mxcli problems:
 - The project's skills lagged the binary only because a newer nightly was installed mid-session.
   `.claude/bootstrap-mxcli.sh` runs `init --sync-skills` at session start. A scratch sync updates 9 skills
   and adds `mcp-server`.
+
+## The mxcli catalog and agents (2026-11-10)
+
+Question: do the catalog tables give the agent-related information a review needs? Not yet. Filed:
+- [ako/mxcli#2073](https://github.com/ako/mxcli/issues/2073): every `select … from CATALOG.AGENTS`
+  prints nothing (exit 0). The 8 rows are in `.mxcli/catalog.db`, and `list agents` shows them.
+- [ako/mxcli#2074](https://github.com/ako/mxcli/issues/2074): no refs from agent documents (to tools,
+  model, knowledge base, MCP services, key constants), and none from microflow-typed Java action
+  parameters (`ActionMicroflow`, `AuthenticationMicroflow`, `AddPrompt`'s `Microflow`).
+  `show callers of ServiceDesk.Tool_GetOrderStatus` reports no callers, and `GRAPH_DEAD_ASSETS` lists all
+  six agent tools, both chat action microflows, both MCP authentication microflows and the MCP prompt
+  as unused. **Do not delete "dead" microflows in this app on the catalog's word.**
+- [ako/mxcli#2075](https://github.com/ako/mxcli/issues/2075): the agent tables carry only name, module,
+  folder and description. There are no tables for tools, knowledge bases or MCP services, and no columns
+  for usage type, model, streaming or approval. `CATALOG.STRINGS` indexes only agent documentation, not
+  prompts or tool descriptions.
