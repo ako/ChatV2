@@ -947,3 +947,5 @@ Verdict: for the inner loop it makes the tests 150 to 300 times faster (seconds 
 or more) and leaves the running app alone (#2063). That depends on the suite avoiding list aggregates,
 or the interpreter learning them. Keep `test --local` as the gate, since it starts from a scratch
 database.
+
+PR #2101 merged at 18:25 UTC (head a0e6dc24d, the commit tested above). A review with the timings, suggestions and the full list of statements the exec route does not run yet (40 of 48 statement types, plus restrictions on the 8 it does run) is posted on [ako/mxcli#2101](https://github.com/ako/mxcli/pull/2101).
