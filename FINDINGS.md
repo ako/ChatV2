@@ -995,3 +995,27 @@ Gates with this build: all 14 scripts write nothing; `lint` 0 errors, 17 warning
 `test --local` 16/16. The app runs on it, with the helper servers restarted after another container recycle.
 For the inner loop, run the app with `--test-endpoint --allow-call` and use `mxcli test tests/ --attach`
 (about 0.5 s for the whole suite; it runs against the live database).
+
+## mxcli PR #2117: a test run holds the dev loop (2026-11-10)
+
+PR #2117 (`fix/attach-holds-dev-loop`, open, `main` + 3 commits) answers ako/mxcli#2116 and #2063: a test
+run writes `.mxcli/watch-hold.json`, and the dev loop's watcher waits, then absorbs the change when the
+model is back as it was. Tested with a browser logged in as demo_agent during the run (it opens Tickets
+afterwards; "logged in" means no redirect to sign-in):
+
+| Run (dev loop under `--watch --hub`) | Dev-loop builds | `.mpr` byte-identical | Session survives |
+|---|---|---|---|
+| mixed `test --attach` (2 in app, 2 built), control `main` b88dc5b9b | 2 (failed, then applied via restart) | no | **no**: sent to sign-in |
+| mixed `test --attach`, PR build | **0** | yes | **yes** |
+| `test tests/ --local`, PR build | **0** | yes | **yes** |
+| `test tests/ --local`, control | 2 (applied via restart) | yes | **no** |
+
+While held, `run status` shows "held by a test run (pid …); a change waits", and afterwards
+"build #1 (boot)". A real edit afterwards (a comment in the ServiceDesk theme) still built (by reload).
+
+**Separate, pre-existing bug, filed as [ako/mxcli#2119](https://github.com/ako/mxcli/issues/2119):** with the
+dev loop on `--test-endpoint`, `test --local` chains its endpoint to `MxTest.RegisterEndpoint` itself. The
+scratch runtime's after-startup then recurses (StackOverflowError; no tests run). The cleanup also leaves the
+project unbuildable: the after-startup setting names the removed `MxTest.RegisterEndpoint` (CE1613). It
+happens with both builds. `run stop` of the dev loop restored the project from its restore record.
+**Until it is fixed: stop the dev loop (or run it without `--test-endpoint`) before `test --local`.**
