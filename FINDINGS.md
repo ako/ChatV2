@@ -907,3 +907,43 @@ rejects `SelectedModel` and `Endpoint`, so `07-agents.mdl` fails to parse with i
 now a dev version, which the bootstrap's version guard cannot compare. A fresh container therefore
 keeps whatever mxcli it gets. Use a nightly from 2026-11-11 on, or build `main`. The README and the
 brain (b486f6) say the same.
+
+## mxcli PR #2101: running tests without building (2026-11-10)
+
+PR #2101 (`feat/test-interpreter`, open, up to date with `main`) adds `run … --test-endpoint --allow-call`.
+With it, `mxcli test … --attach` compiles each test into steps that the running app executes. There is
+no injecting and no mxbuild. Measured on this project's 16 tests (wall clock, PR build):
+
+| Route | Time | Notes |
+|---|---|---|
+| A: `test tests/ --local` (current gate) | 149 s cold, 52 s warm | separate scratch runtime and database; test execution itself 0.3 s |
+| B: `test --attach`, inject and build | about 78 s | rebuilds the running app (13 watch builds over the attach runs; one transient "client bundle not served") |
+| C: `test --attach` on the `--allow-call` route | **0.26 to 0.38 s** for 11 tests | no build, no model change, no watch build; same verdicts as route A |
+
+Routing is all-or-nothing per run. One test the interpreter cannot run sends the whole run down route B.
+Here both files fell back because of list aggregates (`$n = count $list`, `sum … by`); the interpreter
+refuses `AggregateList`. An association retrieve (`retrieve $C from $T/Assoc`) is not supported either.
+- 11 of 16 tests run on route C unchanged.
+- 3 more do after a rewrite, verified at 0.12 s: `@expect count($Customers) = 5` instead of a `count`
+  statement, and a database retrieve with XPath instead of an association retrieve.
+- The 2 dashboard view tests (`sum` over a view) would stay on route A. They also assume freshly seeded
+  data: on the live app's database they fail (10 open tickets instead of 9; refunds 214.99 instead of
+  199.99, because of demo chats).
+
+Writes are safe on the live database: tests roll back by default (`@cleanup rollback`). The attach runs
+left no "Test ticket" rows and no test refunds.
+
+Caveats:
+- `run --test-endpoint` swaps the after-startup microflow for `MxTest.RegisterEndpoint` while the app
+  runs. The model shows as modified in `git status`, and the watch loop reports it as a pending change
+  that never builds. `run stop` restores it. A container recycle is not a clean exit, so check
+  `git status` (ProjectSettings) before committing after one.
+- The app's own `ASU_App` still runs after the endpoint registers: agents imported, MCP servers created.
+- `--allow-call` runs microflows in a system context. The route is POST-only, loopback-only and
+  token-guarded. Under `--hub` the tunnel also arrives from loopback, so the token is the remaining
+  guard.
+
+Verdict: for the inner loop it makes the tests 150 to 300 times faster (seconds instead of a minute
+or more) and leaves the running app alone (#2063). That depends on the suite avoiding list aggregates,
+or the interpreter learning them. Keep `test --local` as the gate, since it starts from a scratch
+database.
