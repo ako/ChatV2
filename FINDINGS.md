@@ -1058,3 +1058,30 @@ these PRs, and it hides #2115's change detection from a CLI test. That path (a c
 connection) is covered by #2115's `TestListUnitsByTypeV1ScansTableOncePerChange_Issue2094`, which passes.
 
 Reviews posted on [ako/mxcli#2115](https://github.com/ako/mxcli/pull/2115) and [ako/mxcli#2118](https://github.com/ako/mxcli/pull/2118). The REPL staleness is filed as [ako/mxcli#2121](https://github.com/ako/mxcli/issues/2121).
+
+## Published REST: request examples in the generated Swagger docs (2026-11-11)
+
+Question: are there no POST body examples in the Swagger docs Mendix generates for published REST APIs ("Try it out" is empty)?
+
+Test: a scratch clone of this app (Mendix 11.16.0) on port 8081, with the published service
+`ServiceDesk.TicketTestApi` and three POST operations on the same microflow and entity, differing only in what
+the import mapping is based on. The docs are at `/rest-doc/rest/tickettest/v1`, and the spec at
+`/rest-doc/rest/tickettest/v1/openapi.json` (OpenAPI 3.0.4), not under the service path.
+
+| Import mapping based on | `requestBody` schema in openapi.json | Swagger UI "Try it out" |
+|---|---|---|
+| message definition with `example` values | `$ref` to a schema with every property **and its example** (integers typed) | pre-filled with the examples |
+| message definition without examples | `$ref` to a schema with the properties, no examples | placeholders (`"string"`, `0`) |
+| JSON structure (sample has values) | `{"type": "object"}`, no properties | **`{}`, empty** |
+
+A GET with a message-definition export mapping also documents its response with the examples. Both POST variants
+accept the same request (`200 Received: …`); the JSON-structure one is only undocumented.
+
+**Conclusion:** the report reproduces when the import mapping is based on a JSON structure. Basing the import (and
+export) mapping on a message definition gives a full schema, with the example values from the message definition.
+
+mxcli gaps found on the way (11.16 project, `main` b88dc5b9b):
+- `check` passes `create message definition collection`, but `exec` refuses it ("Mendix 11.15 removed message
+  definition collections").
+- `mxcli syntax message-definition` documents only the collection form, not the 11.15+ standalone
+  `create message definition Module.Name for Module.Entity { … }`. That form takes no `folder` clause.
