@@ -1,0 +1,188 @@
+mdl 1;
+
+-- Product graph outline: a page for service-desk staff that shows the product
+-- knowledge graph (Apache Jena Fuseki, see tools/fuseki) as an outline tree:
+-- class -> product, supplier, issue or order -> its facts and links, both ways.
+--
+-- Straight SPARQL over HTTP, no MCP server in between: the app POSTs one
+-- SELECT query (tools/fuseki/queries/outline.rq, kept in step by hand), a JSLT
+-- data transformer flattens the SPARQL JSON results, and an import mapping turns
+-- the rows into GraphNode objects. Every row carries its parent's key, so the
+-- tree needs no associations. "Reload from graph" replaces the snapshot.
+
+/** SPARQL query endpoint of the product graph (Fuseki, read-only dataset). */
+create or modify constant "ServiceDesk"."ProductGraphSparqlEndpoint" folder 'Product graph' ( Type: String, DefaultValue: 'http://localhost:3030/products/sparql' );
+
+/** One node of the product graph outline, loaded from the graph with SPARQL. Kind is class, resource, value, link, inlink or line. */
+create or modify persistent entity "ServiceDesk"."GraphNode" (
+  "NodeKey": String(1000) not null unique,
+  "ParentKey": String(1000),
+  "Label": String(1000),
+  "Kind": String(20),
+  "Detail": String(1000),
+  "SortKey": String(1000)
+);
+
+grant read * on entity "ServiceDesk"."GraphNode" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Flattens SPARQL JSON results (results.bindings[].var.value) into one flat object per row. */
+create or modify data transformer "ServiceDesk"."FlattenGraphOutline" folder 'Product graph'
+  source json '{"head": {"vars": ["key", "parent", "label", "kind", "detail", "sort"]}, "results": {"bindings": [{"key": {"type": "literal", "value": "https://example.org/bikeshop#Part"}, "parent": {"type": "literal", "value": ""}, "label": {"type": "literal", "value": "Part"}, "kind": {"type": "literal", "value": "class"}, "detail": {"type": "literal", "value": "13"}, "sort": {"type": "literal", "value": "Part"}}]}}'
+{
+  jslt $$
+[for (.results.bindings)
+  {
+    "key": .key.value,
+    "parent": .parent.value,
+    "label": .label.value,
+    "kind": .kind.value,
+    "detail": .detail.value,
+    "sort": .sort.value
+  }
+]
+  $$;
+};
+
+/** The flattened outline rows. */
+create or modify json structure "ServiceDesk"."JSON_GraphOutline" folder 'Product graph'
+  sample '[{"key": "https://example.org/bikeshop#Part", "parent": "", "label": "Part", "kind": "class", "detail": "13 nodes", "sort": "Part"}]';
+
+/** Outline rows to GraphNode objects. */
+create or modify import mapping "ServiceDesk"."IMM_GraphOutline" folder 'Product graph'
+  with json structure "ServiceDesk"."JSON_GraphOutline"
+{
+  create "ServiceDesk"."GraphNode" {
+    "NodeKey" = key,
+    "ParentKey" = parent,
+    "Label" = label,
+    "Kind" = kind,
+    "Detail" = detail,
+    "SortKey" = sort
+  }
+};
+
+/** Loads the outline from the product graph: one SPARQL query over HTTP, flattened by a data transformer and imported as GraphNode objects, replacing the stored ones. Returns false, and keeps the old outline, when the graph cannot be reached. */
+create or modify microflow "ServiceDesk"."SUB_ProductGraph_Load" ()
+returns Boolean as $Loaded
+folder 'Product graph'
+begin
+  declare $Query String = 'PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX shop: <https://example.org/bikeshop#> SELECT ?key ?parent ?label ?kind ?detail ?sort WHERE { { { SELECT ?c (COUNT(DISTINCT ?i) AS ?n) WHERE { ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) } GROUP BY ?c } ?c rdfs:label ?cl . BIND(STR(?c) AS ?key) BIND("" AS ?parent) BIND(?cl AS ?label) BIND("class" AS ?kind) BIND(STR(?n) AS ?detail) BIND(?cl AS ?sort) } UNION { ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) OPTIONAL { ?i rdfs:label ?il } OPTIONAL { ?i shop:sku ?sku } OPTIONAL { ?i shop:orderNumber ?on } OPTIONAL { ?i shop:issueId ?iid } BIND(COALESCE(?sku, ?iid, ?on, "") AS ?code) BIND(COALESCE(?il, ?on, REPLACE(STR(?i), "^.*#", "")) AS ?name) BIND(STR(?i) AS ?key) BIND(STR(?c) AS ?parent) BIND("resource" AS ?kind) BIND(IF(?code != "" && ?code != ?name, CONCAT(?code, " · ", ?name), ?name) AS ?label) BIND("" AS ?detail) BIND(?label AS ?sort) } UNION { ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) ?s ?p ?o . FILTER(?p NOT IN (rdf:type, rdfs:label, shop:hasLine, shop:sku, shop:orderNumber, shop:issueId)) OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?o rdfs:label ?ol } BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn) BIND(CONCAT(STR(?s), "|", STR(?p), "|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent) BIND(IF(isIRI(?o), "link", "value") AS ?kind) BIND(CONCAT(IF(isIRI(?o), "→ ", ""), ?pn, ": ", COALESCE(?ol, STR(?o))) AS ?label) BIND(IF(isIRI(?o), STR(?o), "") AS ?detail) BIND(CONCAT("1 ", ?label) AS ?sort) } UNION { ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) ?x ?p ?s . FILTER(isIRI(?x)) OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?x rdfs:label ?xl } OPTIONAL { ?x shop:orderNumber ?xon } BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn) BIND(CONCAT(STR(?s), "|in|", STR(?p), "|", STR(?x)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind) BIND(CONCAT("← ", ?pn, ": ", COALESCE(?xl, ?xon, REPLACE(STR(?x), "^.*#", ""))) AS ?label) BIND(STR(?x) AS ?detail) BIND(CONCAT("3 ", ?label) AS ?sort) } UNION { ?s shop:hasLine ?ln . ?ln shop:product ?lp ; shop:quantity ?q ; shop:unitPrice ?up . OPTIONAL { ?ln shop:batch ?b } OPTIONAL { ?lp rdfs:label ?lpl } ?lp shop:sku ?lsku . BIND(CONCAT(STR(?s), "|line|", STR(?lp)) AS ?key) BIND(STR(?s) AS ?parent) BIND("line" AS ?kind) BIND(CONCAT("order line: ", STR(?q), " × ", ?lsku, " ", ?lpl, " at EUR ", STR(?up), IF(BOUND(?b), CONCAT(", batch ", ?b), "")) AS ?label) BIND(STR(?lp) AS ?detail) BIND(CONCAT("0 ", ?label) AS ?sort) } UNION { ?s a ?c . FILTER(?c != shop:OrderLine) ?o shop:hasLine ?ln . ?ln shop:product ?s ; shop:quantity ?q . ?o shop:orderNumber ?on . OPTIONAL { ?ln shop:batch ?b } BIND(CONCAT(STR(?s), "|in-order|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind) BIND(CONCAT("← in order ", ?on, " (", STR(?q), " ×", IF(BOUND(?b), CONCAT(", batch ", ?b), ""), ")") AS ?label) BIND(STR(?o) AS ?detail) BIND(CONCAT("4 ", ?label) AS ?sort) } }';
+  $Results = call rest service post @"ServiceDesk"."ProductGraphSparqlEndpoint" (
+    Headers: ('Accept': 'application/sparql-results+json', 'Content-Type': 'application/sparql-query'),
+    Body: $Query,
+    Timeout: 30,
+  ) returns String on error without rollback begin
+    log error node 'ServiceDesk' 'Reading the product graph failed: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  $Rows = transform $Results with "ServiceDesk"."FlattenGraphOutline";
+  retrieve $Old from "ServiceDesk"."GraphNode";
+  delete $Old;
+  $Nodes = import from mapping "ServiceDesk"."IMM_GraphOutline"($Rows) all;
+  commit $Nodes;
+  return true;
+end;
+
+/** Whether an outline has been loaded. */
+create or modify microflow "ServiceDesk"."SUB_ProductGraph_IsLoaded" ()
+returns Boolean as $IsLoaded
+folder 'Product graph'
+begin
+  retrieve $Any from "ServiceDesk"."GraphNode" first;
+  return $Any != empty;
+end;
+
+/** Reloads the outline from the product graph, from the button on the page. */
+create or modify microflow "ServiceDesk"."ACT_ProductGraph_Reload" ()
+returns Boolean as $Loaded
+folder 'Product graph'
+begin
+  $Loaded = call microflow "ServiceDesk"."SUB_ProductGraph_Load" ();
+  if not($Loaded) then
+    show message 'The product graph cannot be reached right now. The outline shows the last snapshot.' type Error;
+  end if;
+  return $Loaded;
+end;
+
+/** Opens the product graph outline, loading it from the graph the first time. */
+create or modify microflow "ServiceDesk"."ACT_ProductGraph_Open" ()
+returns Boolean as $Opened
+folder 'Product graph'
+begin
+  $IsLoaded = call microflow "ServiceDesk"."SUB_ProductGraph_IsLoaded" ();
+  if not($IsLoaded) then
+    $Loaded = call microflow "ServiceDesk"."ACT_ProductGraph_Reload" ();
+  end if;
+  show page "ServiceDesk"."ProductGraph_Outline" ();
+  return true;
+end;
+
+/** The child nodes of one outline node, in outline order. */
+create or modify microflow "ServiceDesk"."DS_GraphNode_Children" ($Parent: "ServiceDesk"."GraphNode")
+returns List of "ServiceDesk"."GraphNode" as $Children
+folder 'Product graph'
+begin
+  retrieve $Children from "ServiceDesk"."GraphNode" where [ParentKey = $Parent/NodeKey] sort by "SortKey" asc;
+  return $Children;
+end;
+
+/** The product knowledge graph as an outline: classes, then their members, then each member's facts and links. */
+create or modify page "ServiceDesk"."ProductGraph_Outline" folder 'Product graph'
+(
+  title: 'Product graph',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgGraph {
+    row {
+      column (desktopwidth: autofill) {
+        dynamictext txtHeading (content: 'Product graph', rendermode: H2)
+        dynamictext txtIntro (content: 'The product knowledge graph the support agent is grounded in, read with SPARQL from the graph database. Open a class to see its members, and a member to see its facts: → links to another node, ← is a node that links here.', rendermode: Paragraph)
+        actionbutton btnReload (caption: 'Reload from graph', action: call microflow "ServiceDesk"."ACT_ProductGraph_Reload", buttonstyle: Default, Icon: Atlas_Core.Atlas.refresh)
+        pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tnClasses (
+          datasource: database "ServiceDesk"."GraphNode" where [Kind = 'class'] sort by "SortKey" asc,
+          headerType: custom,
+          hasChildren: true,
+          advancedMode: true,
+          animate: false,
+          Class: 'graph-outline'
+        ) {
+          headercontent hcClass {
+            dynamictext txtClass (content: '{1} ({2})', contentparams: ({1} = "Label", {2} = "Detail"), rendermode: H5)
+          }
+          children chClass {
+            pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tnMembers (
+              datasource: microflow "ServiceDesk"."DS_GraphNode_Children"(Parent = $currentObject),
+              headerType: custom,
+              hasChildren: true,
+              advancedMode: true,
+              animate: false
+            ) {
+              headercontent hcMember {
+                dynamictext txtMember (content: '{1}', contentparams: ({1} = "Label"), rendermode: Text)
+              }
+              children chMember {
+                pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tnFacts (
+                  datasource: microflow "ServiceDesk"."DS_GraphNode_Children"(Parent = $currentObject),
+                  headerType: custom,
+                  hasChildren: false,
+                  advancedMode: true,
+                  animate: false
+                ) {
+                  headercontent hcFact {
+                    dynamictext txtFact (content: '{1}', contentparams: ({1} = "Label"), rendermode: Text, Class: 'graph-outline-fact')
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+grant execute on microflow "ServiceDesk"."ACT_ProductGraph_Reload" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ProductGraph_Open" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_GraphNode_Children" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."ProductGraph_Outline" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

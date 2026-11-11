@@ -1099,3 +1099,64 @@ Filed: [ako/mxcli#2139](https://github.com/ako/mxcli/issues/2139) (check/exec mi
   (`create message definition M.Name folder 'ApiTest' for M.Entity { … }`), where `describe` prints it.
   I had put it after `for`, which is a parse error and still is. With the right placement the Swagger test
   script checks, execs, re-execs with 0 writes, and builds with 0 errors.
+
+## Rich chat answers: a custom pluggable widget in Conversational UI (2026-11-11)
+
+Replaced Conversational UI's Markdown viewer with our own pluggable widget (ChatRichText). It renders markdown plus
+` ```card ` JSON blocks as cards. Built with `@mendix/pluggable-widgets-tools` 11.16.0. Swapped in with
+`alter snippet … replace` (`mdlsource/13-chat-rich-text.mdl`).
+
+Three things stood between "check passes" and "the app deploys", and every one failed with the same generic mxbuild
+message, *"Deployment failed during export of pluggable widgets … are ES6 modules"*:
+
+1. **The widget id must be `<packagePath>.<lowercase widgetName>.<widgetName>`**
+   (`com.servicedesk.widgets.chatrichtext.ChatRichText`). The client loads the script from the path the id spells,
+   so `com.servicedesk.widgets.ChatRichText` points at a file that is not in the mpk. Neither mxcli, `mx check` nor
+   `docker check` notice. Found by comparing with the Badge and Markdown mpks.
+2. **A widget whose instance has `Visible:` must declare `<systemProperty key="Visibility"/>`** (and Label, as the
+   Markdown viewer does). Found by comparing the stored widget type (`mxcli bson dump`) with the original's. After
+   adding them, the generated typings drop `class` and `style` from the props, although the runtime still passes
+   them, so the component has to read them through a widened type.
+3. **Conversational UI's message snippet has two Markdown viewers.** `markdownViewer2` renders sub-messages;
+   `markdownViewer1` renders the final assistant answer. Swapping only the first changes nothing a user sees.
+   `select … from catalog.widgets` (after `refresh catalog full`) lists them.
+
+mxcli notes: `exec` needs `mxcli widget init` after copying in a new mpk ("installed but not extracted"), while
+`check` passes without it. Re-running the `alter snippet` prints "Altered" even when the stored unit is
+byte-identical (no file is written), so "Altered" does not mean a write.
+
+**Verified live** as demo_customer with SupportAgent: "Where is my order SO-10002?" gives a parcel card (status
+pill, fields, tracking timeline, note) and a known-issue card, with plain text between them. Both in-use agent
+versions carry the card rules (OQL on `AgentCommons.Version`). The runtime OpenRouter agent could not be tried:
+OpenRouter's free Nvidia provider returned 503, "content safety screening is temporarily unavailable", on every
+call. That is upstream. A constant override of `OpenRouterModel` does not help, because it creates a new
+deployed model while the seeded agent stays on the old one. Gates: check and re-exec clean (0 writes); lint 0
+errors, 17 warnings; report 75/100; docker check 0 errors; tests 16/16.
+
+## Product graph outline: SPARQL straight from Mendix (2026-11-11)
+
+A staff page (`ProductGraph_Outline`) shows the Fuseki product graph as a three-level Tree node outline:
+class → member → facts and links, both directions. It's built from one UNION SPARQL query whose branches all bind
+the same six variables (key, parent, label, kind, detail, sort). The inline REST POST
+(`application/sparql-query`) returns the JSON, a JSLT data transformer flattens `results.bindings[].var.value`
+into a root-level array, and an import mapping turns that into a list of persistent `GraphNode` objects. There's
+no association: each level's datasource is a microflow that retrieves `ParentKey = $Parent/NodeKey`. 286 nodes;
+the reload is idempotent (count unchanged).
+
+Found on the way:
+- **Tree node's open animation clips children loaded later.** With the default `animate: true`, an expanded
+  class showed 4 of 13 parts and 14 of 15 orders. The DOM had all of them, and the panel height was fixed before
+  the microflow datasource returned. `animate: false` fixes it, but needs `advancedMode: true`. mxcli `check`
+  caught that before the build (MDL-WIDGET10, "hidden when advancedMode is disabled … CE0463").
+- **Tree node 3.4.0's loading spinner is a 404 on Mendix 11.16.** The page bundle asks for
+  `widgets/com/mendix/widget/web/treenode/assets/….svg`, but the deployment has it under `dist/…`. It's harmless
+  (only the spinner) and comes from the Marketplace widget and platform, not this app.
+- Reshaping a microflow that has an error handler (moving the REST call into a `SUB_`) is refused by
+  `create or modify` (MDL-V1-REBUILD), with nothing written. Since this one was new and mxcli-authored,
+  dropping it once and letting the script recreate it was the right fix, and the grants come back from the script.
+- The graph-down path is verified: with Fuseki stopped, "Reload from graph" shows the error message and the
+  outline keeps the last snapshot.
+
+Gates: check clean, and the second exec writes nothing; lint 0 errors, 18 warnings (the new one is ARCH002 on
+the read-only snapshot entity); report 74/100; docker check 0 errors; tests 16/16. Customers do not see the menu
+item (page and microflows are granted to SupportAgent and Admin only).

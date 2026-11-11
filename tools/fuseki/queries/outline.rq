@@ -1,0 +1,59 @@
+# Outline of the product graph for the app's Product graph page: one row per tree node
+# (class -> resource -> its facts and links, both directions). Every branch binds the same
+# variables: key, parent (the parent node's key), label, kind, detail (a linked resource), sort.
+# mdlsource/14-product-graph-outline.mdl sends this query; keep the two in step.
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX shop: <https://example.org/bikeshop#>
+SELECT ?key ?parent ?label ?kind ?detail ?sort WHERE {
+  {
+  {
+    SELECT ?c (COUNT(DISTINCT ?i) AS ?n) WHERE { ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) } GROUP BY ?c
+  }
+  ?c rdfs:label ?cl .
+  BIND(STR(?c) AS ?key) BIND("" AS ?parent) BIND(?cl AS ?label) BIND("class" AS ?kind) BIND(STR(?n) AS ?detail) BIND(?cl AS ?sort)
+  }
+UNION {
+  ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine)
+  OPTIONAL { ?i rdfs:label ?il } OPTIONAL { ?i shop:sku ?sku } OPTIONAL { ?i shop:orderNumber ?on } OPTIONAL { ?i shop:issueId ?iid }
+  BIND(COALESCE(?sku, ?iid, ?on, "") AS ?code)
+  BIND(COALESCE(?il, ?on, REPLACE(STR(?i), "^.*#", "")) AS ?name)
+  BIND(STR(?i) AS ?key) BIND(STR(?c) AS ?parent) BIND("resource" AS ?kind)
+  BIND(IF(?code != "" && ?code != ?name, CONCAT(?code, " · ", ?name), ?name) AS ?label)
+  BIND("" AS ?detail) BIND(?label AS ?sort)
+}
+UNION {
+  ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine)
+  ?s ?p ?o . FILTER(?p NOT IN (rdf:type, rdfs:label, shop:hasLine, shop:sku, shop:orderNumber, shop:issueId))
+  OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?o rdfs:label ?ol }
+  BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn)
+  BIND(CONCAT(STR(?s), "|", STR(?p), "|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent)
+  BIND(IF(isIRI(?o), "link", "value") AS ?kind)
+  BIND(CONCAT(IF(isIRI(?o), "→ ", ""), ?pn, ": ", COALESCE(?ol, STR(?o))) AS ?label)
+  BIND(IF(isIRI(?o), STR(?o), "") AS ?detail) BIND(CONCAT("1 ", ?label) AS ?sort)
+}
+UNION {
+  ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine)
+  ?x ?p ?s . FILTER(isIRI(?x))
+  OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?x rdfs:label ?xl } OPTIONAL { ?x shop:orderNumber ?xon }
+  BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn)
+  BIND(CONCAT(STR(?s), "|in|", STR(?p), "|", STR(?x)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind)
+  BIND(CONCAT("← ", ?pn, ": ", COALESCE(?xl, ?xon, REPLACE(STR(?x), "^.*#", ""))) AS ?label)
+  BIND(STR(?x) AS ?detail) BIND(CONCAT("3 ", ?label) AS ?sort)
+}
+UNION {
+  ?s shop:hasLine ?ln . ?ln shop:product ?lp ; shop:quantity ?q ; shop:unitPrice ?up .
+  OPTIONAL { ?ln shop:batch ?b } OPTIONAL { ?lp rdfs:label ?lpl } ?lp shop:sku ?lsku .
+  BIND(CONCAT(STR(?s), "|line|", STR(?lp)) AS ?key) BIND(STR(?s) AS ?parent) BIND("line" AS ?kind)
+  BIND(CONCAT("order line: ", STR(?q), " × ", ?lsku, " ", ?lpl, " at EUR ", STR(?up), IF(BOUND(?b), CONCAT(", batch ", ?b), "")) AS ?label)
+  BIND(STR(?lp) AS ?detail) BIND(CONCAT("0 ", ?label) AS ?sort)
+}
+UNION {
+  ?s a ?c . FILTER(?c != shop:OrderLine)
+  ?o shop:hasLine ?ln . ?ln shop:product ?s ; shop:quantity ?q . ?o shop:orderNumber ?on .
+  OPTIONAL { ?ln shop:batch ?b }
+  BIND(CONCAT(STR(?s), "|in-order|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind)
+  BIND(CONCAT("← in order ", ?on, " (", STR(?q), " ×", IF(BOUND(?b), CONCAT(", batch ", ?b), ""), ")") AS ?label)
+  BIND(STR(?o) AS ?detail) BIND(CONCAT("4 ", ?label) AS ?sort)
+}
+}
