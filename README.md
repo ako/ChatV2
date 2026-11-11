@@ -171,6 +171,12 @@ setsid nohup python3 tools/product-graph-mcp/server.py > /tmp/product-graph.log 
 
 The SPARQL endpoint is `http://localhost:3030/products/sparql`, and the MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The graph does not know who is asking, so the agent is told to find an order with `GetOrderStatus`, which applies the app's access rules, before calling `order_products`. That guard is in the prompt only.
 
+### Product graph page (SPARQL from the app)
+
+Support agents and administrators also get a **Product graph** page: an outline of the whole graph, built with the Tree node widget. Open a class (Part, Order, Supplier...) to see its members, and a member to see its facts. → is a link to another node, and ← is a node that links here, such as the orders containing a part or the recall affecting it.
+
+The app reads the graph itself, without the MCP server (`mdlsource/14-product-graph-outline.mdl`). It POSTs one SPARQL SELECT (`tools/fuseki/queries/outline.rq`) to `ServiceDesk.ProductGraphSparqlEndpoint`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when Fuseki is down.
+
 ## SQL to the vector database
 
 The app also reads the PgVector database (`servicedesk_vectors`) with plain SQL, through Mendix's **External Database Connector** (`mdlsource/06b-vector-db-sql.mdl`), as a read-only user. Create the user once, with its password in a git-ignored file:

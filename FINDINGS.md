@@ -1132,3 +1132,31 @@ OpenRouter's free Nvidia provider returned 503, "content safety screening is tem
 call. That is upstream. A constant override of `OpenRouterModel` does not help, because it creates a new
 deployed model while the seeded agent stays on the old one. Gates: check and re-exec clean (0 writes); lint 0
 errors, 17 warnings; report 75/100; docker check 0 errors; tests 16/16.
+
+## Product graph outline: SPARQL straight from Mendix (2026-11-11)
+
+A staff page (`ProductGraph_Outline`) shows the Fuseki product graph as a three-level Tree node outline:
+class → member → facts and links, both directions. It's built from one UNION SPARQL query whose branches all bind
+the same six variables (key, parent, label, kind, detail, sort). The inline REST POST
+(`application/sparql-query`) returns the JSON, a JSLT data transformer flattens `results.bindings[].var.value`
+into a root-level array, and an import mapping turns that into a list of persistent `GraphNode` objects. There's
+no association: each level's datasource is a microflow that retrieves `ParentKey = $Parent/NodeKey`. 286 nodes;
+the reload is idempotent (count unchanged).
+
+Found on the way:
+- **Tree node's open animation clips children loaded later.** With the default `animate: true`, an expanded
+  class showed 4 of 13 parts and 14 of 15 orders. The DOM had all of them, and the panel height was fixed before
+  the microflow datasource returned. `animate: false` fixes it, but needs `advancedMode: true`. mxcli `check`
+  caught that before the build (MDL-WIDGET10, "hidden when advancedMode is disabled … CE0463").
+- **Tree node 3.4.0's loading spinner is a 404 on Mendix 11.16.** The page bundle asks for
+  `widgets/com/mendix/widget/web/treenode/assets/….svg`, but the deployment has it under `dist/…`. It's harmless
+  (only the spinner) and comes from the Marketplace widget and platform, not this app.
+- Reshaping a microflow that has an error handler (moving the REST call into a `SUB_`) is refused by
+  `create or modify` (MDL-V1-REBUILD), with nothing written. Since this one was new and mxcli-authored,
+  dropping it once and letting the script recreate it was the right fix, and the grants come back from the script.
+- The graph-down path is verified: with Fuseki stopped, "Reload from graph" shows the error message and the
+  outline keeps the last snapshot.
+
+Gates: check clean, and the second exec writes nothing; lint 0 errors, 18 warnings (the new one is ARCH002 on
+the read-only snapshot entity); report 74/100; docker check 0 errors; tests 16/16. Customers do not see the menu
+item (page and microflows are granted to SupportAgent and Admin only).
