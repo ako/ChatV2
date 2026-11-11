@@ -1084,7 +1084,18 @@ mxcli gaps found on the way (11.16 project, `main` b88dc5b9b):
 - `check` passes `create message definition collection`, but `exec` refuses it ("Mendix 11.15 removed message
   definition collections").
 - `mxcli syntax message-definition` documents only the collection form, not the 11.15+ standalone
-  `create message definition Module.Name for Module.Entity { … }`. That form takes no `folder` clause.
+  `create message definition Module.Name for Module.Entity { … }`. (I also thought it takes no `folder` clause;
+  it does, before `for`. See below.)
 
 Filed: [ako/mxcli#2139](https://github.com/ako/mxcli/issues/2139) (check/exec mismatch) and
 [ako/mxcli#2140](https://github.com/ako/mxcli/issues/2140) (syntax help and `folder`).
+
+**Fixed in mxcli `main` (PR #2144, verified 2026-11-11 with nightly-240-g9cd9ce8ee on a scratch clone):**
+- #2139: `check -p` now refuses a collection on 11.16 with exec's exact text (MDL-VERSION01). `exec` refuses
+  before writing anything ("Nothing was written"); before, it wrote the entity and then failed.
+- #2140: `mxcli syntax message-definition` leads with the document form, and the collection form is marked
+  "Mendix 10.0.0 to 11.14.99".
+- Correction: the document form **does** take a folder. It goes **before** `for`
+  (`create message definition M.Name folder 'ApiTest' for M.Entity { … }`), where `describe` prints it.
+  I had put it after `for`, which is a parse error and still is. With the right placement the Swagger test
+  script checks, execs, re-execs with 0 writes, and builds with 0 errors.
