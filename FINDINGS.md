@@ -1085,3 +1085,6 @@ mxcli gaps found on the way (11.16 project, `main` b88dc5b9b):
   definition collections").
 - `mxcli syntax message-definition` documents only the collection form, not the 11.15+ standalone
   `create message definition Module.Name for Module.Entity { … }`. That form takes no `folder` clause.
+
+Filed: [ako/mxcli#2139](https://github.com/ako/mxcli/issues/2139) (check/exec mismatch) and
+[ako/mxcli#2140](https://github.com/ako/mxcli/issues/2140) (syntax help and `folder`).
