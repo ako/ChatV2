@@ -182,3 +182,19 @@ The app also reads the PgVector database (`servicedesk_vectors`) with plain SQL,
 ```bash
 su postgres -c "psql -d servicedesk_vectors -c \"create role servicedesk_reader login password '$(cat .mxcli/vectordb-reader.password)'; grant connect on database servicedesk_vectors to servicedesk_reader; grant usage on schema public to servicedesk_reader; grant select on all tables in schema public to servicedesk_reader; alter default privileges for role mendix in schema public grant select on tables to servicedesk_reader\""
 ```
+
+## Rich chat answers (cards)
+
+Agent answers show **cards** instead of a wall of text: an order or parcel with its tracking timeline, a product, a recall, a ticket, a refund. The agents are told (in their system prompts) to put the key facts from their tool results in a ` ```card ` block of JSON. The chat renders the block as a card and renders the rest as markdown.
+
+The cards come from the app's own pluggable widget, **ChatRichText** (`widgets-src/ChatRichText`, React + markdown-it, raw HTML escaped). `mdlsource/13-chat-rich-text.mdl` puts it in place of both Markdown viewers in Conversational UI's message snippet. **That customises a Marketplace module:** run the script again after updating Conversational UI. The runtime agent gets the card rules at startup, unless its prompt already has them, so an administrator's other prompt edits are kept.
+
+Build the widget after changing it, then reinstall it:
+
+```bash
+cd widgets-src/ChatRichText && npm install && npm test && npm run build
+```
+
+```bash
+cp widgets-src/ChatRichText/dist/1.0.0/com.servicedesk.widgets.ChatRichText.mpk widgets/ && ./mxcli widget init -p ServiceDeskCopilot.mpr
+```

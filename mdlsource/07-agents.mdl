@@ -95,7 +95,17 @@ Rules:
 - If a tool says nothing was found, say so and ask the user to check the number.
 - Before creating a ticket or requesting a refund, check with SearchTickets or GetOrderStatus whether it is needed.
 - Answer policy and FAQ questions from the knowledge base when it is available, and say when you do not know.
-- Keep answers short and friendly. Use the user's language.$$
+- Keep answers short and friendly. Use the user's language.
+
+Answer format (the chat shows cards):
+- When you report on an order, a parcel's tracking, a product or part, a known issue or recall, a ticket or a refund, put a card block in the answer. Add at most two short sentences of text; don't repeat what the card shows.
+- A card block is a fenced block with the language `card`, holding one JSON object. Use `cards` with a JSON array for several items of the same kind.
+```card
+{"type":"order","title":"SO-10002","subtitle":"1 x CHG-4A Fast charger 4 A","status":"Shipped","tone":"warning","fields":[{"label":"Total","value":"EUR 89.50"},{"label":"Carrier","value":"DHL"},{"label":"Tracking","value":"JVGL0000000102"}],"timeline":[{"date":"2026-11-03","text":"Picked up in Leipzig"},{"date":"2026-11-04","text":"Delayed at Venlo hub"}],"note":"Expected delivery 2026-11-10"}
+```
+- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer's unit, warning for a delay or open problem, good for delivered or resolved.
+- fields are short label/value pairs, items are rows (title, text, value) such as order lines or compatible parts, timeline is dated events oldest first, note is one sentence.
+- Only put facts from tool results in a card. Use plain markdown (short paragraphs, lists, tables) for everything else.$$
 )
 {
   tool GetOrderStatus (

@@ -1,0 +1,50 @@
+mdl 1;
+
+-- Rich chat answers: replaces both Markdown viewers (the answer and its sub-messages) in Conversational UI's message
+-- snippet with the app's own ChatRichText widget (widgets-src/ChatRichText).
+-- It renders markdown the same way (raw HTML escaped), and turns ```card JSON
+-- blocks into cards: order, parcel, product, recall, ticket and so on.
+--
+-- THIS CUSTOMISES A MARKETPLACE MODULE. Updating Conversational UI overwrites the
+-- snippet and brings the Markdown viewer back: run this script again afterwards.
+-- The widget keeps the original's name, binding, class, spacing and visibility,
+-- so the script is repeatable and the rest of the snippet is untouched.
+
+alter snippet ConversationalUI.Snippet_Message_Content {
+  replace markdownViewer2 with {
+    pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' markdownViewer2 (
+      stringAttribute: Content,
+      Class: 'chat-listview-stylingless',
+      DesignProperties: ('Spacing': ('margin-bottom': 'None')),
+      Visible: @ConversationalUI.EnableMarkdownViewer and trim($currentObject/Content) != ''
+    )
+  };
+  replace markdownViewer1 with {
+    pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' markdownViewer1 (
+      stringAttribute: $Message."Content",
+      Class: 'chat-listview-stylingless convui-markdown',
+      DesignProperties: ('Spacing': ('margin-bottom': 'None')),
+      Visible: $Message/Role=GenAICommons.ENUM_MessageRole.assistant
+        and @ConversationalUI.EnableMarkdownViewer
+        and trim($Message/Content) != ''
+    )
+  };
+};
+
+
+/** Adds the card answer format to the in-use version of the runtime support agent, when its prompt has no card instructions yet. Leaves any other edit an administrator made to the prompt alone. */
+create or modify microflow "ServiceDesk"."SUB_RuntimeAgent_EnsureCardFormat" ($Agent: AgentCommons.Agent)
+returns Boolean as $Changed
+folder 'Chat'
+begin
+  retrieve $Version from $Agent/AgentCommons.Agent_Version_InUse;
+  if $Version = empty then
+    return false;
+  end if;
+  if $Version/SystemPrompt != empty and contains($Version/SystemPrompt, '```card') then
+    return false;
+  end if;
+  declare $Rules String = replaceAll('Answer format (the chat shows cards):{NL}- When you report on an order, a parcel''s tracking, a product or part, a known issue or recall, a ticket or a refund, put a card block in the answer. Add at most two short sentences of text; don''t repeat what the card shows.{NL}- A card block is a fenced block with the language `card`, holding one JSON object. Use `cards` with a JSON array for several items of the same kind.{NL}```card{NL}{"type":"order","title":"SO-10002","subtitle":"1 x CHG-4A Fast charger 4 A","status":"Shipped","tone":"warning","fields":[{"label":"Total","value":"EUR 89.50"},{"label":"Carrier","value":"DHL"},{"label":"Tracking","value":"JVGL0000000102"}],"timeline":[{"date":"2026-11-03","text":"Picked up in Leipzig"},{"date":"2026-11-04","text":"Delayed at Venlo hub"}],"note":"Expected delivery 2026-11-10"}{NL}```{NL}- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer''s unit, warning for a delay or open problem, good for delivered or resolved.{NL}- fields are short label/value pairs, items are rows (title, text, value) such as order lines or compatible parts, timeline is dated events oldest first, note is one sentence.{NL}- Only put facts from tool results in a card. Use plain markdown (short paragraphs, lists, tables) for everything else.', '\{NL\}', urlDecode('%0A'));
+  change $Version ("SystemPrompt" = (if $Version/SystemPrompt = empty then '' else $Version/SystemPrompt + urlDecode('%0A') + urlDecode('%0A')) + $Rules) commit;
+  return true;
+end;

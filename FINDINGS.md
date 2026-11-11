@@ -1099,3 +1099,36 @@ Filed: [ako/mxcli#2139](https://github.com/ako/mxcli/issues/2139) (check/exec mi
   (`create message definition M.Name folder 'ApiTest' for M.Entity { … }`), where `describe` prints it.
   I had put it after `for`, which is a parse error and still is. With the right placement the Swagger test
   script checks, execs, re-execs with 0 writes, and builds with 0 errors.
+
+## Rich chat answers: a custom pluggable widget in Conversational UI (2026-11-11)
+
+Replaced Conversational UI's Markdown viewer with our own pluggable widget (ChatRichText). It renders markdown plus
+` ```card ` JSON blocks as cards. Built with `@mendix/pluggable-widgets-tools` 11.16.0. Swapped in with
+`alter snippet … replace` (`mdlsource/13-chat-rich-text.mdl`).
+
+Three things stood between "check passes" and "the app deploys", and every one failed with the same generic mxbuild
+message, *"Deployment failed during export of pluggable widgets … are ES6 modules"*:
+
+1. **The widget id must be `<packagePath>.<lowercase widgetName>.<widgetName>`**
+   (`com.servicedesk.widgets.chatrichtext.ChatRichText`). The client loads the script from the path the id spells,
+   so `com.servicedesk.widgets.ChatRichText` points at a file that is not in the mpk. Neither mxcli, `mx check` nor
+   `docker check` notice. Found by comparing with the Badge and Markdown mpks.
+2. **A widget whose instance has `Visible:` must declare `<systemProperty key="Visibility"/>`** (and Label, as the
+   Markdown viewer does). Found by comparing the stored widget type (`mxcli bson dump`) with the original's. After
+   adding them, the generated typings drop `class` and `style` from the props, although the runtime still passes
+   them, so the component has to read them through a widened type.
+3. **Conversational UI's message snippet has two Markdown viewers.** `markdownViewer2` renders sub-messages;
+   `markdownViewer1` renders the final assistant answer. Swapping only the first changes nothing a user sees.
+   `select … from catalog.widgets` (after `refresh catalog full`) lists them.
+
+mxcli notes: `exec` needs `mxcli widget init` after copying in a new mpk ("installed but not extracted"), while
+`check` passes without it. Re-running the `alter snippet` prints "Altered" even when the stored unit is
+byte-identical (no file is written), so "Altered" does not mean a write.
+
+**Verified live** as demo_customer with SupportAgent: "Where is my order SO-10002?" gives a parcel card (status
+pill, fields, tracking timeline, note) and a known-issue card, with plain text between them. Both in-use agent
+versions carry the card rules (OQL on `AgentCommons.Version`). The runtime OpenRouter agent could not be tried:
+OpenRouter's free Nvidia provider returned 503, "content safety screening is temporarily unavailable", on every
+call. That is upstream. A constant override of `OpenRouterModel` does not help, because it creates a new
+deployed model while the seeded agent stays on the old one. Gates: check and re-exec clean (0 writes); lint 0
+errors, 17 warnings; report 75/100; docker check 0 errors; tests 16/16.

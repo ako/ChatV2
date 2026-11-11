@@ -16,6 +16,7 @@ begin
     log warning node 'ServiceDesk' 'Runtime agent not created: {1}' with ({1} = $latestError/Message);
     return false;
   end error;
+  $CardFormatAdded = call microflow "ServiceDesk"."SUB_RuntimeAgent_EnsureCardFormat" (Agent = $RuntimeAgent);
   $PgVectorReady = call microflow "ServiceDesk"."ASU_ConfigurePgVector" () on error without rollback begin
     log warning node 'ServiceDesk' 'PgVector knowledge base not configured: {1}' with ({1} = $latestError/Message);
     return true;

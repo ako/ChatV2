@@ -20,3 +20,7 @@ The docs do not say. Decides whether one Test-resource key can serve local runs 
 Anchors: none · id `acd506` · 2026-11-08
 
 Agent Editor supports only Mendix Cloud GenAI and Azure AI Foundry for models and only Mendix Cloud GenAI for knowledge bases, so a bring-your-own endpoint cannot back a design-time agent.
+
+## Conversational UI's message snippet is customised: both Markdown viewers are replaced by the ChatRichText widget (mdlsource/13-chat-rich-text.mdl). Re-run that script after updating Conversational UI.
+
+Anchors: none · id `ce67f4` · 2026-11-11
