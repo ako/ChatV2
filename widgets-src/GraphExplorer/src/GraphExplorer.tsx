@@ -2,12 +2,17 @@ import { ReactElement, useEffect, useRef, useState } from "react";
 import { GraphExplorerContainerProps } from "../typings/GraphExplorerProps";
 import { GraphApi, GraphView } from "./shared/graph/GraphView";
 import { kindColor, NodeDetails, NodeFact, searchNodes } from "./shared/graph/api";
+import { ModelView } from "./shared/model/ModelView";
 import "./ui/GraphExplorer.css";
 
 // The Product explorer: search a starting point, click nodes to expand them,
 // switch relation types off, and read a node's details on the side. Data comes
 // from the app's reference API with the user's own session, so a customer
 // never sees other customers' orders here either.
+//
+// "3D" shows the last bike selected in the graph as a 3D model (shared/model):
+// selecting a part in the graph highlights it on the bike, and clicking a part
+// on the bike selects it in the graph.
 
 function startFromUrl(): string | undefined {
     const ref = new URLSearchParams(window.location.search).get("ref") ?? "";
@@ -23,6 +28,11 @@ export function GraphExplorer(props: GraphExplorerContainerProps): ReactElement 
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<NodeFact[]>([]);
     const start = startFromUrl() ?? (props.startRef || "EB-200");
+    const [view, setView] = useState<"graph" | "3d">("graph");
+    const [bike, setBike] = useState<string>(start);
+    const isBike = (n: NodeDetails | null): boolean => !!n && /bike/i.test(n.kind);
+    useEffect(() => { if (selected && isBike(selected)) setBike(selected.ref); }, [selected]);
+    const highlight = selected && !isBike(selected) && selected.ref ? [selected.ref] : [];
 
     useEffect(() => {
         if (query.trim().length < 2) { setResults([]); return; }
@@ -59,6 +69,10 @@ export function GraphExplorer(props: GraphExplorerContainerProps): ReactElement 
                         </ul>
                     )}
                 </div>
+                <div className="gx-views" role="group" aria-label="View">
+                    <button type="button" className={`gx-view${view === "graph" ? " gx-view-on" : ""}`} aria-pressed={view === "graph"} onClick={() => setView("graph")}>Graph</button>
+                    <button type="button" className={`gx-view${view === "3d" ? " gx-view-on" : ""}`} aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D</button>
+                </div>
                 <button type="button" className="btn mx-button" onClick={() => api.current?.fit()}>Fit</button>
                 <button type="button" className="btn mx-button" onClick={() => { api.current?.clear(); setSelected(null); }}>Clear</button>
             </div>
@@ -70,9 +84,17 @@ export function GraphExplorer(props: GraphExplorerContainerProps): ReactElement 
                 </div>
             )}
             <div className="gx-body">
-                <GraphView startRef={start} height={props.height ?? 620} hiddenRelations={hidden}
-                    apiRef={a => { api.current = a; }} onSelect={setSelected}
-                    onChange={(rel, k) => { setRelations(rel); setKinds(k); }} />
+                <div className="gx-main">
+                    <div style={{ display: view === "graph" ? "block" : "none" }}>
+                        <GraphView startRef={start} height={props.height ?? 620} hiddenRelations={hidden}
+                            apiRef={a => { api.current = a; }} onSelect={setSelected}
+                            onChange={(rel, k) => { setRelations(rel); setKinds(k); }} />
+                    </div>
+                    {view === "3d" && (
+                        <ModelView key={bike} productRef={bike} highlight={highlight} height={(props.height ?? 620) - 110}
+                            onSelectPart={ref => api.current?.focus(ref)} />
+                    )}
+                </div>
                 <aside className="gx-panel">
                     {selected ? (
                         <>

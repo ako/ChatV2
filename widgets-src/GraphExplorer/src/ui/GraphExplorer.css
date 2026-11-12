@@ -36,3 +36,10 @@
 .gx-legend li { display: flex; gap: 5px; align-items: center; }
 .gx-hint { margin: 0; color: var(--gx-muted); font-size: 13px; }
 @media (max-width: 900px) { .gx-body { grid-template-columns: 1fr; } }
+
+/* Graph | 3D switch */
+.gx-views { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(0, 0, 0, 0.22); }
+.gx-view { border: 0; background: transparent; color: var(--mxt-ink-muted, #5b6675); padding: 4px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.gx-view-on { background: rgba(255, 255, 255, 0.12); color: var(--mxt-ink, #1b2430); }
+.gx-main { flex: 1 1 auto; min-width: 0; }
+.gx-main .mv-root { margin-top: 0; }

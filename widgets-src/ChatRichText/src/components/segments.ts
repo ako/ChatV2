@@ -40,6 +40,10 @@ export interface MapStop { place: string; date?: string; text?: string; tone?: T
 export interface MapPoint { place: string; value?: number; label?: string }
 export interface MapSpec { route: MapStop[]; points: MapPoint[]; unit?: string; highlight?: string }
 
+// A 3D model of a product (a bike), with parts highlighted. The parts come from
+// the product graph; the card only names which ones to light up.
+export interface ModelSpec { ref: string; highlight: string[] }
+
 export interface Card {
     type: string;
     title: string;
@@ -54,6 +58,7 @@ export interface Card {
     // A network around one graph node, expandable in place.
     graph?: { ref: string };
     map?: MapSpec;
+    model?: ModelSpec;
     note?: string;
 }
 
@@ -184,9 +189,12 @@ export function toCard(raw: unknown): Card | undefined {
         outline: toOutline(o.outline, 1),
         graph: (str(o.type) ?? "").toLowerCase() === "graph" && cleanRef(o.ref) ? { ref: cleanRef(o.ref) as string } : undefined,
         map: toMap(o),
+        model: (str(o.type) ?? "").toLowerCase() === "model" && cleanRef(o.ref)
+            ? { ref: cleanRef(o.ref) as string, highlight: (Array.isArray(o.highlight) ? list(o.highlight, h => cleanRef(h)) : [cleanRef(o.highlight)].filter((h): h is string => !!h)).slice(0, 12) }
+            : undefined,
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.model && !card.note;
     return empty ? undefined : card;
 }
 

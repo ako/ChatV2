@@ -1476,3 +1476,23 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 45/45 pass.
 - Widget unit tests: 18/18 pass, 4 new for map parsing, including rejecting HTML and coordinates as place names.
+
+## 3D product viewer with a procedural bike (2026-11-12)
+
+Verified live:
+- **Product explorer** (demo_agent, Graph | 3D): the EB-200 is drawn with its battery, rear hub motor and charger, plus the tyres, tubes, disc brakes and seat post the graph lists as compatible. **Show what fits** adds the rack, basket, child seat and lights. The exploded view separates the parts. Clicking the battery highlights it and shows its price and warranty.
+- **Chat** (demo_customer): "Where is the battery on my EB-200 from SO-10003, and is it affected by the battery recall? Show me on the bike." The answer has a model card with BAT-418 lit, next to the recall card. That card says "Not affected" (the unit is batch B2605, the recall is B2603), so the highlight stayed teal rather than red, as the prompt asks.
+
+**The graph decides what the bike has, the code only where things sit.** Mapping SKU prefixes to positions keeps the model generic: the EB-500 gets its mid-drive and its battery from the graph without a model of its own. The bike's `brakes` value picks disc or rim brakes.
+
+**The bundle grows.** three.js makes the ChatRichText package about 716 KB (was 454 KB). It is not loaded lazily: the pluggable-widget build produces a single bundle.
+
+**Headless Chromium renders WebGL** (software), so the viewer can be screenshotted and recorded; it is only slower.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 22 warnings.
+- `report`: 62/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Widget unit tests: 20/20 pass, 2 new for model cards.

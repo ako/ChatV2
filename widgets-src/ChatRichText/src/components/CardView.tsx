@@ -5,11 +5,12 @@ import { OutlineView } from "./OutlineView";
 import { MaybeRef } from "./RefLink";
 import { GraphView } from "../shared/graph/GraphView";
 import { MapView } from "./MapView";
+import { ModelView } from "../shared/model/ModelView";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
     issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info",
-    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections", map: "Map"
+    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections", map: "Map", model: "3D view"
 };
 
 function label(type: string): string {
@@ -58,6 +59,10 @@ export function CardView({ card }: { card: Card }): ReactElement {
                         <a href={`p/product-explorer?ref=${encodeURIComponent(card.graph.ref)}`}>Open in the product explorer</a>
                     </div>
                 </div>
+            )}
+            {card.model && (
+                <ModelView productRef={card.model.ref} highlight={card.model.highlight} height={320}
+                    tone={card.tone === "critical" ? "critical" : card.tone === "warning" ? "warning" : "accent"} />
             )}
             {card.map && <MapView map={card.map} height={card.type === "map" ? 300 : 220} />}
             {card.timeline.length > 0 && (

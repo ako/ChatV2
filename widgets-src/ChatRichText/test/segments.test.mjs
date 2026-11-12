@@ -111,3 +111,14 @@ test("place names that are not plain names are dropped", () => {
 test("a map card with no usable places has no map", () => {
   assert.equal(toCard({ type: "map", route: [{ place: "" }] }), undefined);
 });
+
+test("a model card names a product and the parts to highlight", () => {
+  const c = toCard({ type: "model", title: "EB-200", ref: "EB-200", highlight: ["BAT-418", "MOT-250H"], tone: "critical" });
+  assert.equal(c.model.ref, "EB-200");
+  assert.deepEqual(c.model.highlight, ["BAT-418", "MOT-250H"]);
+});
+test("a model card accepts one highlight as a string, and drops refs that are not refs", () => {
+  assert.deepEqual(toCard({ type: "model", ref: "EB-500", highlight: "BAT-500" }).model.highlight, ["BAT-500"]);
+  assert.deepEqual(toCard({ type: "model", ref: "EB-500", highlight: ["<script>", "BAT-500"] }).model.highlight, ["BAT-500"]);
+  assert.equal(toCard({ type: "model", ref: "bad ref!" }), undefined);
+});

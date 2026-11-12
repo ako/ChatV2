@@ -298,3 +298,24 @@ The chat draws maps with Leaflet (`widgets-src/ChatRichText/src/components/MapVi
 **The AI never writes coordinates.** A card names places, and the widget looks them up in the app: `GET rest/places/v1/places?names=…` (`ServiceDesk.PlacesApi`, session-authenticated, `mdlsource/22-places-map.mdl`). The places are the 16 towns and hubs the carrier's scans name, seeded at startup (`SUB_Place_Seed`). A name the app does not know is listed under the map instead of drawn. Card text goes into tooltips as text, never as HTML.
 
 **Tiles:** Esri's Gray Canvas basemap, dark or light to match the theme, with its label layer. It needs no key, only attribution. CARTO's basemaps were the first choice, but they now draw "API KEY REQUIRED" over every tile without a key.
+
+## 3D product viewer
+
+Bikes from the product graph can be shown in 3D, with their parts highlighted (`widgets-src/shared/model/`, three.js). There are two places:
+
+- **In the chat:** a model card such as `{"type":"model","title":"The battery on your EB-200","ref":"EB-200","highlight":["BAT-418"]}`. The card's tone sets the highlight colour: teal, amber for a warning, red for critical (a recall that affects the customer's unit).
+- **In the Product explorer:** a **Graph | 3D** switch shows the last bike selected in the graph. Selecting a part in the graph highlights it on the bike, and clicking a part on the bike selects it in the graph.
+
+The bike is generated in code (`bike.ts`), not loaded from a model file:
+- a frame, wheels and controls, plus one named piece per part, placed by SKU prefix:
+  - `BAT-` battery on the down tube;
+  - `MOT-…H` hub motor in the rear wheel, `MOT-…M` mid-drive at the pedals;
+  - `CHG-` charger on the floor;
+  - tyres, inner tubes, disc or rim brakes (from the bike's `brakes` value) and the seat post;
+  - accessories: rack, basket, child seat, panniers, lights, lock, helmet.
+- What a bike contains comes from the graph:
+  - its "has component" parts are fitted;
+  - "compatible with" tyres, tubes, brakes and seat posts are its standard parts;
+  - other compatible accessories appear faintly under **Show what fits**.
+
+A highlight names parts. Only parts the graph links to that bike can light up, and anything else is listed under the viewer. An **Exploded** slider pulls the parts apart, hovering a part names it, and clicking a part shows its details.

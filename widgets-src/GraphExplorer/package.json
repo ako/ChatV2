@@ -19,7 +19,9 @@
     "@types/cytoscape": "^3.21.9"
   },
   "dependencies": {
-    "cytoscape": "^3.30.2"
+    "@types/three": "0.170.0",
+    "cytoscape": "^3.30.2",
+    "three": "0.170.0"
   },
   "resolutions": {
     "react": "19.3.0",
