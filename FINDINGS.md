@@ -1507,3 +1507,10 @@ Reported on Tickets: no space around the buttons, square table corners against t
 - **Home had no page padding** (it has no layout grid). It is now padded.
 
 Checked after the fix: on Tickets and Orders the filters are 38px tall and their text is not clipped. The New chat button keeps margin 0, and the pages are no taller than the window.
+
+**Audit of every page afterwards.** All 17 menu pages and 5 popups (ticket, order, refund request, customer, model price; policy document opens a full page) were checked as demo_administrator. Each got an automated check (form controls too short for their text, side-by-side buttons with no gap, square painted children flush in a rounded panel's corner, horizontal overflow) and a 2x screenshot. Three more fixes came out of it:
+- Traces (Conversational UI) and Agents (Agent Commons) have no layout grid, so their panel ran to the window edge. Both use a `…-page-content-container` class, now padded 24px.
+- The Model prices help text was inline and ran into the "New price" button. It is now a paragraph.
+- The refund popup's "Order SO-…" line sat on the Amount label. It is now a paragraph.
+
+The remaining "touching buttons" hits are intended button groups: the grids' pager arrows and the period selectors on Token usage and Traces.

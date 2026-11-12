@@ -240,6 +240,13 @@ $mxcli-theme-variant: dark !default;
     line-height: 1.4;
     color: var(--mxt-ink-faint);
   }
+  // Module pages built without a layout grid (Conversational UI's Traces,
+  // Agent Commons' Agents) put their panel flush against the window edge: pad
+  // them like the layout grid pads the app's own pages.
+  [class*="page-content-container"] {
+    padding: 24px;
+    box-sizing: border-box;
+  }
   // Buttons placed side by side on a page: a gap between them and room below,
   // so a row of actions does not run into the grid underneath. Buttons inside
   // grids, list views and data view footers keep their own spacing.
@@ -342,4 +349,4 @@ h6,
 .mx-title {
   font-family: var(--mxt-font-heading);
 }
-// mxcli:theme:end glass 59a2f78a9a5dd032
+// mxcli:theme:end glass e50a9ee3d77dead8

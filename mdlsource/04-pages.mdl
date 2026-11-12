@@ -132,7 +132,7 @@ create or modify page "ServiceDesk"."RefundRequest_NewEdit" folder 'Refunds'
     row {
       column (desktopwidth: autofill) {
       dataview dvRefund (datasource: $RefundRequest) {
-          dynamictext txtOrder (content: 'Order {1}', contentparams: ({1} = RefundRequest_Order/"OrderNumber"))
+          dynamictext txtOrder (content: 'Order {1}', contentparams: ({1} = RefundRequest_Order/"OrderNumber"), rendermode: Paragraph)
           textbox txtAmount (label: 'Amount', attribute: "Amount", DecimalPrecision: 2)
           textarea txtReason (label: 'Reason', attribute: "Reason")
           combobox cbStatus (label: 'Status', attribute: "Status")

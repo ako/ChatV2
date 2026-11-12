@@ -300,7 +300,7 @@ create or modify page "ServiceDesk"."ModelPrice_Overview" folder 'Chat metrics'
     row {
       column (desktopwidth: 12) {
         dynamictext txtHeading (content: 'Model prices', rendermode: H2)
-        dynamictext txtHelp (content: 'Used to estimate what a conversation cost, in the Metrics tab of the chat''s details panel. The first price whose text appears in the model''s name applies, e.g. Sonnet 5.5 or :free.')
+        dynamictext txtHelp (content: 'Used to estimate what a conversation cost, in the Metrics tab of the chat''s details panel. The first price whose text appears in the model''s name applies, e.g. Sonnet 5.5 or :free.', rendermode: Paragraph)
         actionbutton btnNew (caption: 'New price', action: create object "ServiceDesk"."ModelPrice" then show page "ServiceDesk"."ModelPrice_NewEdit", buttonstyle: primary)
         datagrid dgPrices (
           datasource: database from "ServiceDesk"."ModelPrice" sort by "ModelMatch" asc,
