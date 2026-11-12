@@ -256,4 +256,4 @@ Restart the app after installing a new widget package: the watch loop does not p
 
 ## Tool calls for staff
 
-Under each assistant answer, support agents and administrators see the tool calls behind it: one collapsible "Input and result of <tool>" section per call, with the call's arguments and its raw result (`ServiceDesk.DS_MessageToolPayloads`, placed by `mdlsource/13-chat-rich-text.mdl`). Customers do not see them: the list is empty for a user with the Customer role.
+Support agents and administrators also see what the tool calls behind an answer did: one collapsed "Tool call details" block right under the tool calls, with each call's arguments and raw result in call order (`ServiceDesk.DS_MessageToolPayloads`, placed by `mdlsource/13-chat-rich-text.mdl`). Customers do not see them: the list is empty for a user with the Customer role.

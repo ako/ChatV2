@@ -51,8 +51,8 @@ end;
 
 -- Tool call payloads, for staff. Conversational UI shows a tool call only as
 -- "Tool call was successful"; support agents and administrators also see the
--- input and result of each tool call behind an answer, as collapsible sections
--- under the answer. (Inside Conversational UI's own tool-call panel would be
+-- input and result of each tool call behind an answer, in one collapsed
+-- "Tool call details" block right under the tool calls. (Inside Conversational UI's own tool-call panel would be
 -- nicer, but ALTER cannot reach that template's widgets; FINDINGS.md.) Customers do not:
 -- raw tool output means little to them, and the microflow returns nothing for
 -- a user with the Customer role. Conversational UI's own access rules are left
@@ -65,7 +65,7 @@ create or modify non-persistent entity "ServiceDesk"."ToolPayloadView" (
 
 grant read * on entity "ServiceDesk"."ToolPayloadView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
-/** The tool calls behind one assistant answer, each as a collapsible "input and result" section, in call order. For staff only: empty for a user with the Customer role. */
+/** The tool calls behind one assistant answer, as one collapsed "Tool call details" block with each call's input and result, in call order. For staff only: empty for a user with the Customer role, and for an answer without tool calls. */
 create or modify microflow "ServiceDesk"."DS_MessageToolPayloads" ($Message: ConversationalUI.Message)
 returns List of "ServiceDesk"."ToolPayloadView" as $Payloads
 folder 'Chat'
@@ -76,23 +76,32 @@ begin
     return $Views;
   end if;
   retrieve $Calls from ConversationalUI.ToolMessage where [ConversationalUI.SubMessage_Message = $Message] sort by createdDate asc;
+  $CallCount = count $Calls;
+  if $CallCount = 0 then
+    return $Views;
+  end if;
   declare $NL String = urlDecode('%0A');
   declare $Fence String = '```';
+  declare $Names String = '';
+  declare $Body String = '';
   loop $Call in $Calls begin
+    declare $Name String = (if $Call/ToolName = empty then 'tool call' else $Call/ToolName);
     declare $Result String = (if $Call/Content = empty then '(no result)' else $Call/Content);
     declare $Shown String = (if length($Result) > 6000 then substring($Result, 0, 6000) + $NL + '... (' + toString(length($Result) - 6000) + ' more characters)' else $Result);
-    $View = create "ServiceDesk"."ToolPayloadView" ("Markdown" = '~~~details Input and result of ' + (if $Call/ToolName = empty then 'a tool call' else $Call/ToolName) + (if $Call/IsError then ' (failed)' else '') + $NL
-      + '**Input**' + $NL + $Fence + 'json' + $NL + (if $Call/Input = empty then '{}' else $Call/Input) + $NL + $Fence + $NL
-      + '**Result**' + $NL + $Fence + $NL + $Shown + $NL + $Fence + $NL + '~~~');
-    add $View to $Views;
+    set $Names = $Names + (if $Names = '' then '' else ', ') + $Name;
+    set $Body = $Body + '#### ' + $Name + (if $Call/IsError then ' (failed)' else '') + $NL
+      + 'Input' + $NL + $Fence + 'json' + $NL + (if $Call/Input = empty then '{}' else $Call/Input) + $NL + $Fence + $NL
+      + 'Result' + $NL + $Fence + $NL + $Shown + $NL + $Fence + $NL;
   end loop;
+  $View = create "ServiceDesk"."ToolPayloadView" ("Markdown" = '~~~details Tool call details (' + toString($CallCount) + '): ' + $Names + $NL + $Body + '~~~');
+  add $View to $Views;
   return $Views;
 end;
 
 grant execute on microflow "ServiceDesk"."DS_MessageToolPayloads" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 alter snippet ConversationalUI.Snippet_Message_Content {
-  insert after markdownViewer1 {
+  insert after listView1 {
     listview lvToolPayloads (
       DataSource: microflow "ServiceDesk"."DS_MessageToolPayloads"(Message = $Message),
       Class: 'listview-hide-on-empty listview-remove-spacing tool-payloads'

@@ -1321,7 +1321,7 @@ Verified in the chat as demo_customer:
 As demo_agent, SO-10005 shows the batch-matched recall.
 
 **Payloads for staff.** Conversational UI shows a tool call as "Tool call was successful". Staff now see each call's
-input and result as collapsible sections under the answer (a `~~~details` fence in ChatRichText). The list's
+input and result in one collapsed "Tool call details" block right under the tool calls (a `~~~details` fence in ChatRichText). The list's
 microflow returns nothing for the Customer role, and Conversational UI's own entity access is untouched.
 
 mxcli gaps hit on the way (mxcli `main` nightly-174 and nightly-240):
@@ -1332,7 +1332,9 @@ mxcli gaps hit on the way (mxcli `main` nightly-174 and nightly-240):
 - **`describe` drops the icon of an image widget of type icon** (it prints `ImageType: icon` only). So replacing
   that template with its own `describe` output (drop + insert template) left five images without an icon:
   `docker check` gave 5 × "No icon selected". The snippet unit was restored from git. The payload list went
-  under the answer instead (`insert after markdownViewer1`), outside the template.
+  outside the template instead, first under the answer, then (after "the layout seems incorrect") as one
+  compact collapsed block right under the tool calls (`insert after listView1`): per-call full-width sections
+  at the bottom read as part of the answer.
 
 Gates:
 - `check` is clean, and a second `exec` writes nothing.

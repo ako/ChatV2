@@ -153,3 +153,12 @@
 .crt-details[open] > summary { border-bottom: 1px solid var(--crt-line); }
 .crt-details > .crt-md { padding: 8px 10px; }
 .crt-details pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--crt-surface-alt); padding: 8px; border-radius: 4px; margin: 4px 0 8px; }
+
+/* Staff's tool call details: one quiet, collapsed block under the tool calls. */
+.tool-payloads { margin: 4px 0 10px; }
+.tool-payloads .crt-details { max-width: 760px; background: var(--crt-surface-alt); border-style: dashed; }
+.tool-payloads .crt-details > summary { font-size: 12px; font-weight: 600; padding: 5px 10px; }
+.tool-payloads .crt-details h4 { font-size: 13px; margin: 10px 0 4px; }
+.tool-payloads .crt-details h4:first-child { margin-top: 0; }
+.tool-payloads .crt-details p { margin: 4px 0 2px; font-size: 12px; color: var(--crt-muted); }
+.tool-payloads .crt-details pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
