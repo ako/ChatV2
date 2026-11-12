@@ -1,0 +1,350 @@
+mdl 1;
+
+-- Conversation metrics, for staff. A "Conversation metrics" button on the chat
+-- page opens what the Agents Kit recorded for the open chat (GenAICommons traces,
+-- stored because StoreTraces is on): per question, the model calls with their
+-- tokens and time, the tool calls they made, and any agent that ran as a tool
+-- (a trace of its own, found by its time window inside the tool call). Totals,
+-- tokens per model and an estimated cost sit on top.
+--
+-- Costs come from ServiceDesk.ModelPrice, which administrators keep on the
+-- Model prices page: the first price whose match text appears in the model's
+-- name. The OpenRouter ":free" models are seeded at 0; a model without a price
+-- is shown as "no price set" and left out of the estimate.
+--
+-- Totals are summed from spans the panel retrieves anyway to list each step,
+-- for one conversation, so there is no view entity: the database would have
+-- to return the same rows.
+--
+-- The button is on the chat page (12-chat-history.mdl, which is why this file
+-- runs before it). It calls a microflow only staff may run, so Mendix hides it
+-- for customers.
+
+/** The price of a model's tokens, used to estimate what a conversation cost. The first price whose match text appears in the model's name applies. */
+create or modify persistent entity "ServiceDesk"."ModelPrice" (
+  /** Text to find in the model's name, e.g. 'Sonnet 5.5' or ':free'. Not case-sensitive. */
+  "ModelMatch": String(200) not null unique,
+  /** Price of one million input tokens. */
+  "InputPerMillion": Decimal,
+  /** Price of one million output tokens. */
+  "OutputPerMillion": Decimal,
+  "Currency": String(10) default 'USD'
+);
+
+grant create, delete, read *, write * on entity "ServiceDesk"."ModelPrice" to "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."ModelPrice" to "ServiceDesk"."SupportAgent";
+
+/** The metrics of one chat, as markdown with cards, for the metrics popup. */
+create or modify non-persistent entity "ServiceDesk"."ChatMetricsView" (
+  "Markdown": String(unlimited)
+);
+
+/** Running totals while the metrics are collected: for the whole chat, or for one question. */
+create or modify non-persistent entity "ServiceDesk"."ChatMetricsTotals" (
+  "InputTokens": Long,
+  "OutputTokens": Long,
+  "ModelCalls": Integer,
+  "ToolCalls": Integer,
+  "Cost": Decimal,
+  "Unpriced": Integer,
+  "Currency": String(10)
+);
+
+/** Tokens and cost for one model in one chat. */
+create or modify non-persistent entity "ServiceDesk"."ChatMetricsModelLine" (
+  "Model": String(200),
+  "ModelCalls": Integer,
+  "InputTokens": Long,
+  "OutputTokens": Long,
+  "Cost": Decimal,
+  "Priced": Boolean default false
+);
+
+grant read * on entity "ServiceDesk"."ChatMetricsView" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Seeds the price of the free OpenRouter models (0) when no prices exist yet. Other models get a price on the Model prices page. */
+create or modify microflow "ServiceDesk"."SUB_ModelPrice_Seed" ()
+returns Boolean as $Seeded
+folder 'Chat metrics'
+begin
+  retrieve $Any from "ServiceDesk"."ModelPrice" first;
+  if $Any != empty then
+    return false;
+  end if;
+  $Free = create "ServiceDesk"."ModelPrice" ("ModelMatch" = ':free', "InputPerMillion" = 0, "OutputPerMillion" = 0, "Currency" = 'USD') commit;
+  return true;
+end;
+
+/** A model's name without the provider and subscription prefix: 'Claude Sonnet 5.5' for 'Mendix Cloud <subscription> - Text Generation - Anthropic Claude Sonnet 5.5'. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_ModelName" ($Identifier: String)
+returns String as $Name
+folder 'Chat metrics'
+begin
+  if $Identifier = empty or trim($Identifier) = '' then
+    return 'unknown model';
+  end if;
+  declare $Cut Integer = findLast($Identifier, ' - ');
+  if $Cut >= 0 then
+    return replaceFirst(substring($Identifier, $Cut + 3), '^Anthropic ', '');
+  end if;
+  return replaceFirst(replaceFirst($Identifier, '^OpenAI ', ''), '^OpenRouter ', 'OpenRouter ');
+end;
+
+/** The first price whose match text appears in the model's name, or empty. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_FindPrice" ($Prices: List of "ServiceDesk"."ModelPrice", $Identifier: String)
+returns "ServiceDesk"."ModelPrice" as $Price
+folder 'Chat metrics'
+begin
+  declare $Lower String = toLowerCase(if $Identifier = empty then '' else $Identifier);
+  $Found = find $Prices where $currentObject/ModelMatch != empty and contains($Lower, toLowerCase($currentObject/ModelMatch));
+  return $Found;
+end;
+
+/** The line for a model in the per-model list, added when it is not there yet. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_ModelLine" ($Lines: List of "ServiceDesk"."ChatMetricsModelLine", $Model: String, $Priced: Boolean)
+returns "ServiceDesk"."ChatMetricsModelLine" as $Line
+folder 'Chat metrics'
+begin
+  $Existing = find $Lines by Model = $Model;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $New = create "ServiceDesk"."ChatMetricsModelLine" ("Model" = $Model, "ModelCalls" = 0, "InputTokens" = 0, "OutputTokens" = 0, "Cost" = 0, "Priced" = $Priced);
+  add $New to $Lines;
+  return $New;
+end;
+
+/** Adds one model call to the chat totals, the question totals and the per-model lines, and returns its table row. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_AddModelCall" ($Span: GenAICommons.ModelSpan, $Label: String, $Prices: List of "ServiceDesk"."ModelPrice", $Lines: List of "ServiceDesk"."ChatMetricsModelLine", $Chat: "ServiceDesk"."ChatMetricsTotals", $Turn: "ServiceDesk"."ChatMetricsTotals")
+returns String as $Row
+folder 'Chat metrics'
+begin
+  declare $In Long = (if $Span/InputTokens = empty then 0 else $Span/InputTokens);
+  declare $Out Long = (if $Span/OutputTokens = empty then 0 else $Span/OutputTokens);
+  $Model = call microflow "ServiceDesk"."SUB_ChatMetrics_ModelName" (Identifier = $Span/_DeploymentIdentifier);
+  $Price = call microflow "ServiceDesk"."SUB_ChatMetrics_FindPrice" (Prices = $Prices, Identifier = $Span/_DeploymentIdentifier);
+  declare $Cost Decimal = 0;
+  declare $CostText String = 'no price set';
+  if $Price != empty then
+    set $Cost = $In * (if $Price/InputPerMillion = empty then 0 else $Price/InputPerMillion) div 1000000
+      + $Out * (if $Price/OutputPerMillion = empty then 0 else $Price/OutputPerMillion) div 1000000;
+    set $CostText = $Price/Currency + ' ' + formatDecimal($Cost, '0.0000');
+    change $Chat ("Currency" = $Price/Currency);
+  end if;
+  change $Chat ("InputTokens" = $Chat/InputTokens + $In, "OutputTokens" = $Chat/OutputTokens + $Out, "ModelCalls" = $Chat/ModelCalls + 1,
+    "Cost" = $Chat/Cost + $Cost, "Unpriced" = $Chat/Unpriced + (if $Price = empty then 1 else 0));
+  change $Turn ("InputTokens" = $Turn/InputTokens + $In, "OutputTokens" = $Turn/OutputTokens + $Out, "ModelCalls" = $Turn/ModelCalls + 1,
+    "Cost" = $Turn/Cost + $Cost, "Unpriced" = $Turn/Unpriced + (if $Price = empty then 1 else 0));
+  $Line = call microflow "ServiceDesk"."SUB_ChatMetrics_ModelLine" (Lines = $Lines, Model = $Model, Priced = $Price != empty);
+  change $Line ("ModelCalls" = $Line/ModelCalls + 1, "InputTokens" = $Line/InputTokens + $In, "OutputTokens" = $Line/OutputTokens + $Out, "Cost" = $Line/Cost + $Cost);
+  return '| ' + $Label + ' | ' + $Model + (if $Span/IsError then ' (failed)' else '') + ' | '
+    + formatDecimal((if $Span/DurationMilliseconds = empty then 0 else $Span/DurationMilliseconds) div 1000, '0.0') + ' s | '
+    + formatDecimal($In, '#,##0') + ' | ' + formatDecimal($Out, '#,##0') + ' | ' + $CostText + ' |' + urlDecode('%0A');
+end;
+
+/** The rows for the agents that ran inside one tool call: another agent's trace that started while the tool ran. Their model calls count towards the chat. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_SubAgents" ($Tool: GenAICommons.ToolSpan, $ConversationId: String, $Prices: List of "ServiceDesk"."ModelPrice", $Lines: List of "ServiceDesk"."ChatMetricsModelLine", $Chat: "ServiceDesk"."ChatMetricsTotals", $Turn: "ServiceDesk"."ChatMetricsTotals")
+returns String as $Rows
+folder 'Chat metrics'
+begin
+  declare $Text String = '';
+  if $Tool/StartTime = empty or $Tool/EndTime = empty then
+    return $Text;
+  end if;
+  retrieve $SubTraces from GenAICommons.Trace where [StartTime >= $Tool/StartTime][StartTime <= $Tool/EndTime][_ConversationId != $ConversationId] sort by StartTime asc;
+  loop $Sub in $SubTraces begin
+    retrieve $SubSpans from GenAICommons.ModelSpan where [GenAICommons.Span_Trace = $Sub] sort by StartTime asc;
+    loop $SubSpan in $SubSpans begin
+      $SubRow = call microflow "ServiceDesk"."SUB_ChatMetrics_AddModelCall" (Span = $SubSpan, Label = '↳ agent ' + (if $Sub/_AgentName = empty then 'call' else $Sub/_AgentName), Prices = $Prices, Lines = $Lines, Chat = $Chat, Turn = $Turn);
+      set $Text = $Text + $SubRow;
+    end loop;
+  end loop;
+  return $Text;
+end;
+
+/** One question in the chat as a collapsed section: each model call with its tokens and time, and under it the tools it called. */
+create or modify microflow "ServiceDesk"."SUB_ChatMetrics_Turn" ($Trace: GenAICommons.Trace, $Number: Integer, $Prices: List of "ServiceDesk"."ModelPrice", $Lines: List of "ServiceDesk"."ChatMetricsModelLine", $Chat: "ServiceDesk"."ChatMetricsTotals")
+returns String as $Section
+folder 'Chat metrics'
+begin
+  declare $NL String = urlDecode('%0A');
+  $Turn = create "ServiceDesk"."ChatMetricsTotals" ("InputTokens" = 0, "OutputTokens" = 0, "ModelCalls" = 0, "ToolCalls" = 0, "Cost" = 0, "Unpriced" = 0, "Currency" = $Chat/Currency);
+  declare $Rows String = '';
+  retrieve $Spans from GenAICommons.ModelSpan where [GenAICommons.Span_Trace = $Trace] sort by StartTime asc;
+  loop $Span in $Spans begin
+    $ModelRow = call microflow "ServiceDesk"."SUB_ChatMetrics_AddModelCall" (Span = $Span, Label = 'Model call', Prices = $Prices, Lines = $Lines, Chat = $Chat, Turn = $Turn);
+    set $Rows = $Rows + $ModelRow;
+    retrieve $Tools from GenAICommons.ToolSpan where [GenAICommons.Span_SubSpan = $Span] sort by StartTime asc;
+    loop $Tool in $Tools begin
+      change $Turn ("ToolCalls" = $Turn/ToolCalls + 1);
+      change $Chat ("ToolCalls" = $Chat/ToolCalls + 1);
+      set $Rows = $Rows + '| ↳ tool | ' + (if $Tool/ToolName = empty then 'tool' else $Tool/ToolName) + (if $Tool/IsError then ' (failed)' else '') + ' | '
+        + formatDecimal((if $Tool/DurationMilliseconds = empty then 0 else $Tool/DurationMilliseconds), '#,##0') + ' ms |  |  |  |' + $NL;
+      $SubRows = call microflow "ServiceDesk"."SUB_ChatMetrics_SubAgents" (Tool = $Tool, ConversationId = $Trace/_ConversationId, Prices = $Prices, Lines = $Lines, Chat = $Chat, Turn = $Turn);
+      set $Rows = $Rows + $SubRows;
+    end loop;
+  end loop;
+  declare $Question String = trim(replaceAll((if $Trace/Input = empty then '' else $Trace/Input), '[|\r\n\t~`]+', ' '));
+  if length($Question) > 90 then
+    set $Question = substring($Question, 0, 90) + '…';
+  end if;
+  declare $Seconds String = formatDecimal((if $Trace/DurationMilliseconds = empty then 0 else $Trace/DurationMilliseconds) div 1000, '0.0');
+  declare $CostText String = (if $Turn/Unpriced = $Turn/ModelCalls and $Turn/ModelCalls > 0 then 'no price set'
+    else $Chat/Currency + ' ' + formatDecimal($Turn/Cost, '0.0000') + (if $Turn/Unpriced > 0 then ' + unpriced' else ''));
+  return '~~~details ' + toString($Number) + '. ' + $Question + ' — ' + $Seconds + ' s, '
+    + formatDecimal($Turn/InputTokens + $Turn/OutputTokens, '#,##0') + ' tokens, ' + $CostText + (if $Trace/HasError then ', with an error' else '') + $NL
+    + '| Step | Model or tool | Time | Tokens in | Tokens out | Cost |' + $NL
+    + '|---|---|---:|---:|---:|---:|' + $NL
+    + $Rows
+    + '~~~' + $NL;
+end;
+
+/** Data source of the metrics popup: what the open chat cost and how each answer came about, from the Agents Kit traces. Staff only. */
+create or modify microflow "ServiceDesk"."DS_ChatMetrics" ($ChatContext: ConversationalUI.ChatContext)
+returns "ServiceDesk"."ChatMetricsView" as $View
+folder 'Chat metrics'
+begin
+  declare $NL String = urlDecode('%0A');
+  if $ChatContext = empty or $ChatContext/ConversationID = empty or trim($ChatContext/ConversationID) = '' then
+    $NoChat = create "ServiceDesk"."ChatMetricsView" ("Markdown" = 'No metrics yet: this chat has no answers.');
+    return $NoChat;
+  end if;
+  retrieve $Traces from GenAICommons.Trace where [_ConversationId = $ChatContext/ConversationID] sort by StartTime asc;
+  $TraceCount = count $Traces;
+  if $TraceCount = 0 then
+    $NoTraces = create "ServiceDesk"."ChatMetricsView" ("Markdown" = 'No metrics for this chat. Traces are stored only while the constant GenAICommons.StoreTraces is true, and are removed after some days.');
+    return $NoTraces;
+  end if;
+  retrieve $Prices from "ServiceDesk"."ModelPrice" sort by "ModelMatch" asc;
+  $Lines = create list of "ServiceDesk"."ChatMetricsModelLine";
+  $Chat = create "ServiceDesk"."ChatMetricsTotals" ("InputTokens" = 0, "OutputTokens" = 0, "ModelCalls" = 0, "ToolCalls" = 0, "Cost" = 0, "Unpriced" = 0, "Currency" = 'USD');
+  declare $Sections String = '';
+  declare $Points String = '';
+  declare $Number Integer = 0;
+  declare $TotalMs Long = 0;
+  declare $LastTokens Long = 0;
+  loop $Trace in $Traces begin
+    set $Number = $Number + 1;
+    set $LastTokens = $Chat/InputTokens + $Chat/OutputTokens;
+    $Section = call microflow "ServiceDesk"."SUB_ChatMetrics_Turn" (Trace = $Trace, Number = $Number, Prices = $Prices, Lines = $Lines, Chat = $Chat);
+    set $Sections = $Sections + $Section;
+    set $TotalMs = $TotalMs + (if $Trace/DurationMilliseconds = empty then 0 else $Trace/DurationMilliseconds);
+    set $Points = $Points + (if $Points = '' then '' else ',') + '{"label":"Question ' + toString($Number) + '","value":' + toString($Chat/InputTokens + $Chat/OutputTokens - $LastTokens) + '}';
+  end loop;
+  declare $Items String = '';
+  loop $Line in $Lines begin
+    set $Items = $Items + (if $Items = '' then '' else ',') + '{"title":"' + replaceAll($Line/Model, '["\\]', '') + '","text":"' + toString($Line/ModelCalls) + ' calls · '
+      + formatDecimal($Line/InputTokens, '#,##0') + ' in · ' + formatDecimal($Line/OutputTokens, '#,##0') + ' out","value":"'
+      + (if $Line/Priced then $Chat/Currency + ' ' + formatDecimal($Line/Cost, '0.0000') else 'no price set') + '"}';
+  end loop;
+  declare $CostValue String = (if $Chat/Unpriced = $Chat/ModelCalls and $Chat/ModelCalls > 0 then 'no price set'
+    else $Chat/Currency + ' ' + formatDecimal($Chat/Cost, '0.0000') + (if $Chat/Unpriced > 0 then ' + unpriced' else ''));
+  declare $Note String = (if $Chat/Unpriced > 0
+    then toString($Chat/Unpriced) + ' of ' + toString($Chat/ModelCalls) + ' model calls have no price: an administrator sets prices on the Model prices page.'
+    else 'Estimated from the prices on the Model prices page.');
+  declare $Card String = '```card' + $NL
+    + '{"type":"info","title":"Conversation metrics","subtitle":"' + toString($TraceCount) + (if $TraceCount = 1 then ' question' else ' questions') + ', from the Agents Kit traces","tone":"info",'
+    + '"fields":[{"label":"Estimated cost","value":"' + $CostValue + '"},'
+    + '{"label":"Tokens in","value":"' + formatDecimal($Chat/InputTokens, '#,##0') + '"},'
+    + '{"label":"Tokens out","value":"' + formatDecimal($Chat/OutputTokens, '#,##0') + '"},'
+    + '{"label":"Model calls","value":"' + toString($Chat/ModelCalls) + '"},'
+    + '{"label":"Tool calls","value":"' + toString($Chat/ToolCalls) + '"},'
+    + '{"label":"Answer time","value":"' + formatDecimal($TotalMs div 1000, '0.0') + ' s"}],'
+    + '"items":[' + $Items + '],'
+    + '"chart":"bars","unit":"tokens","data":[' + $Points + '],'
+    + '"note":"' + $Note + '"}' + $NL + '```' + $NL;
+  $View = create "ServiceDesk"."ChatMetricsView" ("Markdown" = $Card + $NL + '#### Per question' + $NL + $Sections);
+  return $View;
+end;
+
+/** Opens the metrics of the open chat. Staff only: Mendix hides the button for users who may not run this. */
+create or modify microflow "ServiceDesk"."ACT_ChatMetrics_Show" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat metrics'
+begin
+  show page "ServiceDesk"."Chat_Metrics" (ChatContext = $ChatContext);
+end;
+
+grant execute on microflow "ServiceDesk"."DS_ChatMetrics" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup: the open chat's tokens, estimated cost and the steps behind each answer. */
+create or modify page "ServiceDesk"."Chat_Metrics" folder 'Chat metrics'
+(
+  params: ( $ChatContext: ConversationalUI.ChatContext ),
+  title: 'Conversation metrics',
+  layout: Atlas_Core.PopupLayout,
+  PopupWidth: 960, PopupHeight: 760, PopupResizable: true
+)
+{
+  dataview dvMetrics (datasource: microflow "ServiceDesk"."DS_ChatMetrics"(ChatContext = $ChatContext), Class: 'chat-metrics') {
+    pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtMetrics (
+      stringAttribute: Markdown
+    )
+    footer {
+      actionbutton btnClose (caption: 'Close', action: close page)
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Chat_Metrics" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ChatMetrics_Show" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup: create or edit a model price (administrators). */
+create or modify page "ServiceDesk"."ModelPrice_NewEdit" folder 'Chat metrics'
+(
+  params: ( $ModelPrice: "ServiceDesk"."ModelPrice" ),
+  title: 'Model price',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgForm {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvModelPrice (datasource: $ModelPrice) {
+          textbox txtMatch (label: 'Model name contains', attribute: "ModelMatch")
+          textbox txtInput (label: 'Input, per million tokens', attribute: "InputPerMillion")
+          textbox txtOutput (label: 'Output, per million tokens', attribute: "OutputPerMillion")
+          textbox txtCurrency (label: 'Currency', attribute: "Currency")
+          footer {
+            actionbutton btnSave (caption: 'Save', action: save changes close page, buttonstyle: success)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Token prices for the conversation metrics. The first price whose text appears in a model's name applies. */
+create or modify page "ServiceDesk"."ModelPrice_Overview" folder 'Chat metrics'
+(
+  title: 'Model prices',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'model-prices'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Model prices', rendermode: H2)
+        dynamictext txtHelp (content: 'Used to estimate what a conversation cost, under Conversation metrics in the chat. The first price whose text appears in the model''s name applies, e.g. Sonnet 5.5 or :free.')
+        actionbutton btnNew (caption: 'New price', action: create object "ServiceDesk"."ModelPrice" then show page "ServiceDesk"."ModelPrice_NewEdit", buttonstyle: primary)
+        datagrid dgPrices (
+          datasource: database from "ServiceDesk"."ModelPrice" sort by "ModelMatch" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "ModelMatch", caption: 'Model name contains')
+          column (attribute: "InputPerMillion", caption: 'Input / M tokens')
+          column (attribute: "OutputPerMillion", caption: 'Output / M tokens')
+          column (attribute: "Currency", caption: 'Currency')
+          column (caption: '') {
+            actionbutton btnEdit (caption: 'Edit', action: show page "ServiceDesk"."ModelPrice_NewEdit"("ModelPrice" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ModelPrice_Overview" to "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."ModelPrice_NewEdit" to "ServiceDesk"."Admin";

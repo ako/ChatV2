@@ -256,4 +256,15 @@ Restart the app after installing a new widget package: the watch loop does not p
 
 ## Tool calls for staff
 
-Support agents and administrators also see what the tool calls behind an answer did: one collapsed "Tool call details" block right under the tool calls, with each call's arguments and raw result in call order (`ServiceDesk.DS_MessageToolPayloads`, placed by `mdlsource/13-chat-rich-text.mdl`). Customers do not see them: the list is empty for a user with the Customer role.
+Support agents and administrators also see what the tool calls behind an answer did: one collapsed "Tool call details" block right under the tool calls, with each call's arguments and raw result in call order (`ServiceDesk.DS_MessageToolPayloads` in `mdlsource/13-chat-rich-text.mdl`, placed once by `mdlsource/13b-tool-payloads-insert.mdl`). Customers do not see them: the list is empty for a user with the Customer role.
+
+## Conversation metrics for staff
+
+"Conversation metrics", next to "New chat" on the chat page, opens what the Agents Kit recorded for the open chat (`mdlsource/11b-chat-metrics.mdl`). It works the same for both assistants.
+
+- **Summary card:** estimated cost, tokens in and out, model calls, tool calls and answer time; tokens and cost per model; a bar per question.
+- **Per question:** a collapsed section with each model call (model, time, tokens, cost) and, under it, the tools that call ran. An agent that ran as a tool, such as the triage agent, is listed under its tool call and counted in the totals. Its trace is found by its start time falling inside the tool call.
+
+The data comes from the GenAICommons traces, which are stored because `GenAICommons.StoreTraces` is on. The panel reads them in a microflow, so staff need no trace-monitoring role. Customers do not get the button: it calls a microflow only support agents and administrators may run.
+
+Costs are estimated from **Model prices** (administrators' menu). The first price whose text appears in the model's name applies, for example `Sonnet 5.5` or `:free`. The free OpenRouter models are seeded at 0. Mendix Cloud models have no price until an administrator enters one, and until then the panel says "no price set" and leaves them out of the estimate.

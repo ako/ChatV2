@@ -126,6 +126,7 @@ create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
     row {
       column (desktopwidth: 3, tabletwidth: 4) {
         actionbutton btnNewChat (caption: 'New chat', action: call microflow "ServiceDesk"."ACT_Chat_New"(ChatContext = $ChatContext), buttonstyle: primary, icon: Atlas_Core.Atlas."message-bubble-add")
+        actionbutton btnChatMetrics (caption: 'Conversation metrics', action: call microflow "ServiceDesk"."ACT_ChatMetrics_Show"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas."analytics-bars", Class: 'btn-chat-metrics')
         dynamictext txtHistory (content: 'Your chats', rendermode: H5)
         listview lvHistory (Class: 'chat-history-list', datasource: microflow "ServiceDesk"."DS_ChatHistory"(ChatContext = $ChatContext)) {
           layoutgrid lgHistoryItem {

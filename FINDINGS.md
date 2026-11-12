@@ -1343,3 +1343,32 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 37/37 pass, 4 new for GetOrderProducts. Widget unit tests: 14/14.
 - Live MCP test: all pass.
+
+## Conversation metrics in the chat (2026-11-12)
+
+Staff open "Conversation metrics" from the chat page: tokens, estimated cost, time and the steps behind each answer, from the GenAICommons traces (`mdlsource/11b-chat-metrics.mdl`).
+
+**How a chat finds its traces.** `GenAICommons.Trace._ConversationId` equals `ConversationalUI.ChatContext.ConversationID`, measured on the stored data: one trace per question. A tool call's span points at the model call that requested it (`Span_SubSpan`), so the steps nest without sorting by time. An agent run as a tool (TriageTicket, the document agent) writes a trace of its own under a different conversation id. It is found by its start time inside the tool span: on the two stored TriageTicket calls, exactly one trace each.
+
+**Usage is not a per-question total.** `GenAICommons.Usage` for a trace held only the last model call's tokens (14,852 in for a question whose two model calls took 7,272 + 14,852). The panel sums the `ModelSpan`s instead.
+
+**Input tokens grow inside one answer.** Each model call resends the conversation plus the tool results so far. One live order question: 3 model calls with 5,897, then 11,950, then 18,206 tokens in. That is why tool-heavy answers cost far more than their output suggests.
+
+**Prices.** No list prices are seeded for the Mendix Cloud models: they are not in the data, and Mendix Cloud GenAI bills in its own units. Administrators enter them on Model prices. The free OpenRouter models are seeded at 0.
+
+**Scripts that could not run twice.** `alter snippet … insert` and `alter page … insert` refuse a second run ("duplicate widget name"). ALTER has no insert-if-missing (ako/mxcli#1840, open). My earlier repeat-run checks counted changed files and hid exec's error output, so script 13 was reported repeatable when it was not.
+- The metrics button now lives in the chat page's own definition (12). The metrics script runs before it, hence `11b`.
+- The one-time insert into Conversational UI's snippet moved to `13b-tool-payloads-insert.mdl`, marked run-once.
+- Every other script was then executed a second time with errors shown: no errors, 0 files written.
+
+mxcli gaps hit on the way (mxcli `main` nightly-174):
+- `check --references` passed `set $Line = $New` on an object variable, and `exec` then refused it (CE7247 rule) and rolled back the script. Filed as ako/mxcli#2176. Fixed with a sub-microflow that returns the found or new line.
+- `lastIndexOf` is not a Mendix function; `findLast` is (check caught it).
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing (errors shown).
+- `lint`: 0 errors, 22 warnings. The new one is CONV006 on ModelPrice: admins create and delete from the page, like the other admin pages.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 42/42 pass, 5 new for the metrics.
+- Live: a staff chat with two questions showed 7 model calls, 8 tool calls and a bar per question. The customer sees no button.

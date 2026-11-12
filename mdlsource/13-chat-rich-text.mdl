@@ -52,7 +52,8 @@ end;
 -- Tool call payloads, for staff. Conversational UI shows a tool call only as
 -- "Tool call was successful"; support agents and administrators also see the
 -- input and result of each tool call behind an answer, in one collapsed
--- "Tool call details" block right under the tool calls. (Inside Conversational UI's own tool-call panel would be
+-- "Tool call details" block right under the tool calls, placed by
+-- 13b-tool-payloads-insert.mdl. (Inside Conversational UI's own tool-call panel would be
 -- nicer, but ALTER cannot reach that template's widgets; FINDINGS.md.) Customers do not:
 -- raw tool output means little to them, and the microflow returns nothing for
 -- a user with the Customer role. Conversational UI's own access rules are left
@@ -99,16 +100,3 @@ begin
 end;
 
 grant execute on microflow "ServiceDesk"."DS_MessageToolPayloads" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-
-alter snippet ConversationalUI.Snippet_Message_Content {
-  insert after listView1 {
-    listview lvToolPayloads (
-      DataSource: microflow "ServiceDesk"."DS_MessageToolPayloads"(Message = $Message),
-      Class: 'listview-hide-on-empty listview-remove-spacing tool-payloads'
-    ) {
-      pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' tpMarkdown (
-        stringAttribute: Markdown
-      )
-    }
-  };
-};
