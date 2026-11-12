@@ -1,0 +1,187 @@
+mdl 1;
+
+-- The details panel beside the conversation on the chat page (12-chat-history.mdl,
+-- which is why this file runs before it). One data view, one object:
+--
+--   Staff (support agents, administrators) get three tabs:
+--     Metrics     - tokens, estimated cost, time and the steps per question
+--                   (DS_ChatMetrics, 11b-chat-metrics.mdl)
+--     Tool calls  - every tool call in the chat, per question, with its input
+--                   and raw result (this used to sit in the conversation itself)
+--     Context     - the orders the assistant looked up in this chat
+--   Customers get only Context: raw tool output and costs mean little to them.
+--
+-- Everything is markdown with cards, rendered by the ChatRichText widget, so the
+-- panel looks like the answers it explains. Orders come through
+-- SUB_FindOrderForCurrentUser, so a customer's panel never shows an order that
+-- is not theirs, whatever a tool was asked.
+
+/** What the details panel beside a chat shows: metrics, tool calls and context, as markdown. */
+create or modify non-persistent entity "ServiceDesk"."ChatDetailsView" (
+  "IsStaff": Boolean default false,
+  "Metrics": String(unlimited),
+  "ToolCalls": String(unlimited),
+  "ContextText": String(unlimited)
+);
+
+grant read * on entity "ServiceDesk"."ChatDetailsView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** True for a support agent or administrator, false for a user with the Customer role. */
+create or modify microflow "ServiceDesk"."SUB_ChatDetails_IsStaff" ()
+returns Boolean as $IsStaff
+folder 'Chat details'
+begin
+  retrieve $CustomerUser from System.User where [id = '[%CurrentUser%]'][System.UserRoles = '[%UserRole_Customer%]'] first;
+  return $CustomerUser = empty;
+end;
+
+/** Text made safe inside a JSON string: backslashes and quotes escaped, line breaks and tabs turned into spaces. */
+create or modify microflow "ServiceDesk"."SUB_Json_Escape" ($Text: String)
+returns String as $Escaped
+folder 'Chat details'
+begin
+  if $Text = empty then
+    return '';
+  end if;
+  -- The pattern is a regular expression, the replacement is literal text
+  -- (Mendix does not process \ or $ in it).
+  return replaceAll(replaceAll(replaceAll($Text, '\\', '\\'), '"', '\"'), '[\r\n\t]+', ' ');
+end;
+
+/** One question's tool calls as a collapsed section: each call's input and result. Empty when the answer used no tools. */
+create or modify microflow "ServiceDesk"."SUB_ChatDetails_ToolSection" ($Message: ConversationalUI.Message, $Number: Integer, $Question: String)
+returns String as $Section
+folder 'Chat details'
+begin
+  retrieve $Calls from ConversationalUI.ToolMessage where [ConversationalUI.SubMessage_Message = $Message] sort by createdDate asc;
+  $CallCount = count $Calls;
+  if $CallCount = 0 then
+    return '';
+  end if;
+  declare $NL String = urlDecode('%0A');
+  declare $Fence String = '```';
+  declare $Names String = '';
+  declare $Body String = '';
+  loop $Call in $Calls begin
+    declare $Name String = (if $Call/ToolName = empty then 'tool call' else $Call/ToolName);
+    declare $Result String = (if $Call/Content = empty then '(no result)' else $Call/Content);
+    declare $Shown String = (if length($Result) > 6000 then substring($Result, 0, 6000) + $NL + '... (' + toString(length($Result) - 6000) + ' more characters)' else $Result);
+    set $Names = $Names + (if $Names = '' then '' else ', ') + $Name;
+    set $Body = $Body + '#### ' + $Name + (if $Call/IsError then ' (failed)' else '') + $NL
+      + 'Input' + $NL + $Fence + 'json' + $NL + (if $Call/Input = empty then '{}' else $Call/Input) + $NL + $Fence + $NL
+      + 'Result' + $NL + $Fence + $NL + $Shown + $NL + $Fence + $NL;
+  end loop;
+  declare $Short String = trim(replaceAll((if $Question = empty then '' else $Question), '[|\r\n\t~`]+', ' '));
+  if length($Short) > 70 then
+    set $Short = substring($Short, 0, 70) + '…';
+  end if;
+  return '~~~details ' + toString($Number) + '. ' + $Short + ' — ' + toString($CallCount) + (if $CallCount = 1 then ' call: ' else ' calls: ') + $Names + $NL + $Body + '~~~' + $NL;
+end;
+
+/** Every tool call in a chat, grouped per question, oldest first. */
+create or modify microflow "ServiceDesk"."SUB_ChatDetails_ToolCalls" ($ChatContext: ConversationalUI.ChatContext)
+returns String as $Text
+folder 'Chat details'
+begin
+  retrieve $Messages from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext] sort by createdDate asc;
+  declare $Sections String = '';
+  declare $Question String = '';
+  declare $Number Integer = 0;
+  loop $Message in $Messages begin
+    if $Message/Role = GenAICommons.ENUM_MessageRole.user then
+      set $Question = $Message/Content;
+      set $Number = $Number + 1;
+    else
+      if $Message/Role = GenAICommons.ENUM_MessageRole.assistant then
+        $Section = call microflow "ServiceDesk"."SUB_ChatDetails_ToolSection" (Message = $Message, Number = $Number, Question = $Question);
+        set $Sections = $Sections + $Section;
+      end if;
+    end if;
+  end loop;
+  if $Sections = '' then
+    return 'No tool calls in this chat yet. When the assistant uses a tool, its input and result show here, per question.';
+  end if;
+  return $Sections;
+end;
+
+/** An order as a card for the details panel: status, total, carrier, tracking code and every tracking scan. Empty when the current user may not see the order. */
+create or modify microflow "ServiceDesk"."SUB_ChatDetails_OrderCard" ($OrderNumber: String)
+returns String as $Card
+folder 'Chat details'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return '';
+  end if;
+  declare $NL String = urlDecode('%0A');
+  declare $Status String = (if $Order/Status = empty then 'Unknown' else getCaption($Order/Status));
+  declare $Tone String = (if $Order/Status = ServiceDesk.ENUM_OrderStatus.Delivered then 'good'
+    else if $Order/Status = ServiceDesk.ENUM_OrderStatus.Shipped then 'warning'
+    else if $Order/Status = ServiceDesk.ENUM_OrderStatus.Cancelled then 'neutral' else 'info');
+  $Carrier = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Order/Carrier = empty then '-' else $Order/Carrier));
+  $Tracking = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Order/TrackingCode = empty then '-' else $Order/TrackingCode));
+  declare $Timeline String = '';
+  retrieve $Shipment from "ServiceDesk"."Shipment" where ["ServiceDesk"."Shipment_Order" = $Order] first;
+  if $Shipment != empty then
+    retrieve $Events from "ServiceDesk"."TrackingEvent" where ["ServiceDesk"."TrackingEvent_Shipment" = $Shipment] sort by "At" asc;
+    loop $Event in $Events begin
+      $EventText = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Event/Text != empty then $Event/Text else (if $Event/Location = empty then '' else $Event/Location)));
+      set $Timeline = $Timeline + (if $Timeline = '' then '' else ',') + '{"date":"' + (if $Event/At = empty then '' else formatDateTime($Event/At, 'yyyy-MM-dd')) + '","text":"' + $EventText + '"}';
+    end loop;
+  end if;
+  return '```card' + $NL
+    + '{"type":"order","title":"' + $Order/OrderNumber + '","subtitle":"' + (if $Order/OrderDate = empty then 'Order' else 'Ordered ' + formatDateTime($Order/OrderDate, 'yyyy-MM-dd')) + '",'
+    + '"status":"' + $Status + '","tone":"' + $Tone + '",'
+    + '"fields":[{"label":"Total","value":"EUR ' + formatDecimal((if $Order/TotalAmount = empty then 0 else $Order/TotalAmount), '#,##0.00', 'en-US') + '"},'
+    + '{"label":"Carrier","value":"' + $Carrier + '"},{"label":"Tracking","value":"' + $Tracking + '"}],'
+    + '"timeline":[' + $Timeline + ']}' + $NL + '```' + $NL;
+end;
+
+/** The orders the assistant looked up in a chat, as cards, in the order they were first asked about. Read from the tool calls' input, then found again for the current user. */
+create or modify microflow "ServiceDesk"."SUB_ChatDetails_Context" ($ChatContext: ConversationalUI.ChatContext)
+returns String as $Text
+folder 'Chat details'
+begin
+  retrieve $Calls from ConversationalUI.ToolMessage where [ConversationalUI.SubMessage_Message/ConversationalUI.Message/ConversationalUI.Message_ChatContext = $ChatContext] sort by createdDate asc;
+  declare $Seen String = '|';
+  declare $Cards String = '';
+  loop $Call in $Calls begin
+    if $Call/Input != empty and contains($Call/Input, '"OrderNumber"') then
+      -- Mendix's replaceAll takes the replacement literally (no $1 group), so cut
+      -- away what comes before the value, then what comes after it.
+      declare $Number String = trim(replaceAll(replaceAll($Call/Input, '(?s)^.*"OrderNumber"\s*:\s*"', ''), '(?s)".*$', ''));
+      if $Number != '' and not(contains($Seen, '|' + toUpperCase($Number) + '|')) then
+        set $Seen = $Seen + toUpperCase($Number) + '|';
+        $Card = call microflow "ServiceDesk"."SUB_ChatDetails_OrderCard" (OrderNumber = $Number);
+        set $Cards = $Cards + $Card;
+      end if;
+    end if;
+  end loop;
+  if $Cards = '' then
+    return 'When the assistant looks up an order in this chat, its status and tracking show here.';
+  end if;
+  return '#### Orders in this chat' + urlDecode('%0A') + $Cards;
+end;
+
+/** Data source of the details panel beside a chat. Staff get metrics, tool calls and context; a customer only context. */
+create or modify microflow "ServiceDesk"."DS_ChatDetails" ($ChatContext: ConversationalUI.ChatContext)
+returns "ServiceDesk"."ChatDetailsView" as $Details
+folder 'Chat details'
+begin
+  $IsStaff = call microflow "ServiceDesk"."SUB_ChatDetails_IsStaff" ();
+  if $ChatContext = empty then
+    $Empty = create "ServiceDesk"."ChatDetailsView" ("IsStaff" = $IsStaff, "Metrics" = '', "ToolCalls" = '', "ContextText" = '');
+    return $Empty;
+  end if;
+  $ContextMarkdown = call microflow "ServiceDesk"."SUB_ChatDetails_Context" (ChatContext = $ChatContext);
+  if not($IsStaff) then
+    $ForCustomer = create "ServiceDesk"."ChatDetailsView" ("IsStaff" = false, "Metrics" = '', "ToolCalls" = '', "ContextText" = $ContextMarkdown);
+    return $ForCustomer;
+  end if;
+  $MetricsView = call microflow "ServiceDesk"."DS_ChatMetrics" (ChatContext = $ChatContext);
+  $ToolCalls = call microflow "ServiceDesk"."SUB_ChatDetails_ToolCalls" (ChatContext = $ChatContext);
+  $ForStaff = create "ServiceDesk"."ChatDetailsView" ("IsStaff" = true, "Metrics" = $MetricsView/Markdown, "ToolCalls" = $ToolCalls, "ContextText" = $ContextMarkdown);
+  return $ForStaff;
+end;
+
+grant execute on microflow "ServiceDesk"."DS_ChatDetails" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

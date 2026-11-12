@@ -1,0 +1,82 @@
+/* Dark glass palette for ServiceDesk Copilot, from the Claude Design canvas
+   "ServiceDesk Copilot — dark glass chat". Seeds `mxcli theme create glass`. */
+:root {
+  --mxt-brand: #4FD1C5;
+  --mxt-brand-hover: #7FE3D8;
+  --mxt-brand-ink: #070B16;
+  --mxt-accent: #9B8CFF;
+  --mxt-ground: #070B16;
+  --mxt-surface: rgba(255, 255, 255, 0.055);
+  --mxt-surface-alt: rgba(255, 255, 255, 0.035);
+  --mxt-surface-hover: rgba(255, 255, 255, 0.09);
+  --mxt-surface-selected: rgba(79, 209, 197, 0.14);
+  --mxt-ink: #E8ECF6;
+  --mxt-ink-muted: #A9B3CA;
+  --mxt-ink-faint: #8C96AE;
+  --mxt-line: rgba(255, 255, 255, 0.10);
+  --mxt-link: #7FE3D8;
+  --mxt-link-hover: #B5F1EA;
+  --mxt-rail: rgba(7, 11, 22, 0.72);
+  --mxt-rail-line: rgba(255, 255, 255, 0.08);
+  --mxt-rail-ink: #B4BDD3;
+  --mxt-rail-ink-active: #E8ECF6;
+  --mxt-success: #4FD1C5;
+  --mxt-warning: #F5B454;
+  --mxt-danger: #FF7A7A;
+  --mxt-info: #8FB8FF;
+  --mxt-tint-ok: rgba(79, 209, 197, 0.14);
+  --mxt-tone-ok: #7FE3D8;
+  --mxt-tint-warn: rgba(245, 180, 84, 0.14);
+  --mxt-tone-warn: #F5B454;
+  --mxt-tint-risk: rgba(255, 122, 122, 0.14);
+  --mxt-tone-risk: #FF9A9A;
+  --mxt-tint-info: rgba(143, 184, 255, 0.14);
+  --mxt-tone-info: #A9C8FF;
+  --mxt-tint-neutral: rgba(255, 255, 255, 0.08);
+  --mxt-font: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mxt-radius: 10px;
+  --mxt-radius-lg: 20px;
+  --mxt-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --mxt-focus-halo: 0 0 0 3px rgba(79, 209, 197, 0.35);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mxt-brand: #4FD1C5;
+    --mxt-brand-hover: #7FE3D8;
+    --mxt-brand-ink: #070B16;
+    --mxt-accent: #9B8CFF;
+    --mxt-ground: #070B16;
+    --mxt-surface: rgba(255, 255, 255, 0.055);
+    --mxt-surface-alt: rgba(255, 255, 255, 0.035);
+    --mxt-surface-hover: rgba(255, 255, 255, 0.09);
+    --mxt-surface-selected: rgba(79, 209, 197, 0.14);
+    --mxt-ink: #E8ECF6;
+    --mxt-ink-muted: #A9B3CA;
+    --mxt-ink-faint: #8C96AE;
+    --mxt-line: rgba(255, 255, 255, 0.10);
+    --mxt-link: #7FE3D8;
+    --mxt-link-hover: #B5F1EA;
+    --mxt-rail: rgba(7, 11, 22, 0.72);
+    --mxt-rail-line: rgba(255, 255, 255, 0.08);
+    --mxt-rail-ink: #B4BDD3;
+    --mxt-rail-ink-active: #E8ECF6;
+    --mxt-success: #4FD1C5;
+    --mxt-warning: #F5B454;
+    --mxt-danger: #FF7A7A;
+    --mxt-info: #8FB8FF;
+    --mxt-tint-ok: rgba(79, 209, 197, 0.14);
+    --mxt-tone-ok: #7FE3D8;
+    --mxt-tint-warn: rgba(245, 180, 84, 0.14);
+    --mxt-tone-warn: #F5B454;
+    --mxt-tint-risk: rgba(255, 122, 122, 0.14);
+    --mxt-tone-risk: #FF9A9A;
+    --mxt-tint-info: rgba(143, 184, 255, 0.14);
+    --mxt-tone-info: #A9C8FF;
+    --mxt-tint-neutral: rgba(255, 255, 255, 0.08);
+    --mxt-font: Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    --mxt-radius: 10px;
+    --mxt-radius-lg: 20px;
+    --mxt-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    --mxt-focus-halo: 0 0 0 3px rgba(79, 209, 197, 0.35);
+  }
+}

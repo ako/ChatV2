@@ -1,0 +1,214 @@
+// Layer 2 — Dark glass: the light palette, the variant blocks and the recipe classes.
+// The Atlas wiring both variants run through is in _mxcli-atlas-map.scss.
+//
+// Imported from theme/web/main.scss, which compiles AFTER Atlas Core and after
+// every module theme source. That matters twice over: these rules override
+// Atlas without !important, and the variant blocks below outrank Mendix's own
+// theme/web/_theme-dark.scss, which would otherwise repaint the app in stock
+// Mendix blue the moment a theme-dark class appears.
+//
+// Edit the palette in custom-variables.scss, not here.
+
+$mxcli-theme-variant: {{VARIANT}} !default;
+
+// ---------------------------------------------------------------------------
+// The light palette. Only the theme's own tokens — the Atlas wiring is written
+// in terms of these, so it does not need restating.
+// ---------------------------------------------------------------------------
+@mixin mxcli-glass-light {
+  --mxt-brand: #0d9488;
+  --mxt-brand-hover: #0b7f75;
+  --mxt-brand-ink: #ffffff;
+
+  // Dark glass is dark-first, and its teal reads well on a dark ground. As LINK
+  // TEXT on the light palette the same teal is 3.74:1 against white — under the
+  // 4.5:1 AA needs for body text — so links get a darker teal of their own
+  // rather than the whole brand being darkened (which would also change every
+  // button fill). #0f766e measures 5.47:1 on surface, 5.10:1 on ground and
+  // 4.92:1 on surface-alt. (mxcli-todo findings #19c)
+  --mxt-link: #0f766e;
+  --mxt-link-hover: #0c5f58;
+  --mxt-accent: #7c5ce0;
+
+  --mxt-success: #2a8a3c;
+  --mxt-warning: #a96b0e;
+  --mxt-danger: #c13a32;
+  --mxt-info: #2563c7;
+
+  --mxt-ground: #f5f7fa;
+  --mxt-surface: #ffffff;
+  --mxt-surface-alt: #f0f3f7;
+  --mxt-surface-hover: #e8edf3;
+  --mxt-surface-selected: #e0f2ef;
+  --mxt-ink: #10151c;
+  --mxt-ink-muted: #55606e;
+  --mxt-ink-faint: #8a94a2;
+  --mxt-line: #dbe1e8;
+
+  --mxt-rail: #10151c;
+  --mxt-rail-line: #232a34;
+  --mxt-rail-ink: #c8d0da;
+  --mxt-rail-ink-active: #ffffff;
+
+  --mxt-tint-ok: rgba(42, 138, 60, 0.12);
+  --mxt-tone-ok: #226e30;
+  --mxt-tint-warn: rgba(169, 107, 14, 0.12);
+  --mxt-tone-warn: #86550b;
+  --mxt-tint-risk: rgba(193, 58, 50, 0.12);
+  --mxt-tone-risk: #9a2e28;
+  --mxt-tint-info: rgba(13, 148, 136, 0.12);
+  --mxt-tone-info: #0b7f75;
+  --mxt-tint-neutral: #e7ebf1;
+
+  --mxt-shadow: none;
+  --mxt-focus-halo: 0 0 0 3px rgba(13, 148, 136, 0.2);
+}
+
+// ---------------------------------------------------------------------------
+// Dark glass: translucent, blurred panels over a deep navy ground lit by two
+// soft glows (teal top left, violet bottom right). Panels separate by a fine
+// light border and their own lightness, not by a shadow. The glows sit on the
+// body, fixed, so every page scrolls over the same light.
+// ---------------------------------------------------------------------------
+@mixin mxcli-glass-panel {
+  background: var(--mxt-surface);
+  border: 1px solid var(--mxt-line);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+
+@mixin mxcli-glass-skin {
+  body {
+    background-color: var(--mxt-ground);
+    background-image:
+      radial-gradient(720px circle at 8% -8%, rgba(79, 209, 197, 0.16), transparent 60%),
+      radial-gradient(860px circle at 100% 108%, rgba(155, 140, 255, 0.18), transparent 60%);
+    background-attachment: fixed;
+    color: var(--mxt-ink);
+  }
+  // The layout's own regions are transparent so the glows show through.
+  .mx-scrollcontainer,
+  .mx-scrollcontainer-wrapper,
+  .region-content,
+  .mx-placeholder,
+  .layout-atlas .region-content {
+    background: transparent;
+  }
+  .region-topbar,
+  .layout-atlas .region-topbar {
+    background: rgba(7, 11, 22, 0.55);
+    border-bottom: 1px solid var(--mxt-rail-line);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+  .region-sidebar,
+  .layout-atlas .region-sidebar {
+    background: rgba(7, 11, 22, 0.55);
+    border-right: 1px solid var(--mxt-rail-line);
+  }
+  .card,
+  .stat,
+  .modal-dialog .modal-content,
+  .mx-window .mx-window-content {
+    @include mxcli-glass-panel;
+    box-shadow: none;
+    border-radius: var(--mxt-radius-lg);
+  }
+  .modal-dialog .modal-content,
+  .mx-window .mx-window-content {
+    background: rgba(16, 22, 40, 0.88);
+  }
+  .form-control,
+  .mx-textarea-input {
+    background: rgba(0, 0, 0, 0.28);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--mxt-ink);
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--mxt-brand), #8fb8ff);
+    border: 0;
+    color: var(--mxt-brand-ink);
+    font-weight: 600;
+  }
+  .btn-default {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: var(--mxt-ink);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Where this theme's tokens are declared.
+//
+// ":root" when the theme is the only one installed. When several are installed
+// as a switchable set the default one claims ":root" minus the other skins'
+// classes, and each other one claims ":root.mxt-<name>" — mutually exclusive,
+// so swapping the class on <html> re-points every --mxt-* token at once. The
+// shared Atlas map and recipe layer read those tokens through var(), so they
+// follow the swap without being duplicated per theme.
+// ---------------------------------------------------------------------------
+$mxcli-glass-scope: {{SCOPE}} !default;
+$mxcli-glass-scoped: {{SCOPED}} !default;
+
+// ---------------------------------------------------------------------------
+// Variant selection, applied at this theme's scope.
+//
+//   auto   — follow the OS, and honour an explicit theme-light / theme-dark
+//            class on <html> so a switcher can override it
+//   dark   — Dark glass's default palette, no switching
+//   light  — the light palette, no switching
+//
+// `dark` emits nothing beyond the base: it IS the base. And an explicit
+// .theme-dark needs no block either, because the media query below excludes
+// it — which is the whole reason for the :not().
+// ---------------------------------------------------------------------------
+#{$mxcli-glass-scope} {
+  @include mxcli-atlas-map;
+}
+
+// The skin is scoped only when this theme shares a stylesheet with others.
+// Unscoped it would apply under every skin in the set; scoping it always would
+// raise its specificity in the single-theme case and start winning against app
+// CSS that used to beat it on source order.
+@if $mxcli-glass-scoped {
+  #{$mxcli-glass-scope} {
+    @include mxcli-glass-skin;
+  }
+} @else {
+  @include mxcli-glass-skin;
+}
+
+@if $mxcli-theme-variant == auto {
+  @media (prefers-color-scheme: light) {
+    #{$mxcli-glass-scope} {
+      &:not(.theme-dark) {
+        @include mxcli-glass-light;
+        @include mxcli-atlas-map;
+      }
+    }
+  }
+
+  // Specificity matters here: Mendix's own _theme-dark.scss also declares
+  // :root.theme-dark. Same weight, so the later declaration wins — and this
+  // file is imported after it.
+  #{$mxcli-glass-scope} {
+    &.theme-light {
+      @include mxcli-glass-light;
+      @include mxcli-atlas-map;
+    }
+  }
+} @else if $mxcli-theme-variant == light {
+  #{$mxcli-glass-scope} {
+    @include mxcli-glass-light;
+    @include mxcli-atlas-map;
+  }
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.mx-title {
+  font-family: var(--mxt-font-heading);
+}

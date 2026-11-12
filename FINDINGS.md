@@ -1372,3 +1372,41 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 42/42 pass, 5 new for the metrics.
 - Live: a staff chat with two questions showed 7 model calls, 8 tool calls and a bar per question. The customer sees no button.
+
+## Dark glass redesign: three-column chat with a details panel (2026-11-12)
+
+The chat page was redesigned on a Claude Design canvas and built in the app:
+- the **glass** theme;
+- three columns: chats, conversation, details;
+- a details panel that takes over the metrics popup and the in-chat tool call details;
+- a new Context view of the orders a chat is about.
+
+How it was verified:
+- Screenshots as demo_agent and demo_customer at 1440×940.
+- A live customer chat: the panel picked up SO-10002 six seconds after the answer, with no refresh.
+
+**Theme from a design.** `mxcli theme create glass --from design/glass-tokens.css --base console` took the 37 `--mxt-*` tokens straight from a small tokens file read off the canvas. Two things it did not do:
+- It took the glass look itself (blur, glows, translucent panels) only as far as the palette goes. That went into the theme's skin mixin.
+- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy.
+
+`theme apply glass` removed the signal theme's partial and fonts from `theme/web/`.
+
+**Mendix `replaceAll` takes its replacement literally.** `replaceAll(s, '…"([^"]*)"…', '$1')` returned the text `$1`, not the group, measured with a microflow test. A JSON escape written Java-style (`'\\\\'`, `'\\"'`) doubled every backslash. Both now cut or replace with literal text; a test pins the escape.
+
+**A details panel refreshes by itself.** A data view with a microflow data source and the chat as its parameter re-ran a few seconds after Conversational UI finished an answer. The refresh button stays for the other case.
+
+**Context can't be read from the answer text.** The order numbers come from the tool calls' `Input` JSON (`{"OrderNumber": "SO-10002"}`), the one place the model states which order it looked up. Each is then found again for the current user.
+
+Rebuilding the shape of a microflow mxcli authored still needs drop + create (MDL-V1-REBUILD), and that has knock-on effects:
+- Dropping DS_ChatDetails left the page's data view pointing at the old microflow, and the watch build reported CE0115. Re-applying the page script and a clean restart cleared it; `docker check` was clean throughout.
+- A variable named `$Context` in DS_ChatDetails got CE0108 ("defined but not in scope") from the watch build once. It went away after renaming it to `$ContextMarkdown`. It was not reproduced in isolation, so it is not filed.
+
+The one-time snippet insert (13b) is gone: the payload list was dropped from Conversational UI's snippet once, and the snippet is now back to what script 13 alone produces.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing (errors shown).
+- `lint`: 0 errors, 22 warnings.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass, 3 new for the details panel.
+- Widget unit tests: 14/14.

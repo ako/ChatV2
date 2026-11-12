@@ -49,54 +49,8 @@ begin
   return true;
 end;
 
--- Tool call payloads, for staff. Conversational UI shows a tool call only as
--- "Tool call was successful"; support agents and administrators also see the
--- input and result of each tool call behind an answer, in one collapsed
--- "Tool call details" block right under the tool calls, placed by
--- 13b-tool-payloads-insert.mdl. (Inside Conversational UI's own tool-call panel would be
--- nicer, but ALTER cannot reach that template's widgets; FINDINGS.md.) Customers do not:
--- raw tool output means little to them, and the microflow returns nothing for
--- a user with the Customer role. Conversational UI's own access rules are left
--- as they are: the microflow reads the input on the server.
-
-/** A tool call's input and result, formatted as markdown for the staff payload view. */
-create or modify non-persistent entity "ServiceDesk"."ToolPayloadView" (
-  "Markdown": String(unlimited)
-);
-
-grant read * on entity "ServiceDesk"."ToolPayloadView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
-
-/** The tool calls behind one assistant answer, as one collapsed "Tool call details" block with each call's input and result, in call order. For staff only: empty for a user with the Customer role, and for an answer without tool calls. */
-create or modify microflow "ServiceDesk"."DS_MessageToolPayloads" ($Message: ConversationalUI.Message)
-returns List of "ServiceDesk"."ToolPayloadView" as $Payloads
-folder 'Chat'
-begin
-  $Views = create list of "ServiceDesk"."ToolPayloadView";
-  retrieve $CustomerUser from System.User where [id = '[%CurrentUser%]'][System.UserRoles = '[%UserRole_Customer%]'] first;
-  if $CustomerUser != empty or $Message = empty then
-    return $Views;
-  end if;
-  retrieve $Calls from ConversationalUI.ToolMessage where [ConversationalUI.SubMessage_Message = $Message] sort by createdDate asc;
-  $CallCount = count $Calls;
-  if $CallCount = 0 then
-    return $Views;
-  end if;
-  declare $NL String = urlDecode('%0A');
-  declare $Fence String = '```';
-  declare $Names String = '';
-  declare $Body String = '';
-  loop $Call in $Calls begin
-    declare $Name String = (if $Call/ToolName = empty then 'tool call' else $Call/ToolName);
-    declare $Result String = (if $Call/Content = empty then '(no result)' else $Call/Content);
-    declare $Shown String = (if length($Result) > 6000 then substring($Result, 0, 6000) + $NL + '... (' + toString(length($Result) - 6000) + ' more characters)' else $Result);
-    set $Names = $Names + (if $Names = '' then '' else ', ') + $Name;
-    set $Body = $Body + '#### ' + $Name + (if $Call/IsError then ' (failed)' else '') + $NL
-      + 'Input' + $NL + $Fence + 'json' + $NL + (if $Call/Input = empty then '{}' else $Call/Input) + $NL + $Fence + $NL
-      + 'Result' + $NL + $Fence + $NL + $Shown + $NL + $Fence + $NL;
-  end loop;
-  $View = create "ServiceDesk"."ToolPayloadView" ("Markdown" = '~~~details Tool call details (' + toString($CallCount) + '): ' + $Names + $NL + $Body + '~~~');
-  add $View to $Views;
-  return $Views;
-end;
-
-grant execute on microflow "ServiceDesk"."DS_MessageToolPayloads" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- Tool call payloads for staff used to sit in this snippet, under each
+-- answer's tool calls. They moved to the Tool calls tab of the chat page's
+-- details panel (11c-chat-details.mdl), which keeps the conversation clean.
+drop microflow if exists "ServiceDesk"."DS_MessageToolPayloads";
+drop entity if exists "ServiceDesk"."ToolPayloadView";

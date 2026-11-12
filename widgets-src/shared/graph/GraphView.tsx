@@ -41,6 +41,12 @@ export function GraphView(props: GraphViewProps): ReactElement {
     useEffect(() => {
         if (!box.current) return;
         const ink = getComputedStyle(box.current).color || "#1b2430";
+        // On a dark theme the text is light: give labels and node rims a dark
+        // backing instead of white boxes.
+        const rgb = (ink.match(/\d+(\.\d+)?/g) || ["27", "36", "48"]).slice(0, 3).map(Number);
+        const darkTheme = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) > 140;
+        const backing = darkTheme ? "#0b1020" : "#ffffff";
+        const selectedRim = darkTheme ? "#e8ecf6" : "#111111";
         const cy = cytoscape({
             container: box.current,
             wheelSensitivity: 0.25,
@@ -51,16 +57,16 @@ export function GraphView(props: GraphViewProps): ReactElement {
                     "background-color": "data(color)", "label": "data(caption)", "color": ink,
                     "font-size": props.compact ? 9 : 11, "text-valign": "bottom", "text-margin-y": 4,
                     "text-wrap": "wrap", "text-max-width": "120px", "width": 22, "height": 22,
-                    "border-width": 2, "border-color": "#ffffff", "text-background-color": "#ffffff",
+                    "border-width": 2, "border-color": backing, "text-background-color": backing,
                     "text-background-opacity": 0.7, "text-background-padding": "1px"
                 } },
                 { selector: "node.collapsed", style: { "background-opacity": 0.55, "border-style": "dashed", "border-color": "data(color)" } },
                 { selector: "node.center", style: { "width": 32, "height": 32, "font-weight": "bold" } },
-                { selector: "node:selected", style: { "border-color": "#111111", "border-width": 3 } },
+                { selector: "node:selected", style: { "border-color": selectedRim, "border-width": 3 } },
                 { selector: "edge", style: {
                     "width": 1.4, "line-color": "#b8c0ca", "target-arrow-color": "#b8c0ca", "target-arrow-shape": "triangle",
                     "arrow-scale": 0.8, "curve-style": "bezier", "label": "", "font-size": 9, "color": "#5b6675",
-                    "text-rotation": "autorotate", "text-background-color": "#ffffff", "text-background-opacity": 0.85
+                    "text-rotation": "autorotate", "text-background-color": backing, "text-background-opacity": 0.85
                 } },
                 { selector: "edge.lit, edge:selected", style: { "label": "data(relation)", "line-color": "#5b6675", "target-arrow-color": "#5b6675", "width": 2 } },
                 { selector: ".hidden", style: { "display": "none" } }

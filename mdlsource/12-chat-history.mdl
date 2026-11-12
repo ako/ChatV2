@@ -114,7 +114,7 @@ begin
   show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $ChatContext);
 end;
 
-/** A chat with the user's chat history beside it: pick an earlier chat, start a new one or delete one. Used by both assistants. */
+/** A chat in three columns: the user's chats, the conversation, and a details panel. Staff see metrics, tool calls and context in the panel; a customer sees the orders the chat is about. Used by both assistants. */
 create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
 (
   params: ( $ChatContext: ConversationalUI.ChatContext ),
@@ -122,34 +122,46 @@ create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
   layout: Atlas_Core.Atlas_Default
 )
 {
-  layoutgrid lgChat (Class: 'chat-history-page') {
-    row {
-      column (desktopwidth: 3, tabletwidth: 4) {
-        actionbutton btnNewChat (caption: 'New chat', action: call microflow "ServiceDesk"."ACT_Chat_New"(ChatContext = $ChatContext), buttonstyle: primary, icon: Atlas_Core.Atlas."message-bubble-add")
-        actionbutton btnChatMetrics (caption: 'Conversation metrics', action: call microflow "ServiceDesk"."ACT_ChatMetrics_Show"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas."analytics-bars", Class: 'btn-chat-metrics')
-        dynamictext txtHistory (content: 'Your chats', rendermode: H5)
-        listview lvHistory (Class: 'chat-history-list', datasource: microflow "ServiceDesk"."DS_ChatHistory"(ChatContext = $ChatContext)) {
-          layoutgrid lgHistoryItem {
-            row (verticalalignment: Center) {
-              column (desktopwidth: autofill) {
-                container ctOpenChat (OnClick: call microflow "ServiceDesk"."ACT_Chat_Show"(ChatContext = $currentObject), Class: 'text-break-word') {
-                  dynamictext txtTopicOpen (content: '{1}', contentparams: ({1} = Topic), rendermode: H6, Visible: $currentObject = $ChatContext)
-                  dynamictext txtTopic (content: '{1}', contentparams: ({1} = Topic), Class: 'text-clamp--2-lines', Visible: $currentObject != $ChatContext)
-                  dynamictext txtNewChat (content: 'New chat', rendermode: H6, Visible: $currentObject/Topic = empty)
-                }
-              }
-              column (desktopwidth: autofit, tabletwidth: autofit, phonewidth: autofit) {
-                actionbutton btnDeleteChat (Tooltip: 'Delete chat', action: call microflow "ServiceDesk"."ACT_Chat_Delete"(ChatContext = $currentObject, OpenChat = $ChatContext) with (Confirmation: 'Delete this chat?', ProceedCaption: 'Delete', CancelCaption: 'Cancel'), icon: glyph 57376, Class: 'btn-image')
-              }
-            }
+  container ctChatShell (Class: 'sd-chat-shell') {
+    container ctChatList (Class: 'sd-panel sd-chat-list') {
+      actionbutton btnNewChat (caption: 'New chat', action: call microflow "ServiceDesk"."ACT_Chat_New"(ChatContext = $ChatContext), buttonstyle: primary, icon: Atlas_Core.Atlas."message-bubble-add", Class: 'sd-new-chat')
+      dynamictext txtHistory (content: 'Your chats', Class: 'sd-eyebrow')
+      listview lvHistory (Class: 'sd-chat-history', datasource: microflow "ServiceDesk"."DS_ChatHistory"(ChatContext = $ChatContext)) {
+        container ctHistoryItem (Class: 'sd-chat-item', DynamicClasses: if $currentObject = $ChatContext then 'sd-chat-item--active' else '') {
+          container ctOpenChat (OnClick: call microflow "ServiceDesk"."ACT_Chat_Show"(ChatContext = $currentObject), Class: 'sd-chat-item__open') {
+            dynamictext txtTopic (content: '{1}', contentparams: ({1} = Topic), Class: 'sd-chat-item__topic', Visible: $currentObject/Topic != empty)
+            dynamictext txtNewChat (content: 'New chat', Class: 'sd-chat-item__topic', Visible: $currentObject/Topic = empty)
           }
+          actionbutton btnDeleteChat (Tooltip: 'Delete chat', action: call microflow "ServiceDesk"."ACT_Chat_Delete"(ChatContext = $currentObject, OpenChat = $ChatContext) with (Confirmation: 'Delete this chat?', ProceedCaption: 'Delete', CancelCaption: 'Cancel'), icon: glyph 57376, Class: 'btn-image sd-chat-item__delete')
         }
       }
-      column (desktopwidth: 9, tabletwidth: 8, Class: 'chat-history-pane') {
-        dataview dvChat (datasource: $ChatContext, Class: 'chat-dataview--display-contents') {
-          container ctChat (Class: 'card chat-container') {
-            snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
+    }
+    container ctConversation (Class: 'sd-panel sd-conversation') {
+      dataview dvChat (datasource: $ChatContext, Class: 'chat-dataview--display-contents') {
+        container ctChat (Class: 'chat-container sd-chat-card') {
+          snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
+        }
+      }
+    }
+    container ctDetails (Class: 'sd-panel sd-details') {
+      dataview dvDetails (datasource: microflow "ServiceDesk"."DS_ChatDetails"(ChatContext = $ChatContext), Class: 'sd-details__view') {
+        container ctDetailsHead (Class: 'sd-details__head') {
+          dynamictext txtDetails (content: 'Details', Class: 'sd-details__title')
+          actionbutton btnRefreshDetails (Tooltip: 'Refresh the details', action: call microflow "ServiceDesk"."ACT_Chat_Show"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas.refresh, Class: 'btn-image sd-details__refresh')
+        }
+        tabcontainer tcDetails (Class: 'sd-tabs', Visible: $currentObject/IsStaff) {
+          tabpage tpMetrics (Caption: 'Metrics') {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtMetrics ( stringAttribute: Metrics )
           }
+          tabpage tpToolCalls (Caption: 'Tool calls') {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtToolCalls ( stringAttribute: ToolCalls )
+          }
+          tabpage tpContext (Caption: 'Context') {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtContext ( stringAttribute: ContextText )
+          }
+        }
+        container ctCustomerContext (Class: 'sd-details__body', Visible: not($currentObject/IsStaff)) {
+          pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtCustomerContext ( stringAttribute: ContextText )
         }
       }
     }

@@ -53,5 +53,28 @@ $Turn = create ServiceDesk.ChatMetricsTotals (InputTokens = 0, OutputTokens = 0,
 $Span = create GenAICommons.ModelSpan (InputTokens = 1000000, OutputTokens = 100000, DurationMilliseconds = 2500, _DeploymentIdentifier = 'Mendix Cloud S - Text Generation - Anthropic Claude Sonnet 5.5');
 $Row = call microflow ServiceDesk.SUB_ChatMetrics_AddModelCall(Span = $Span, Label = 'Model call', Prices = $Prices, Lines = $Lines, Chat = $Chat, Turn = $Turn);
 $LineCount = count $Lines;
-declare $Counted Boolean = $Chat/Cost = 4.5 and $Turn/InputTokens = 1000000 and $Chat/ModelCalls = 1 and $Chat/Unpriced = 0 and $LineCount = 1 and contains($Row, 'Claude Sonnet 5.5');
+$SonnetLine = find $Lines by Model = 'Claude Sonnet 5.5';
+declare $Counted Boolean = $Chat/Cost = 4.5 and $Turn/InputTokens = 1000000 and $Chat/ModelCalls = 1 and $Chat/Unpriced = 0 and $LineCount = 1 and contains($Row, 'Model call') and $SonnetLine != empty;
+/
+
+/**
+ * @test The details panel escapes quotes, backslashes and line breaks for a card's JSON
+ * @expect $Escaped = 'say \"hi\" a\\b next'
+ */
+$Escaped = call microflow ServiceDesk.SUB_Json_Escape(Text = 'say "hi" a\b' + urlDecode('%0A') + 'next');
+/
+
+/**
+ * @test An order nobody can find gives no card in the details panel
+ * @expect $Card = ''
+ */
+$Card = call microflow ServiceDesk.SUB_ChatDetails_OrderCard(OrderNumber = 'SO-99999');
+/
+
+/**
+ * @test A known order becomes an order card with its tracking scans
+ * @expect $IsCard = true
+ */
+$Card = call microflow ServiceDesk.SUB_ChatDetails_OrderCard(OrderNumber = 'SO-10002');
+declare $IsCard Boolean = startsWith($Card, '```card') and contains($Card, '"title":"SO-10002"') and contains($Card, '"timeline":[{');
 /

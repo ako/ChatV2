@@ -254,17 +254,30 @@ cp widgets-src/*/dist/1.0.0/*.mpk widgets/ && ./mxcli widget init -p ServiceDesk
 
 Restart the app after installing a new widget package: the watch loop does not pick up `.mpk` changes.
 
-## Tool calls for staff
+## The chat page: three columns, dark glass
 
-Support agents and administrators also see what the tool calls behind an answer did: one collapsed "Tool call details" block right under the tool calls, with each call's arguments and raw result in call order (`ServiceDesk.DS_MessageToolPayloads` in `mdlsource/13-chat-rich-text.mdl`, placed once by `mdlsource/13b-tool-payloads-insert.mdl`). Customers do not see them: the list is empty for a user with the Customer role.
+The assistant page (`ServiceDesk.Chat_WithHistory`, `mdlsource/12-chat-history.mdl`) has three columns: your chats, the conversation, and a details panel. On a narrow window they stack. It is designed on a Claude Design canvas ("ServiceDesk Copilot — dark glass chat"), and the whole app uses the matching **glass** theme: translucent, blurred panels over a deep navy ground with a teal and a violet glow.
+
+- **Theme:** `theme/mxcli-themes/glass/`, created with `mxcli theme create glass --from design/glass-tokens.css --base console` and applied with `--variant dark`. Its skin (the glows, the glass panel recipe, top bar and sidebar, buttons and inputs) is the `mxcli-glass-skin` mixin in `_mxcli-glass.scss`. The chat page's own layout is in `themesource/servicedesk/web/main.scss` (`.sd-*`).
+- **Fonts:** the theme names Inter and JetBrains Mono but ships no font files, so they show only where installed; otherwise the system UI font is used.
+
+### Details panel
+
+`ServiceDesk.DS_ChatDetails` (`mdlsource/11c-chat-details.mdl`) fills the panel. It refreshes by itself a few seconds after an answer, and its refresh button reloads it on demand.
+
+- **Customers** see **Context**: the orders the assistant looked up in this chat, as cards with status, carrier, tracking code and every tracking scan. The order numbers come from the tool calls' input and are found again through `SUB_FindOrderForCurrentUser`, so a customer never sees another customer's order there.
+- **Support agents and administrators** get three tabs:
+  - **Metrics:** tokens, estimated cost, model and tool calls, answer time, a bar per question, and each question's steps (below).
+  - **Tool calls:** every tool call in the chat, per question, with its input and raw result. This used to sit inside the conversation.
+  - **Context:** the same as for customers.
 
 ## Conversation metrics for staff
 
-"Conversation metrics", next to "New chat" on the chat page, opens what the Agents Kit recorded for the open chat (`mdlsource/11b-chat-metrics.mdl`). It works the same for both assistants.
+The Metrics tab of the details panel shows what the Agents Kit recorded for the open chat (`mdlsource/11b-chat-metrics.mdl`). It works the same for both assistants.
 
 - **Summary card:** estimated cost, tokens in and out, model calls, tool calls and answer time; tokens and cost per model; a bar per question.
-- **Per question:** a collapsed section with each model call (model, time, tokens, cost) and, under it, the tools that call ran. An agent that ran as a tool, such as the triage agent, is listed under its tool call and counted in the totals. Its trace is found by its start time falling inside the tool call.
+- **Per question:** a collapsed section with each model call (time, tokens in → out) and, under it, the tools that call ran. An agent that ran as a tool, such as the triage agent, is listed under its tool call and counted in the totals. Its trace is found by its start time falling inside the tool call.
 
-The data comes from the GenAICommons traces, which are stored because `GenAICommons.StoreTraces` is on. The panel reads them in a microflow, so staff need no trace-monitoring role. Customers do not get the button: it calls a microflow only support agents and administrators may run.
+The data comes from the GenAICommons traces, which are stored because `GenAICommons.StoreTraces` is on. The panel reads them in a microflow, so staff need no trace-monitoring role. Customers do not get the tab: the panel only computes metrics for staff.
 
 Costs are estimated from **Model prices** (administrators' menu). The first price whose text appears in the model's name applies, for example `Sonnet 5.5` or `:free`. The free OpenRouter models are seeded at 0. Mendix Cloud models have no price until an administrator enters one, and until then the panel says "no price set" and leaves them out of the estimate.
