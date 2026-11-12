@@ -39,3 +39,6 @@ __pycache__/
 
 # Fuseki run directory, if started from tools/fuseki without FUSEKI_BASE
 /tools/fuseki/run/
+
+# screenshots from browser test scripts run in the project root
+/*.png
