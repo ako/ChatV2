@@ -1496,3 +1496,14 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 45/45 pass.
 - Widget unit tests: 20/20 pass, 2 new for model cards.
+
+## Glass theme: buttons, grid corners and filters (2026-11-12)
+
+Reported on Tickets: no space around the buttons, square table corners against the panel's rounded ones, and broken filter fields. Measured in the browser:
+
+- **The theme's control height was 30px** (`--mxt-control-height`, inherited from the compact console base). Dropdown filters are 30px tall with 8px padding top and bottom, which left 12px for 20px text, so "Select" was cut off. The text filter box (30px) also sat next to a 38px operator button. The glass palette now uses 38px controls and 40px rows, and the grid filters share that one height with their text centred.
+- **Data Grid 2's table painted its own background** (`.widget-datagrid-grid.table`) inside the glass panel. Its square corners showed against the panel's rounded ones. The table is now transparent, and the header row has a soft tint with rounded ends inside the panel's 10px padding.
+- **Buttons had no margin.** Side-by-side buttons on a page now get a gap and room below. The rule uses `:where()` (zero specificity) so a page's own layout, such as the chat's full-width "New chat" and the Home tiles, still wins.
+- **Home had no page padding** (it has no layout grid). It is now padded.
+
+Checked after the fix: on Tickets and Orders the filters are 38px tall and their text is not clipped. The New chat button keeps margin 0, and the pages are no taller than the window.

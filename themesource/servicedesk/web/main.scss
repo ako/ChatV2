@@ -42,8 +42,9 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-    .sd-new-chat {
+    .sd-new-chat.btn {
         width: 100%;
+        margin: 0;
         height: 44px;
         border-radius: 12px;
     }
@@ -298,6 +299,11 @@
     flex-direction: column;
     gap: 20px;
     max-width: 1100px;
+    // the page has no layout grid, which is what pads the other pages
+    padding: 24px 32px;
+}
+@media (max-width: 640px) {
+    .sd-home { padding: 16px; }
 }
 .sd-hero {
     height: auto;

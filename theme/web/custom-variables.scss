@@ -661,8 +661,8 @@ $use-css-variables: true;
   /* ---- shape, density, elevation --------------------------------------- */
   --mxt-radius: 10px;
   --mxt-radius-lg: 20px;
-  --mxt-row-height: 28px;
-  --mxt-control-height: 30px;
+  --mxt-row-height: 40px;
+  --mxt-control-height: 38px;
   --mxt-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   --mxt-focus-halo: 0 0 0 3px rgba(79, 209, 197, 0.35);
 
@@ -677,4 +677,4 @@ $use-css-variables: true;
   --mxt-link: #7FE3D8;
   --mxt-link-hover: #B5F1EA;
 }
-// mxcli:theme:end glass f955b8bff13b6710
+// mxcli:theme:end glass 101e7cbc089dc3f6

@@ -170,15 +170,82 @@ $mxcli-theme-variant: {{VARIANT}} !default;
     }
   }
   // Data Grid 2 and the classic grids: one glass panel around the whole grid.
+  // One glass panel per grid. The table inside it paints nothing of its own (a
+  // square background there showed through the panel's rounded corners); the
+  // header row gets a soft tint with corners rounded to sit inside the panel.
   .widget-datagrid,
   .mx-datagrid {
     @include mxcli-glass-panel;
     border-radius: var(--mxt-radius-lg);
-    padding: 4px 8px 8px;
+    padding: 10px;
   }
-  .widget-datagrid .th,
+  .widget-datagrid .widget-datagrid-grid.table,
+  .widget-datagrid .table,
+  .mx-datagrid table {
+    background: transparent;
+    margin-bottom: 0;
+  }
+  .widget-datagrid .th {
+    background: rgba(255, 255, 255, 0.045);
+    border-color: transparent;
+    padding: 12px 12px 14px;
+  }
+  .widget-datagrid .th:first-child {
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+  }
+  .widget-datagrid .th:last-child {
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+  }
   .widget-datagrid .column-header {
     background: transparent;
+    margin-bottom: 8px;
+    color: var(--mxt-ink-muted);
+  }
+  .widget-datagrid .td {
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+  .widget-datagrid .widget-datagrid-footer,
+  .widget-datagrid .widget-datagrid-paging-bottom {
+    padding-top: 8px;
+  }
+  // Grid filters: one height for the operator button, the text box and the
+  // dropdowns, with the dropdown's text centred instead of clipped.
+  .widget-datagrid .filter-selector-content {
+    display: flex;
+    align-items: stretch;
+  }
+  .widget-datagrid .filter-selector-button,
+  .widget-datagrid .filter-input,
+  .widget-datagrid .widget-dropdown-filter {
+    height: var(--mxt-control-height);
+    min-height: var(--mxt-control-height);
+  }
+  .widget-datagrid .widget-dropdown-filter {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: 10px;
+  }
+  .widget-datagrid .widget-dropdown-filter-input-container {
+    height: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .widget-datagrid .widget-dropdown-filter-toggle {
+    line-height: 1.4;
+    color: var(--mxt-ink-faint);
+  }
+  // Buttons placed side by side on a page: a gap between them and room below,
+  // so a row of actions does not run into the grid underneath. Buttons inside
+  // grids, list views and data view footers keep their own spacing.
+  // (:where keeps this at the lowest specificity, so a page's own button
+  // layout, such as the chat's full-width "New chat" or the Home tiles, wins.)
+  :where(.mx-layoutgrid [class*="col"], .mx-container, .mx-placeholder) > .btn.mx-button {
+    margin: 0 8px 14px 0;
   }
   // Charts (Plotly) draw a white paper and plot area unless told otherwise.
   .js-plotly-plot .main-svg {
