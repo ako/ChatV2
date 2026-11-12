@@ -9,7 +9,7 @@ A variant of the prototype recorder (rec.py) for an app that has to run in real
 time: Mendix's client, the AI answers and the workflow engine all keep their own
 timers, so the page clock is not frozen. The browser is recorded in real time
 (Playwright video), and each beat paints a coloured marker in the corner while
-it is filmed. The beats are cut out of the take where the video shows their
+it is filmed (its number in binary). The beats are cut out of the take where the video shows their
 marker (Playwright's video does not keep wall-clock time while the page is busy
 waiting on an AI answer, so a clock map drifts by seconds); the film covers the
 marker. Everything
@@ -39,6 +39,7 @@ from playwright.sync_api import sync_playwright
 
 LEAD, TAIL, SETTLE = 0.45, 0.9, 1.5
 HOLD = 1.5                       # seconds held after each beat, off camera
+MARK_LEAD = 0.4                  # the marker shows this long before a beat starts; the cut skips it
 ZOOM = 1.2                       # 1920x1080 video of a 1600x900 CSS layout
 SIZE = {"width": 1920, "height": 1080}
 CHROME = None   # None: the preinstalled Chromium that matches this Playwright
@@ -53,12 +54,13 @@ if (!window.__recReady) { window.__recReady = true;
   Object.assign(ka.style, {position: 'absolute', right: '0', bottom: '0', width: '1px', height: '1px', background: 'rgba(0,0,0,.02)', animation: 'recka 1s linear infinite'});
   const kst = document.createElement('style'); kst.textContent = '@keyframes recka { 50% { opacity: .2 } }';
   document.head.append(kst); st.append(ka);
-  // beat marker: a block in the top-left corner whose colour names the beat
-  // being filmed (blue between beats). The cut is found from it in the video
-  // itself, and the film covers it.
-  const mk = document.createElement('div'); mk.id = '__mark';
-  Object.assign(mk.style, {position: 'absolute', left: '0', top: '0', width: '12px', height: '12px', background: 'rgb(0,0,255)', zIndex: 2147483647});
-  st.append(mk);
+  // beat marker: a row of six squares in the top-left corner. The first is
+  // green while a beat is filmed, the other five spell the beat's number in
+  // binary (white = 1). The cut is found from it in the video itself, and the
+  // film covers it. Black and white survive video compression; shades do not.
+  for (let k = 0; k < 6; k++) { const mk = document.createElement('div'); mk.id = '__mark' + k;
+    Object.assign(mk.style, {position: 'absolute', left: (12 * k) + 'px', top: '0', width: '12px', height: '12px', background: '#000', zIndex: 2147483647});
+    st.append(mk); }
   let n = 0;
   window.__sel = el => { if (!el) return '#__none__'; if (!el.dataset.rec) el.dataset.rec = 'r' + (++n); return '[data-rec="' + el.dataset.rec + '"]'; };
   // the newest answer in the conversation (the details panel has cards of its own)
@@ -68,7 +70,8 @@ if (!window.__recReady) { window.__recReady = true;
     Object.assign(s.style, {position: 'absolute', left: (r.left / k - 6) + 'px', top: (r.top / k - 6) + 'px', width: (r.width / k + 12) + 'px', height: (Math.min(r.height, 900 * k - r.top) / k + 12) + 'px',
       border: '2px solid #4FD1C5', boxShadow: '0 0 0 4px rgba(79,209,197,.18)', borderRadius: '10px', opacity: '0', transition: 'opacity .35s ease'});
     st.append(s); requestAnimationFrame(() => { s.style.opacity = '1'; }); };
-  window.__mark = i => { const m = document.getElementById('__mark'); if (m) m.style.background = i < 0 ? 'rgb(0,0,255)' : `rgb(${(i + 1) * 10},200,40)`; };
+  window.__mark = i => { for (let k = 0; k < 6; k++) { const m = document.getElementById('__mark' + k); if (!m) continue;
+    m.style.background = i < 0 ? '#000' : k === 0 ? 'rgb(0,255,0)' : ((i >> (k - 1)) & 1 ? '#fff' : '#000'); } };
   window.__unspot = () => { const s = document.getElementById('__spot'); if (s) s.remove(); };
   window.__typeTo = (sel, text) => { const el = document.querySelector(sel); if (!el) return;
     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -239,6 +242,9 @@ def main(spec_path, silent=False):
             vdur = voices[i][1]
             dur = max(LEAD + vdur + TAIL, (steps[-1][0] + bt.get("settle", SETTLE)) if steps else 0, bt.get("min", 0))
             pg.evaluate("__mark(%d)" % i)
+            # the first frames after a page change can still show the old page:
+            # the marker leads the beat, and the cut starts after the lead
+            pg.wait_for_timeout(MARK_LEAD * 1000)
             t0 = time.time()
             for t, js in steps:
                 wait = t0 + t - time.time()
@@ -265,25 +271,32 @@ def main(spec_path, silent=False):
         ctx.close()
         browser.close()
 
+    cut(name, work, video, windows, voices, errs, t_open, t_close, MARK_LEAD)
+
+
+def cut(name, work, video, windows, voices, errs=(), t_open=0, t_close=0, lead=MARK_LEAD):
     # Find each beat in the video by its marker colour. Playwright's video does
     # not keep wall-clock time while the page is busy (waiting on an AI answer),
     # so a clock map drifts by seconds; the marker cannot.
     vlen = probe_duration(video)
     FPS = 30
+    W = 90   # one row through the middle of the six squares (12 CSS px x 1.2 zoom each)
     raw_px = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", video, "-vf",
-                             f"fps={FPS},crop=8:8:2:2,scale=1:1:flags=area,format=rgb24", "-f", "rawvideo", "-"],
+                             f"fps={FPS},format=rgb24,crop={W}:1:0:7", "-f", "rawvideo", "-"],
                             capture_output=True, check=True).stdout
-    px = [tuple(raw_px[k:k + 3]) for k in range(0, len(raw_px) - 2, 3)]
 
-    def beat_of(c):
-        r, g, b = c
-        if b > 150 or g < 140:
+    def beat_of(row):
+        def px(k):
+            x = int(14.4 * k + 7) * 3
+            return row[x], row[x + 1], row[x + 2]
+        r, g, b = px(0)
+        if not (g > 160 and r < 90 and b < 90):
             return -1
-        return round(r / 10) - 1
+        return sum((1 << (k - 1)) for k in range(1, 6) if sum(px(k)) > 3 * 128)
 
     found = {}
-    for f, c in enumerate(px):
-        k = beat_of(c)
+    for f in range(len(raw_px) // (W * 3)):
+        k = beat_of(raw_px[f * W * 3:(f + 1) * W * 3])
         if k >= 0:
             found.setdefault(k, [f, f])[1] = f
     missing = [j for j in range(len(windows)) if j not in found]
@@ -292,21 +305,23 @@ def main(spec_path, silent=False):
     parts = []
     for j, (_, dur) in enumerate(windows):
         f0, f1 = found[j]
-        start, seen = f0 / FPS, (f1 - f0 + 1) / FPS
+        start, seen = f0 / FPS + lead, (f1 - f0 + 1) / FPS - lead
         take = min(dur, seen)
         part = f"{work}/beat-{j:02d}.mp4"
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-i", video, "-t", f"{take:.3f}",
-                        "-vf", f"fps=30,drawbox=x=0:y=0:w=20:h=20:color=0x070B16@1:t=fill,tpad=stop_mode=clone:stop_duration={max(0, dur - take):.3f},format=yuv420p",
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{take:.3f}", "-i", video,
+                        "-vf", f"fps=30,trim=start_frame=2,setpts=PTS-STARTPTS,drawbox=x=0:y=0:w=92:h=18:color=0x070B16@1:t=fill,tpad=stop_mode=clone:stop_duration={max(0, dur - take) + 2 / 30:.3f},format=yuv420p",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", part], check=True)
         parts.append(part)
-    scale = vlen / (t_close - t_open)
+    scale = vlen / (t_close - t_open) if t_close else None
     with open(f"{work}/parts.txt", "w") as f:
         f.writelines(f"file '{x}'\n" for x in parts)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", f"{work}/parts.txt",
                     "-c", "copy", f"{work}/picture.part.mp4"], check=True)
+    # each line starts where its clip really starts: clips are whole frames, so
+    # planned lengths would drift by a frame per beat
     starts, acc = [], 0.0
-    for _, dur in windows:
-        starts.append(acc); acc += dur
+    for part in parts:
+        starts.append(acc); acc += probe_duration(part)
     total = probe_duration(f"{work}/picture.part.mp4")
     ins = sum([["-i", v[0]] for v in voices], [])
     flt = "".join(f"[{j}:a]adelay={int((s + LEAD) * 1000)}:all=1[a{j}];" for j, s in enumerate(starts)) \
@@ -319,9 +334,19 @@ def main(spec_path, silent=False):
                     "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest",
                     out + ".part.mp4"], check=True)
     os.replace(out + ".part.mp4", out)
-    json.dump({"windows": windows, "starts": starts, "scale": scale, "voices": voices}, open(f"{work}/beats.json", "w"), indent=1)
-    print(name, "done", round(total, 1), "s  scale", round(scale, 4), " page errors:", errs[:5])
+    json.dump({"windows": windows, "starts": starts, "scale": scale, "voices": voices, "mark_lead": lead}, open(f"{work}/beats.json", "w"), indent=1)
+    print(name, "done", round(total, 1), "s  scale", round(scale, 4) if scale else "-", " page errors:", list(errs)[:5])
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], silent="--silent" in sys.argv)
+    if "--recut" in sys.argv:
+        # cut the last take again (same video, same beat windows), e.g. after a fix to the cutter
+        spec = json.load(open(sys.argv[1]))
+        nm = spec["name"] + ("-TEST" if "--silent" in sys.argv else "")
+        wk = f"/home/claude/rec/{nm}"
+        info = json.load(open(f"{wk}/beats.json"))
+        vid = [os.path.join(f"{wk}/raw", f) for f in os.listdir(f"{wk}/raw") if f.endswith(".webm")][0]
+        # a take made before the marker led its beats is cut 0.3 s in, past the stale frames
+        cut(nm, wk, vid, [tuple(w) for w in info["windows"]], [tuple(v) for v in info["voices"]], lead=info.get("mark_lead", 0.3))
+    else:
+        main(sys.argv[1], silent="--silent" in sys.argv)
