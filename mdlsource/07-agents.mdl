@@ -107,9 +107,9 @@ Answer format (the chat shows cards):
 - When you report on an order, a parcel's tracking, a product or part, a known issue or recall, a ticket or a refund, put a card block in the answer. Add at most two short sentences of text; don't repeat what the card shows.
 - A card block is a fenced block with the language `card`, holding one JSON object. Use `cards` with a JSON array for several items of the same kind.
 ```card
-{"type":"order","title":"SO-10002","subtitle":"1 x CHG-4A Fast charger 4 A","status":"Shipped","tone":"warning","fields":[{"label":"Total","value":"EUR 89.50"},{"label":"Carrier","value":"DHL"},{"label":"Tracking","value":"JVGL0000000102"}],"timeline":[{"date":"2026-11-03","text":"Picked up in Leipzig"},{"date":"2026-11-04","text":"Delayed at Venlo hub"}],"note":"Expected delivery 2026-11-10"}
+{"type":"order","title":"SO-10002","subtitle":"1 x CHG-4A Fast charger 4 A","status":"Shipped","tone":"warning","fields":[{"label":"Total","value":"EUR 89.50"},{"label":"Carrier","value":"DHL"},{"label":"Tracking","value":"JVGL0000000102"}],"timeline":[{"date":"2026-11-03","text":"Picked up in Leipzig"},{"date":"2026-11-04","text":"Delayed at Venlo hub"}],"route":[{"place":"Leipzig","date":"2026-11-03","text":"Picked up"},{"place":"Venlo","date":"2026-11-04","text":"Delayed at hub","tone":"warning"}],"note":"Expected delivery 2026-11-10"}
 ```
-- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, delivery, chart, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer's unit, warning for a delay or open problem, good for delivered or resolved.
+- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, delivery, chart, map, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer's unit, warning for a delay or open problem, good for delivered or resolved.
 - fields are short label/value pairs, items are rows (title, text, value) such as order lines or compatible parts, timeline is dated events oldest first, note is one sentence.
 - References: give a field or item a "ref" when it is a node of the product graph, so the user can click it for details: a product SKU (EB-200, BAT-418), an issue or recall id (ISS-CHG-80, REC-2026-07), a supplier ref as product_outline gives it, or an order number. Example item: {"title":"BAT-418","text":"Battery 418 Wh","ref":"BAT-418"}.
 - Product overviews: put the JSON that product_outline returns in a ```card block unchanged.
@@ -119,6 +119,11 @@ Answer format (the chat shows cards):
 {"type":"chart","title":"Where the delivery time goes","subtitle":"Your 9 delivered orders, days per parcel","chart":"stacked","unit":"days","highlight":"At the hub","data":[{"label":"Warehouse (order to pickup)","value":1.5,"share":40},{"label":"To the hub","value":0.5,"share":13},{"label":"At the hub","value":1.4,"share":39},{"label":"Last mile","value":0.3,"share":8}],"note":"Most time is spent at the hub: Venlo (DHL) averages 2.7 days."}
 ```
   For how long deliveries take, a bars chart of average days per carrier, with fields for the overall average, fastest and slowest. For hubs, a bars chart of days per hub. Add a second card only when it answers part of the question.
+- Maps: when you show a parcel's tracking, give the order or parcel card a "route": the places of the scans, oldest first, one stop per place, each with its date and a few words; mark a delay with "tone":"warning". When someone asks where the time goes, which hub is slowest or where parcels wait, add a map card of the hubs from GetDeliveryStatistics, with the days at each hub as the tool gives them:
+```card
+{"type":"map","title":"Days waiting at each hub","subtitle":"Your delivered parcels","unit":"days","points":[{"place":"Venlo","value":2.9,"label":"DHL"},{"place":"Utrecht","value":0.9,"label":"PostNL"}]}
+```
+  Use place names exactly as the tools give them, and never write coordinates: the app looks the places up.
 - Only put facts from tool results in a card. Use plain markdown (short paragraphs, lists, tables) for everything else.$$
 )
 {

@@ -283,3 +283,18 @@ The Metrics tab of the details panel shows what the Agents Kit recorded for the 
 The data comes from the GenAICommons traces, which are stored because `GenAICommons.StoreTraces` is on. The panel reads them in a microflow, so staff need no trace-monitoring role. Customers do not get the tab: the panel only computes metrics for staff.
 
 Costs are estimated from **Model prices** (administrators' menu). The first price whose text appears in the model's name applies, for example `Sonnet 5.5` or `:free`. The free OpenRouter models are seeded at 0. Mendix Cloud models have no price until an administrator enters one, and until then the panel says "no price set" and leaves them out of the estimate.
+
+## Map cards
+
+The chat draws maps with Leaflet (`widgets-src/ChatRichText/src/components/MapView.tsx`). Two uses:
+
+- **A parcel's route:** an order or parcel card with a `route` (the scans' places, oldest first) shows numbered stops joined by a line. The current stop pulses, and a delayed stop is amber. The details panel's order cards get the route from the tracking scans.
+- **Points sized by a value:** a `map` card with `points`, for example the days parcels wait at each carrier hub from GetDeliveryStatistics, shows circles sized by the value, with the largest emphasised.
+
+```card
+{"type":"map","title":"Days waiting at each hub","unit":"days","points":[{"place":"Venlo","value":2.9,"label":"DHL"},{"place":"Utrecht","value":0.9,"label":"PostNL"}]}
+```
+
+**The AI never writes coordinates.** A card names places, and the widget looks them up in the app: `GET rest/places/v1/places?names=…` (`ServiceDesk.PlacesApi`, session-authenticated, `mdlsource/22-places-map.mdl`). The places are the 16 towns and hubs the carrier's scans name, seeded at startup (`SUB_Place_Seed`). A name the app does not know is listed under the map instead of drawn. Card text goes into tooltips as text, never as HTML.
+
+**Tiles:** Esri's Gray Canvas basemap, dark or light to match the theme, with its label layer. It needs no key, only attribution. CARTO's basemaps were the first choice, but they now draw "API KEY REQUIRED" over every tile without a key.

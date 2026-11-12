@@ -162,3 +162,35 @@
 .tool-payloads .crt-details h4:first-child { margin-top: 0; }
 .tool-payloads .crt-details p { margin: 4px 0 2px; font-size: 12px; color: var(--crt-muted); }
 .tool-payloads .crt-details pre code { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Map cards (Leaflet). */
+.crt-map-wrap { margin: 10px 0 4px; }
+.crt-map { width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--crt-line); background: var(--crt-surface-alt); z-index: 0; }
+.crt-map .leaflet-control-attribution { font-size: 10px; background: color-mix(in srgb, var(--crt-surface) 85%, transparent); color: var(--crt-muted); }
+.crt-map .leaflet-control-attribution a { color: var(--crt-muted); }
+.crt-map .leaflet-bar a { background: var(--crt-surface); color: var(--crt-ink); border-color: var(--crt-line); }
+.crt-map-stop { display: flex; align-items: center; justify-content: center; }
+.crt-map-stop span {
+    display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+    font: 600 12px/1 inherit; color: #070b16; background: var(--crt-accent); border: 2px solid rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.crt-map-stop--warn span { background: #f5b454; }
+.crt-map-stop--current span { animation: crt-map-pulse 1.8s ease-out infinite; }
+@keyframes crt-map-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--crt-accent) 70%, transparent); }
+    100% { box-shadow: 0 0 0 14px transparent; }
+}
+.crt-map-stop--warn.crt-map-stop--current span { animation-name: crt-map-pulse-warn; }
+@keyframes crt-map-pulse-warn {
+    0% { box-shadow: 0 0 0 0 rgba(245, 180, 84, 0.7); }
+    100% { box-shadow: 0 0 0 14px rgba(245, 180, 84, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .crt-map-stop--current span { animation: none; } }
+.leaflet-tooltip.crt-map-tip {
+    background: var(--mxt-surface-raised, rgba(16, 22, 40, 0.94)); color: var(--crt-ink); border: 1px solid var(--crt-line);
+    border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: 12px; padding: 4px 8px;
+}
+.leaflet-tooltip.crt-map-tip strong { font-weight: 600; }
+.leaflet-tooltip-top.crt-map-tip::before { border-top-color: var(--crt-line); }
+.crt-map-note { margin: 6px 0 0; font-size: 12px; color: var(--crt-muted); }

@@ -32,6 +32,14 @@ export interface Chart { kind: "bars" | "stacked"; unit?: string; points: ChartP
 // and issues. Nodes nest up to OUTLINE_DEPTH levels.
 export interface OutlineNode { label: string; value?: string; ref?: string; children: OutlineNode[] }
 
+// A map: a route of stops (a parcel's tracking scans, oldest first) and/or
+// points sized by a value (e.g. days waiting at each hub). Places are NAMES;
+// the widget looks their coordinates up in the app (rest/places/v1), so a card
+// can never put a made-up position on the map, and an unknown name is not drawn.
+export interface MapStop { place: string; date?: string; text?: string; tone?: Tone }
+export interface MapPoint { place: string; value?: number; label?: string }
+export interface MapSpec { route: MapStop[]; points: MapPoint[]; unit?: string; highlight?: string }
+
 export interface Card {
     type: string;
     title: string;
@@ -45,6 +53,7 @@ export interface Card {
     outline: OutlineNode[];
     // A network around one graph node, expandable in place.
     graph?: { ref: string };
+    map?: MapSpec;
     note?: string;
 }
 
@@ -57,6 +66,7 @@ export type Segment =
 const TONES: Tone[] = ["neutral", "good", "warning", "critical", "info"];
 const OUTLINE_DEPTH = 4;
 const MAX_POINTS = 24;
+const MAX_PLACES = 30;
 const FENCE = /^(`{3,}|~{3,})[ \t]*(card|cards)[ \t]*$/i;
 // A collapsible section: ~~~details <summary> ... ~~~ (markdown inside; use a
 // tilde fence so the body can hold ``` code blocks).
@@ -103,6 +113,32 @@ function toChart(o: Record<string, unknown>): Chart | undefined {
     return { kind: kindRaw === "stacked" ? "stacked" : "bars", unit: str(o.unit), points, highlight: str(o.highlight) };
 }
 
+/** A place name: letters (any script), digits, spaces and . ' - only. */
+export function cleanPlace(v: unknown): string | undefined {
+    const s = str(v)?.trim();
+    return s && /^[\p{L}\p{N}][\p{L}\p{N} .'’-]{0,59}$/u.test(s) ? s : undefined;
+}
+
+function toMap(o: Record<string, unknown>): MapSpec | undefined {
+    const route = list(o.route, s => {
+        if (typeof s === "string") { const place = cleanPlace(s); return place ? { place } : undefined; }
+        if (!s || typeof s !== "object") return undefined;
+        const r = s as Record<string, unknown>;
+        const place = cleanPlace(r.place);
+        const toneRaw = (str(r.tone) ?? "").toLowerCase();
+        return place ? { place, date: str(r.date), text: str(r.text), tone: (TONES as string[]).includes(toneRaw) ? (toneRaw as Tone) : undefined } : undefined;
+    }).slice(0, MAX_PLACES);
+    const points = list(o.points, s => {
+        if (!s || typeof s !== "object") return undefined;
+        const r = s as Record<string, unknown>;
+        const place = cleanPlace(r.place);
+        const value = num(r.value);
+        return place ? { place, value: value !== undefined && value >= 0 ? value : undefined, label: str(r.label) } : undefined;
+    }).slice(0, MAX_PLACES);
+    if (!route.length && !points.length) return undefined;
+    return { route, points, unit: str(o.unit), highlight: cleanPlace(o.highlight) };
+}
+
 function toOutline(v: unknown, depth: number): OutlineNode[] {
     if (depth > OUTLINE_DEPTH) return [];
     return list(v, n => {
@@ -147,9 +183,10 @@ export function toCard(raw: unknown): Card | undefined {
         chart: toChart(o),
         outline: toOutline(o.outline, 1),
         graph: (str(o.type) ?? "").toLowerCase() === "graph" && cleanRef(o.ref) ? { ref: cleanRef(o.ref) as string } : undefined,
+        map: toMap(o),
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.note;
     return empty ? undefined : card;
 }
 

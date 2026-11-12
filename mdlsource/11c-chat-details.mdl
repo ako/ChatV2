@@ -104,7 +104,7 @@ begin
   return $Sections;
 end;
 
-/** An order as a card for the details panel: status, total, carrier, tracking code and every tracking scan. Empty when the current user may not see the order. */
+/** An order as a card for the details panel: status, total, carrier, tracking code, every tracking scan, and the parcel's route on a map. Empty when the current user may not see the order. */
 create or modify microflow "ServiceDesk"."SUB_ChatDetails_OrderCard" ($OrderNumber: String)
 returns String as $Card
 folder 'Chat details'
@@ -121,12 +121,27 @@ begin
   $Carrier = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Order/Carrier = empty then '-' else $Order/Carrier));
   $Tracking = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Order/TrackingCode = empty then '-' else $Order/TrackingCode));
   declare $Timeline String = '';
+  -- the route for the card's map: one stop per place, in scan order, showing the
+  -- latest scan there ($Stop is the stop being built); a stop whose scan
+  -- mentions a delay is marked as a warning
+  declare $Route String = '';
+  declare $Stop String = '';
+  declare $LastPlace String = '';
   retrieve $Shipment from "ServiceDesk"."Shipment" where ["ServiceDesk"."Shipment_Order" = $Order] first;
   if $Shipment != empty then
     retrieve $Events from "ServiceDesk"."TrackingEvent" where ["ServiceDesk"."TrackingEvent_Shipment" = $Shipment] sort by "At" asc;
     loop $Event in $Events begin
       $EventText = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Event/Text != empty then $Event/Text else (if $Event/Location = empty then '' else $Event/Location)));
       set $Timeline = $Timeline + (if $Timeline = '' then '' else ',') + '{"date":"' + (if $Event/At = empty then '' else formatDateTime($Event/At, 'yyyy-MM-dd')) + '","text":"' + $EventText + '"}';
+      if $Event/Location != empty then
+        if $Event/Location != $LastPlace and $Stop != '' then
+          set $Route = $Route + (if $Route = '' then '' else ',') + $Stop;
+        end if;
+        $PlaceName = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = $Event/Location);
+        set $Stop = '{"place":"' + $PlaceName + '","date":"' + (if $Event/At = empty then '' else formatDateTime($Event/At, 'yyyy-MM-dd')) + '","text":"' + $EventText + '"'
+          + (if contains(toLowerCase($EventText), 'delay') then ',"tone":"warning"' else '') + '}';
+        set $LastPlace = $Event/Location;
+      end if;
     end loop;
   end if;
   return '```card' + $NL
@@ -134,6 +149,7 @@ begin
     + '"status":"' + $Status + '","tone":"' + $Tone + '",'
     + '"fields":[{"label":"Total","value":"EUR ' + formatDecimal((if $Order/TotalAmount = empty then 0 else $Order/TotalAmount), '#,##0.00', 'en-US') + '"},'
     + '{"label":"Carrier","value":"' + $Carrier + '"},{"label":"Tracking","value":"' + $Tracking + '"}],'
+    + '"route":[' + $Route + (if $Route != '' and $Stop != '' then ',' else '') + $Stop + '],'
     + '"timeline":[' + $Timeline + ']}' + $NL + '```' + $NL;
 end;
 

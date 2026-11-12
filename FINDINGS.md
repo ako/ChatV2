@@ -1452,3 +1452,27 @@ The fix:
 |---|---|---|
 | Old widget (control, the committed mpk reinstalled) | 452 px | 18 frames |
 | New | 38 px | 34 frames (≈ 600 ms) |
+
+## Map cards with Leaflet (2026-11-12)
+
+Chat cards can now carry a map: a parcel's `route` (numbered stops) or `points` sized by a value (days at each hub). Places are names, resolved to coordinates by the app (`rest/places/v1/places`). The model never writes coordinates, so it cannot put a made-up position on a map.
+
+Verified live as demo_customer:
+- **"Where is my order SO-10002?"** The order card shows a route map: Leipzig, then Venlo in amber. The details panel shows the same route, with tiles loaded.
+- **"Where is most time spent … show the hubs on a map"** A map card with Venlo 2.9, Utrecht 0.9 and Eindhoven 0.6 days. These match GetDeliveryStatistics' figures, with Venlo emphasised.
+
+**CARTO basemaps need a key now.** `basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png` answers 200 to any request, but every tile is a grey image reading "API KEY REQUIRED", with or without a Referer. So a status check reports it healthy; only looking at a tile shows the problem. The map uses Esri's keyless Gray Canvas tiles (`server.arcgisonline.com/…/Canvas/World_Dark_Gray_Base` plus `_Reference` labels). OpenStreetMap's standard tiles also work keyless (light only; dark needs a CSS invert), but its tile policy asks heavy or production users to use their own tile server.
+
+**A route stop per place, not per scan.** Three scans at two places (Leipzig picked up; Venlo arrived, then delayed) are two stops. The stop shows the latest scan at that place, so the Venlo stop carries the delay. Taking the first scan made the panel's Venlo stop teal while the chat's was amber.
+
+**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run.
+
+The 404 in the browser console is Conversational UI's own `llm-streaming` endpoint, present before this change.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 22 warnings.
+- `report`: 62/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Widget unit tests: 18/18 pass, 4 new for map parsing, including rejecting HTML and coordinates as place names.

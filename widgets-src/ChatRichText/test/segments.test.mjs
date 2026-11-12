@@ -2,7 +2,7 @@
 // built by esbuild in the test script below, so it tests the shipped logic.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitMessage, toCard, cleanRef } from "../build-test/segments.mjs";
+import { splitMessage, toCard, cleanRef, cleanPlace } from "../build-test/segments.mjs";
 
 test("plain markdown is one segment", () => {
   assert.deepEqual(splitMessage("Hello **world**").map(s => s.kind), ["markdown"]);
@@ -86,4 +86,28 @@ test("a tilde details fence becomes a collapsible section that can hold code blo
     assert.deepEqual(segs.map(s => s.kind), ["markdown", "details", "markdown"]);
     assert.equal(segs[1].summary, "Input and result of find_product");
     assert.match(segs[1].text, /```json/);
+});
+
+test("a map card keeps its route stops and points, by place name", () => {
+  const c = toCard({ type: "map", title: "Route", route: [{ place: "Leipzig", date: "2026-11-03", text: "Picked up" }, { place: "Venlo", text: "Delayed", tone: "warning" }], points: [{ place: "Venlo", value: "2.9", label: "DHL hub" }], unit: "days" });
+  assert.equal(c.map.route.length, 2);
+  assert.equal(c.map.route[1].tone, "warning");
+  assert.equal(c.map.points[0].value, 2.9);
+  assert.equal(c.map.unit, "days");
+});
+test("a route may be a list of plain place names", () => {
+  const c = toCard({ title: "Parcel", route: ["Leipzig", "Venlo", "Utrecht"] });
+  assert.deepEqual(c.map.route.map(s => s.place), ["Leipzig", "Venlo", "Utrecht"]);
+});
+test("place names that are not plain names are dropped", () => {
+  assert.equal(cleanPlace("Den Haag"), "Den Haag");
+  assert.equal(cleanPlace("'s-Hertogenbosch"), undefined);
+  assert.equal(cleanPlace("<img src=x onerror=alert(1)>"), undefined);
+  assert.equal(cleanPlace("52.37, 4.90"), undefined);
+  const c = toCard({ title: "x", route: [{ place: "<b>x</b>" }], points: [{ place: "Venlo", value: -1 }] });
+  assert.equal(c.map.route.length, 0);
+  assert.equal(c.map.points[0].value, undefined);
+});
+test("a map card with no usable places has no map", () => {
+  assert.equal(toCard({ type: "map", route: [{ place: "" }] }), undefined);
 });

@@ -4,11 +4,12 @@ import { ChartView } from "./ChartView";
 import { OutlineView } from "./OutlineView";
 import { MaybeRef } from "./RefLink";
 import { GraphView } from "../shared/graph/GraphView";
+import { MapView } from "./MapView";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
     issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info",
-    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections"
+    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections", map: "Map"
 };
 
 function label(type: string): string {
@@ -58,6 +59,7 @@ export function CardView({ card }: { card: Card }): ReactElement {
                     </div>
                 </div>
             )}
+            {card.map && <MapView map={card.map} height={card.type === "map" ? 300 : 220} />}
             {card.timeline.length > 0 && (
                 <ol className="crt-timeline">
                     {card.timeline.map((ev, i) => (
