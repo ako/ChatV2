@@ -93,7 +93,8 @@ create or modify non-persistent entity "ServiceDesk"."ChatActionRequest" (
   "Subject": String(200),
   "Description": String(4000),
   "SlotStart": DateTime,
-  "Product": String(200)
+  "Product": String(200),
+  "Photo": String(20)
 );
 
 /** What happened, for the card to show. */
@@ -107,7 +108,7 @@ grant read *, write * on entity "ServiceDesk"."ChatActionRequest" to "ServiceDes
 grant read *, write * on entity "ServiceDesk"."ChatActionResult" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 create or modify json structure "ServiceDesk"."JSON_ChatActionRequest" folder 'Chat actions'
-  sample '{"action": "return", "ref": "SO-10016", "item": "LGT-USB USB light set", "reason": "Never used", "details": "Still in the box", "subject": "Battery swap", "description": "Text", "slotStart": "2026-11-16T09:00:00.000Z", "product": "EB-200"}';
+  sample '{"action": "return", "ref": "SO-10016", "item": "LGT-USB USB light set", "reason": "Never used", "details": "Still in the box", "subject": "Battery swap", "description": "Text", "slotStart": "2026-11-16T09:00:00.000Z", "product": "EB-200", "photo": "3"}';
 
 create or modify json structure "ServiceDesk"."JSON_ChatActionResult" folder 'Chat actions'
   sample '{"ok": true, "message": "Started return request 5012.", "ref": "5012"}';
@@ -124,7 +125,8 @@ create or modify import mapping "ServiceDesk"."IMM_ChatActionRequest" folder 'Ch
     "Subject" = subject,
     "Description" = description,
     "SlotStart" = slotStart,
-    "Product" = product
+    "Product" = product,
+    "Photo" = photo
   }
 };
 
@@ -188,7 +190,7 @@ begin
       if $Request/Subject = empty or trim($Request/Subject) = '' then
         set $Message = 'Ticket not created: give it a subject.';
       else
-        $TicketAnswer = call microflow "ServiceDesk"."Tool_CreateTicket" (Subject = $Request/Subject, Description = (if $Request/Description = empty then '' else $Request/Description), OrderNumber = $Ref);
+        $TicketAnswer = call microflow "ServiceDesk"."SUB_ChatAction_Ticket" (OrderNumber = $Ref, Subject = $Request/Subject, Description = (if $Request/Description = empty then '' else $Request/Description), PhotoNumber = (if $Request/Photo = empty then '' else $Request/Photo));
         set $Message = $TicketAnswer;
       end if;
     else

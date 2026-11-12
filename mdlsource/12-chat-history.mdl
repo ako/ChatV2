@@ -141,6 +141,11 @@ create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
         container ctChat (Class: 'chat-container sd-chat-card') {
           snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
         }
+        -- tools inside the message box: add a photo (22b-chat-photos.mdl) and speak
+        container ctComposeTools (Class: 'sd-compose-tools') {
+          actionbutton btnAddPhoto (Tooltip: 'Add a photo', action: call microflow "ServiceDesk"."ACT_ChatPhoto_New"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas.camera, Class: 'sd-compose-btn')
+          pluggablewidget 'com.servicedesk.widgets.chatcompanion.ChatCompanion' ccVoice ( voiceInput: true )
+        }
       }
     }
     container ctDetails (Class: 'sd-panel sd-details') {

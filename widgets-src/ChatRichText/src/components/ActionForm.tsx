@@ -52,7 +52,7 @@ function ActionForm({ action, onCancel }: { action: CardAction; onCancel: () => 
         setBusy(true);
         postJson<Result>("rest/chatactions/v1/actions", {
             action: action.action, ref: action.ref, item, reason, details, subject, description,
-            slotStart: slot || undefined, product: v.product ?? ""
+            slotStart: slot || undefined, product: v.product ?? "", photo: v.photo ?? ""
         })
             .then(r => setResult(r))
             .catch((err: Error) => setResult({ ok: false, message: err.message }))

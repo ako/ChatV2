@@ -1,6 +1,6 @@
 ---
 name: widgets
-description: "The pluggable and custom widgets installed in THIS project and how to write them in MDL — Badge, Badge button, Area chart, Bar chart, Bubble chart, Column chart, Custom chart, Heat map, Line chart, Pie chart, Time series, Chart playground and 34 more. Use before placing any PLUGGABLEWIDGET or CUSTOMWIDGET on a page, or when a widget's property names, enumeration values or child blocks need checking."
+description: "The pluggable and custom widgets installed in THIS project and how to write them in MDL — Badge, Badge button, Area chart, Bar chart, Bubble chart, Column chart, Custom chart, Heat map, Line chart, Pie chart, Time series, Chart playground and 35 more. Use before placing any PLUGGABLEWIDGET or CUSTOMWIDGET on a page, or when a widget's property names, enumeration values or child blocks need checking."
 ---
 
 # Widgets in this project
@@ -56,6 +56,7 @@ this page.
 | `PLUGGABLEWIDGET` | [TOOLTIP](tooltip.md) | `com.mendix.widget.web.tooltip.Tooltip` | Tooltip | 7 |
 | `PLUGGABLEWIDGET` | [TREENODE](treenode.md) | `com.mendix.widget.web.treenode.TreeNode` | Tree node | 14 |
 | `PLUGGABLEWIDGET` | [VIDEOPLAYER](videoplayer.md) | `com.mendix.widget.web.videoplayer.VideoPlayer` | Video Player | 15 |
+| `PLUGGABLEWIDGET` | [CHATCOMPANION](chatcompanion.md) | `com.servicedesk.widgets.chatcompanion.ChatCompanion` | Chat companion | 3 |
 | `PLUGGABLEWIDGET` | [CHATRICHTEXT](chatrichtext.md) | `com.servicedesk.widgets.chatrichtext.ChatRichText` | Chat rich text | 4 |
 | `PLUGGABLEWIDGET` | [GRAPHEXPLORER](graphexplorer.md) | `com.servicedesk.widgets.graphexplorer.GraphExplorer` | Graph explorer | 2 |
 

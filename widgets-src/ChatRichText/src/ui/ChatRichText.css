@@ -268,3 +268,6 @@
 .crt-cite mark { background: color-mix(in srgb, var(--crt-accent) 30%, transparent); color: inherit; padding: 0 2px; border-radius: 3px; }
 .crt-cite-missing { font-size: 13px; color: var(--mxt-tone-warn, var(--crt-muted)); }
 .crt-cite-missing span, .crt-cite-loading { color: var(--crt-muted); font-size: 13px; }
+
+/* Images in a message, e.g. a photo the customer added. */
+.crt-md img { display: block; max-width: min(100%, 420px); max-height: 320px; border-radius: 12px; border: 1px solid var(--crt-line); margin: 6px 0 10px; object-fit: cover; }

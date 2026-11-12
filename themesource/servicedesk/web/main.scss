@@ -164,6 +164,36 @@
     }
 }
 
+// Tools inside the message box (add a photo, speak): bottom left of the
+// conversation, with room made for them in the text area.
+.sd-conversation {
+    position: relative;
+    .sd-compose-tools {
+        position: absolute;
+        left: 30px;
+        bottom: 30px;
+        display: flex;
+        gap: 6px;
+        z-index: 2;
+    }
+    .sd-compose-btn.btn {
+        width: 40px;
+        height: 40px;
+        margin: 0;
+        padding: 0;
+        border-radius: 12px;
+        color: var(--mxt-ink-muted);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--mxt-line);
+    }
+    .sd-compose-btn.btn:hover {
+        color: var(--mxt-ink);
+    }
+    textarea.form-control {
+        padding-left: 104px;
+    }
+}
+
 // Column 3: details
 .sd-details {
     flex: 1 1 340px;

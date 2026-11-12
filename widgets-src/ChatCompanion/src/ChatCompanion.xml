@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget id="com.servicedesk.widgets.chatcompanion.ChatCompanion" pluginWidget="true" needsEntityContext="true" offlineCapable="false"
+        supportedPlatform="Web"
+        xmlns="http://www.mendix.com/widget/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.mendix.com/widget/1.0/ ../node_modules/mendix/custom_widget.xsd">
+    <name>Chat companion</name>
+    <description>Voice input for Conversational UI's message box, and a timed refresh for a live chat.</description>
+    <properties>
+        <propertyGroup caption="General">
+            <propertyGroup caption="Voice">
+                <property key="voiceInput" type="boolean" defaultValue="true">
+                    <caption>Voice input</caption>
+                    <description>Shows a microphone button that types what the user says into the chat's message box (browser speech recognition). Hidden where the browser has none.</description>
+                </property>
+            </propertyGroup>
+            <propertyGroup caption="Live refresh">
+                <property key="refreshAction" type="action" required="false">
+                    <caption>Refresh action</caption>
+                    <description>Runs every few seconds while the page is visible, e.g. a microflow that refreshes the chat in the client.</description>
+                </property>
+                <property key="refreshSeconds" type="integer" defaultValue="5">
+                    <caption>Refresh every (seconds)</caption>
+                    <description>How often the refresh action runs.</description>
+                </property>
+            </propertyGroup>
+            <propertyGroup caption="Conditional visibility">
+                <systemProperty key="Visibility"/>
+            </propertyGroup>
+        </propertyGroup>
+    </properties>
+</widget>
