@@ -176,27 +176,8 @@ create or modify page "ServiceDesk"."RefundRequest_Overview" folder 'Refunds'
   }
 };
 
-/** Landing page for every role. */
-create or modify page "ServiceDesk"."Home" folder 'Home'
-(
-  title: 'Service Desk Copilot',
-  layout: Atlas_Core.Atlas_Default,
-  url: 'home'
-)
-{
-  layoutgrid lgMain {
-    row {
-      column (desktopwidth: 12) {
-        dynamictext txtHeading (content: 'Service Desk Copilot', rendermode: H1)
-        dynamictext txtIntro (content: 'Look up orders, raise and follow up tickets, and ask the AI support agent for help.', rendermode: Paragraph)
-        actionbutton btnTickets (caption: 'Tickets', action: show page "ServiceDesk"."Ticket_Overview", buttonstyle: primary)
-        actionbutton btnOrders (caption: 'Orders', action: show page "ServiceDesk"."Order_Overview")
-      }
-    }
-  }
-};
+-- The Home page is defined in 99-app-shell.mdl: it links to pages from later scripts.
 
-grant view on page "ServiceDesk"."Home" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Order_NewEdit" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."RefundRequest_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

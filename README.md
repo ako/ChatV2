@@ -260,6 +260,8 @@ The assistant page (`ServiceDesk.Chat_WithHistory`, `mdlsource/12-chat-history.m
 
 - **Theme:** `theme/mxcli-themes/glass/`, created with `mxcli theme create glass --from design/glass-tokens.css --base console` and applied with `--variant dark`. Its skin (the glows, the glass panel recipe, top bar and sidebar, buttons and inputs) is the `mxcli-glass-skin` mixin in `_mxcli-glass.scss`. The chat page's own layout is in `themesource/servicedesk/web/main.scss` (`.sd-*`).
 - **Fonts:** the theme names Inter and JetBrains Mono but ships no font files, so they show only where installed; otherwise the system UI font is used.
+- **Other pages:** data grids sit in one glass panel each, Plotly charts (Token usage, Traces) draw on a transparent background, and the icon menu scrolls on its own when it is longer than the window.
+- **Home** (`ServiceDesk.Home`, in `mdlsource/99-app-shell.mdl` because it links to pages from every script) is a glass hero with "Ask the assistant", then a tile per area. Mendix hides a tile whose page the user may not open, so a customer sees Tickets, Orders, Returns and Product explorer, and staff also see My tasks and Dashboard.
 
 ### Details panel
 

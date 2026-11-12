@@ -136,6 +136,55 @@ $mxcli-theme-variant: dark !default;
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--mxt-ink);
   }
+  .form-control::placeholder,
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--mxt-ink-faint);
+    opacity: 1;
+  }
+  // The icon rail: compact items, and it scrolls when the menu is longer than
+  // the window instead of making the whole page taller than the window.
+  .layout-atlas .region-sidebar,
+  .region-sidebar {
+    > .mx-scrollcontainer-wrapper {
+      max-height: calc(100vh - 49px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+    .mx-navigationtree .navbar-inner > ul > li > a {
+      padding-top: 4px;
+      padding-bottom: 4px;
+    }
+  }
+  // Data Grid 2 and the classic grids: one glass panel around the whole grid.
+  .widget-datagrid,
+  .mx-datagrid {
+    @include mxcli-glass-panel;
+    border-radius: var(--mxt-radius-lg);
+    padding: 4px 8px 8px;
+  }
+  .widget-datagrid .th,
+  .widget-datagrid .column-header {
+    background: transparent;
+  }
+  // Charts (Plotly) draw a white paper and plot area unless told otherwise.
+  .js-plotly-plot .main-svg {
+    background: transparent !important;
+  }
+  .js-plotly-plot rect.bg {
+    fill: transparent !important;
+  }
+  .js-plotly-plot .xtick text,
+  .js-plotly-plot .ytick text,
+  .js-plotly-plot .g-xtitle text,
+  .js-plotly-plot .g-ytitle text,
+  .js-plotly-plot .legendtext {
+    fill: var(--mxt-ink-muted) !important;
+  }
+  .js-plotly-plot .gridlayer path {
+    stroke: rgba(255, 255, 255, 0.08) !important;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -213,4 +262,4 @@ h6,
 .mx-title {
   font-family: var(--mxt-font-heading);
 }
-// mxcli:theme:end glass eb88eaa373881ffb
+// mxcli:theme:end glass de00bfa6aa5f4ac5

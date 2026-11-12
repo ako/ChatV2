@@ -1410,3 +1410,20 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 45/45 pass, 3 new for the details panel.
 - Widget unit tests: 14/14.
+
+## Glass theme across the other pages (2026-11-12)
+
+Every menu page was screenshotted as demo_administrator (15 pages), demo_customer (5) and demo_agent, plus a ticket popup. All were dark and readable straight away. Five things were fixed:
+
+- **The whole page was 117 px taller than the window**, so clicking a low menu item scrolled everything, top bar included (seen on Model prices and Agents). The cause was 17 menu items at 56 px each in an icon rail that did not scroll. Item rules lost to Atlas's own. A `max-height: calc(100vh - 49px)` on the rail's scroll wrapper fixed it: the document now measures exactly 900 at 900.
+- **Plotly charts** (Conversational UI's Token usage and Traces) painted a white `background` on `.main-svg` inline. They need `!important` overrides, which live in the glass theme's skin.
+- **Data grids** sat directly on the background. Each now gets the glass panel, and placeholders use the faint ink colour so filter boxes read.
+- **Home** was a title and two buttons. It is now a hero plus tiles, and buttons whose target the role cannot open are hidden by Mendix. Checked: Ada sees 4 tiles, the administrator 6.
+- **The teal tab at the right edge** that overlaps grids is Mendix's demo-user switcher. It only exists in development, so it was left alone.
+
+Gates:
+- `lint`: 0 errors, 22 warnings.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Every script's second `exec` writes nothing.

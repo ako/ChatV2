@@ -45,6 +45,34 @@ end;
 
 alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
 
+/** Landing page for every role: what the app does, the assistant first, and a tile per area. Mendix hides a tile whose page or microflow the user may not open, so customers see their own areas only. Defined here, last, because it links to pages from every other script. */
+create or modify page "ServiceDesk"."Home" folder 'Home'
+(
+  title: 'Service Desk Copilot',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'home'
+)
+{
+  container ctHome (Class: 'sd-home') {
+    container ctHero (Class: 'sd-panel sd-hero') {
+      dynamictext txtEyebrow (content: 'Service desk', Class: 'sd-eyebrow')
+      dynamictext txtHeading (content: 'How can we help today?', rendermode: H1, Class: 'sd-hero__title')
+      dynamictext txtIntro (content: 'Ask the assistant about an order, a parcel, a product or a return. It looks things up in the shop''s own data, and a support agent steps in when a person is needed.', Class: 'sd-hero__intro')
+      actionbutton btnAskAssistant (caption: 'Ask the assistant', action: call microflow "ServiceDesk"."ACT_SupportChat_Open", buttonstyle: primary, icon: Atlas_Core.Atlas."message-bubble", Class: 'sd-hero__cta')
+    }
+    container ctTiles (Class: 'sd-tiles') {
+      actionbutton btnTileTickets (caption: 'Tickets', action: show page "ServiceDesk"."Ticket_Overview", icon: Atlas_Core.Atlas.tag, Class: 'sd-tile')
+      actionbutton btnTileOrders (caption: 'Orders', action: show page "ServiceDesk"."Order_Overview", icon: Atlas_Core.Atlas."shopping-cart", Class: 'sd-tile')
+      actionbutton btnTileReturns (caption: 'Returns', action: show page "ServiceDesk"."Return_Overview", icon: Atlas_Core.Atlas."arrow-circle-left", Class: 'sd-tile')
+      actionbutton btnTileTasks (caption: 'My tasks', action: show page "ServiceDesk"."WF_TaskInbox", icon: Atlas_Core.Atlas."checkmark-circle", Class: 'sd-tile')
+      actionbutton btnTileDashboard (caption: 'Dashboard', action: show page "ServiceDesk"."Dashboard", icon: Atlas_Core.Atlas."analytics-bars", Class: 'sd-tile')
+      actionbutton btnTileExplorer (caption: 'Product explorer', action: show page "ServiceDesk"."ProductGraph_Explorer", icon: Atlas_Core.Atlas."share-arrow", Class: 'sd-tile')
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Home" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
 create or modify navigation Responsive
   app title 'Service Desk Copilot'
   app icon Atlas_Core.Content.Mendix
