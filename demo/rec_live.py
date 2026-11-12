@@ -8,9 +8,11 @@ or by make_voiceover_kokoro.py (Kokoro, in the container).
 A variant of the prototype recorder (rec.py) for an app that has to run in real
 time: Mendix's client, the AI answers and the workflow engine all keep their own
 timers, so the page clock is not frozen. The browser is recorded in real time
-(Playwright video), each beat's wall-clock window is logged, and the windows
-are cut out of the take on a linear clock map (the video plays back slightly
-longer than the session; offset AND scale, measured per take). Everything
+(Playwright video), and each beat paints a coloured marker in the corner while
+it is filmed. The beats are cut out of the take where the video shows their
+marker (Playwright's video does not keep wall-clock time while the page is busy
+waiting on an AI answer, so a clock map drifts by seconds); the film covers the
+marker. Everything
 between beats - waiting for an AI answer, switching user, waiting for a
 workflow task - is off camera and never reaches the film.
 
@@ -51,6 +53,12 @@ if (!window.__recReady) { window.__recReady = true;
   Object.assign(ka.style, {position: 'absolute', right: '0', bottom: '0', width: '1px', height: '1px', background: 'rgba(0,0,0,.02)', animation: 'recka 1s linear infinite'});
   const kst = document.createElement('style'); kst.textContent = '@keyframes recka { 50% { opacity: .2 } }';
   document.head.append(kst); st.append(ka);
+  // beat marker: a block in the top-left corner whose colour names the beat
+  // being filmed (blue between beats). The cut is found from it in the video
+  // itself, and the film covers it.
+  const mk = document.createElement('div'); mk.id = '__mark';
+  Object.assign(mk.style, {position: 'absolute', left: '0', top: '0', width: '12px', height: '12px', background: 'rgb(0,0,255)', zIndex: 2147483647});
+  st.append(mk);
   let n = 0;
   window.__sel = el => { if (!el) return '#__none__'; if (!el.dataset.rec) el.dataset.rec = 'r' + (++n); return '[data-rec="' + el.dataset.rec + '"]'; };
   // the newest answer in the conversation (the details panel has cards of its own)
@@ -60,6 +68,7 @@ if (!window.__recReady) { window.__recReady = true;
     Object.assign(s.style, {position: 'absolute', left: (r.left / k - 6) + 'px', top: (r.top / k - 6) + 'px', width: (r.width / k + 12) + 'px', height: (Math.min(r.height, 900 * k - r.top) / k + 12) + 'px',
       border: '2px solid #4FD1C5', boxShadow: '0 0 0 4px rgba(79,209,197,.18)', borderRadius: '10px', opacity: '0', transition: 'opacity .35s ease'});
     st.append(s); requestAnimationFrame(() => { s.style.opacity = '1'; }); };
+  window.__mark = i => { const m = document.getElementById('__mark'); if (m) m.style.background = i < 0 ? 'rgb(0,0,255)' : `rgb(${(i + 1) * 10},200,40)`; };
   window.__unspot = () => { const s = document.getElementById('__spot'); if (s) s.remove(); };
   window.__typeTo = (sel, text) => { const el = document.querySelector(sel); if (!el) return;
     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -229,6 +238,7 @@ def main(spec_path, silent=False):
             steps.sort(key=lambda x: x[0])
             vdur = voices[i][1]
             dur = max(LEAD + vdur + TAIL, (steps[-1][0] + bt.get("settle", SETTLE)) if steps else 0, bt.get("min", 0))
+            pg.evaluate("__mark(%d)" % i)
             t0 = time.time()
             for t, js in steps:
                 wait = t0 + t - time.time()
@@ -238,6 +248,7 @@ def main(spec_path, silent=False):
             rest = t0 + dur - time.time()
             if rest > 0:
                 pg.wait_for_timeout(rest * 1000)
+            pg.evaluate("__mark(-1)")
             windows.append((t0 - t_open, dur))
             print(name, "beat", i, round(dur, 1), "s", flush=True)
             # Hold still before the next off-camera step: the cut is placed on a
@@ -254,18 +265,41 @@ def main(spec_path, silent=False):
         ctx.close()
         browser.close()
 
-    # Clock map: the file plays a little longer than the session it recorded.
+    # Find each beat in the video by its marker colour. Playwright's video does
+    # not keep wall-clock time while the page is busy (waiting on an AI answer),
+    # so a clock map drifts by seconds; the marker cannot.
     vlen = probe_duration(video)
-    scale = vlen / (t_close - t_open)
-    if not 0.95 < scale < 1.25:
-        raise SystemExit(f"implausible clock scale {scale:.3f}")
+    FPS = 30
+    raw_px = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", video, "-vf",
+                             f"fps={FPS},crop=8:8:2:2,scale=1:1:flags=area,format=rgb24", "-f", "rawvideo", "-"],
+                            capture_output=True, check=True).stdout
+    px = [tuple(raw_px[k:k + 3]) for k in range(0, len(raw_px) - 2, 3)]
+
+    def beat_of(c):
+        r, g, b = c
+        if b > 150 or g < 140:
+            return -1
+        return round(r / 10) - 1
+
+    found = {}
+    for f, c in enumerate(px):
+        k = beat_of(c)
+        if k >= 0:
+            found.setdefault(k, [f, f])[1] = f
+    missing = [j for j in range(len(windows)) if j not in found]
+    if missing:
+        raise SystemExit(f"beat markers not found in the video for beats {missing}")
     parts = []
-    for j, (start, dur) in enumerate(windows):
+    for j, (_, dur) in enumerate(windows):
+        f0, f1 = found[j]
+        start, seen = f0 / FPS, (f1 - f0 + 1) / FPS
+        take = min(dur, seen)
         part = f"{work}/beat-{j:02d}.mp4"
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start * scale:.3f}", "-i", video,
-                        "-t", f"{dur:.3f}", "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
-                        "-crf", "18", "-an", part], check=True)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-i", video, "-t", f"{take:.3f}",
+                        "-vf", f"fps=30,drawbox=x=0:y=0:w=20:h=20:color=0x070B16@1:t=fill,tpad=stop_mode=clone:stop_duration={max(0, dur - take):.3f},format=yuv420p",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", part], check=True)
         parts.append(part)
+    scale = vlen / (t_close - t_open)
     with open(f"{work}/parts.txt", "w") as f:
         f.writelines(f"file '{x}'\n" for x in parts)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", f"{work}/parts.txt",
