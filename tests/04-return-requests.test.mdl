@@ -81,3 +81,23 @@ declare $Outcome String = formatDecimal($Refund/Amount, '0.00') + '|' + getKey($
 $Answer = call microflow ServiceDesk.Tool_RequestReturn(OrderNumber = 'SO-10003', Item = 'EB-200', Reason = 'Changed my mind');
 declare $Refused Boolean = startsWith($Answer, 'Return not started');
 /
+
+/**
+ * @test An open return can be withdrawn
+ * @expect $Outcome = 'true|Withdrawn'
+ */
+$Return = create ServiceDesk.ReturnRequest (Item = 'SSP-27 Seat post', Reason = 'Changed my mind', RequestedOn = [%CurrentDateTime%], Status = ServiceDesk.ENUM_ReturnStatus.AwaitingParcel) commit;
+$Done = call microflow ServiceDesk.SUB_ReturnRequest_Withdraw(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'SSP-27 Seat post'] first;
+declare $Outcome String = toString($Done) + '|' + getKey($After/Status);
+/
+
+/**
+ * @test A finished return cannot be withdrawn
+ * @expect $Outcome = 'false|Closed'
+ */
+$Return = create ServiceDesk.ReturnRequest (Item = 'SSP-31 Seat post', Reason = 'Too long', RequestedOn = [%CurrentDateTime%], Status = ServiceDesk.ENUM_ReturnStatus.Closed) commit;
+$Done = call microflow ServiceDesk.SUB_ReturnRequest_Withdraw(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'SSP-31 Seat post'] first;
+declare $Outcome String = toString($Done) + '|' + getKey($After/Status);
+/

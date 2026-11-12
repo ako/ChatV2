@@ -18,3 +18,10 @@
         }
     }
 }
+
+// Return reply approval (ServiceDesk.WF_ApproveReturnReply): the AI's draft is
+// what the support agent is approving, so show all of it. Mendix's text area
+// sizes itself and ignores its number of lines here.
+.reply-draft textarea {
+    min-height: 18em;
+}

@@ -130,3 +130,4 @@ shop:SO-10013 a shop:Order ; shop:orderNumber "SO-10013" ;
                  [ a shop:OrderLine ; shop:product shop:BSK-FR ; shop:quantity 1 ; shop:unitPrice 80.70 ] .
 shop:SO-10014 a shop:Order ; shop:orderNumber "SO-10014" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:TUB-28 ; shop:quantity 2 ; shop:unitPrice 9.00 ] .
 shop:SO-10015 a shop:Order ; shop:orderNumber "SO-10015" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:EB-500 ; shop:quantity 1 ; shop:unitPrice 2150.00 ; shop:batch "C2604" ] .
+shop:SO-10016 a shop:Order ; shop:orderNumber "SO-10016" ; shop:hasLine [ a shop:OrderLine ; shop:product shop:LGT-USB ; shop:quantity 1 ; shop:unitPrice 44.90 ] .

@@ -43,6 +43,7 @@ FIXED = [
     ("3SABCD000111", "PostNL", "SO-10011", [ev("2026-11-03T16:00:00Z", "Tilburg", "PICKED_UP", "Picked up at the shop"), ev("2026-11-04T06:30:00Z", "Utrecht", "AT_HUB", "Received at sorting centre"), ev("2026-11-05T09:00:00Z", "Utrecht", "EXCEPTION", "Address change requested, held at depot")]),
     ("JVGL0000000112", "DHL", "SO-10012", [ev("2026-10-25T15:00:00Z", "Leipzig", "PICKED_UP", "Shipment picked up"), ev("2026-10-26T05:40:00Z", "Venlo", "AT_HUB", "Arrived at hub"), ev("2026-10-27T08:15:00Z", "Venlo", "OUT_FOR_DELIVERY", "Out for delivery"), ev("2026-10-27T15:30:00Z", "Leiden", "DELIVERED", "Delivered")]),
     ("1Z999AA10000113", "UPS", "SO-10013", [ev("2026-11-05T13:50:00Z", "Eindhoven", "PICKED_UP", "Picked up, 2 of 3 packages scanned"), ev("2026-11-05T21:10:00Z", "Eindhoven", "AT_HUB", "Arrived at UPS hub"), ev("2026-11-06T07:30:00Z", "Eindhoven", "OUT_FOR_DELIVERY", "Out for delivery"), ev("2026-11-06T13:05:00Z", "Groningen", "DELIVERED", "Delivered 2 of 3 packages; 1 package missing")]),
+    ("3SABCD000116", "PostNL", "SO-10016", [ev("2026-11-05T16:00:00Z", "Tilburg", "PICKED_UP", "Picked up at the shop"), ev("2026-11-06T06:00:00Z", "Utrecht", "AT_HUB", "Received at sorting centre"), ev("2026-11-06T08:00:00Z", "Utrecht", "OUT_FOR_DELIVERY", "Out for delivery"), ev("2026-11-06T13:10:00Z", "Amsterdam", "DELIVERED", "Delivered, signed by A. Jansen")]),
     ("JVGL0000000115", "DHL", "SO-10015", [ev("2026-08-11T15:20:00Z", "Leipzig", "PICKED_UP", "Shipment picked up"), ev("2026-08-12T06:00:00Z", "Venlo", "AT_HUB", "Arrived at hub"), ev("2026-08-13T08:10:00Z", "Venlo", "OUT_FOR_DELIVERY", "Out for delivery"), ev("2026-08-13T16:25:00Z", "Zwolle", "DELIVERED", "Delivered")]),
 ]
 
@@ -119,10 +120,25 @@ def write_mdl(orders, batch=20):
             )
         lines += ["end;", ""]
     lines += [
+        "/** Seeds SO-10016, Ada's recent delivered order (a USB light set) that the returns walkthrough uses, once. Generated. */",
+        'create or modify microflow "ServiceDesk"."SUB_SeedRecentDemoOrder" ()',
+        "folder 'Setup'",
+        "begin",
+        "  retrieve $Existing from \"ServiceDesk\".\"Order\" where [OrderNumber = 'SO-10016'] first;",
+        "  if $Existing != empty then",
+        "    return;",
+        "  end if;",
+        "  retrieve $Ada from \"ServiceDesk\".\"Customer\" where [Email = 'ada.jansen@example.com'] first;",
+        "  create \"ServiceDesk\".\"Order\" (\"OrderNumber\" = 'SO-10016', \"OrderDate\" = parseDateTimeUTC('2026-11-04 09:00', 'yyyy-MM-dd HH:mm'), \"Status\" = ServiceDesk.ENUM_OrderStatus.Delivered, \"TotalAmount\" = 44.90, \"Carrier\" = 'PostNL', \"TrackingCode\" = '3SABCD000116', \"ServiceDesk\".\"Order_Customer\" = $Ada) commit;",
+        "end;",
+        "",
+    ]
+    lines += [
         f"/** Seeds {len(orders)} historical delivered orders (SO-10101 and up), once. Generated from tools/demo-data/generate_deliveries.py. */",
         'create or modify microflow "ServiceDesk"."SUB_SeedOrderHistory" ()',
         "folder 'Setup'",
         "begin",
+        '  call microflow "ServiceDesk"."SUB_SeedRecentDemoOrder" ();',
         "  retrieve $Seeded from \"ServiceDesk\".\"Order\" where [OrderNumber = 'SO-10101'] first;",
         "  if $Seeded != empty then",
         "    return;",

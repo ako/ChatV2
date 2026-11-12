@@ -71,10 +71,23 @@ begin
   create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10148', "OrderDate" = parseDateTimeUTC('2026-09-04 14:00', 'yyyy-MM-dd HH:mm'), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 249.95, "Carrier" = 'DHL', "TrackingCode" = 'JVGL0000010148', "ServiceDesk"."Order_Customer" = $Ada) commit;
 end;
 
+/** Seeds SO-10016, Ada's recent delivered order (a USB light set) that the returns walkthrough uses, once. Generated. */
+create or modify microflow "ServiceDesk"."SUB_SeedRecentDemoOrder" ()
+folder 'Setup'
+begin
+  retrieve $Existing from "ServiceDesk"."Order" where [OrderNumber = 'SO-10016'] first;
+  if $Existing != empty then
+    return;
+  end if;
+  retrieve $Ada from "ServiceDesk"."Customer" where [Email = 'ada.jansen@example.com'] first;
+  create "ServiceDesk"."Order" ("OrderNumber" = 'SO-10016', "OrderDate" = parseDateTimeUTC('2026-11-04 09:00', 'yyyy-MM-dd HH:mm'), "Status" = ServiceDesk.ENUM_OrderStatus.Delivered, "TotalAmount" = 44.90, "Carrier" = 'PostNL', "TrackingCode" = '3SABCD000116', "ServiceDesk"."Order_Customer" = $Ada) commit;
+end;
+
 /** Seeds 48 historical delivered orders (SO-10101 and up), once. Generated from tools/demo-data/generate_deliveries.py. */
 create or modify microflow "ServiceDesk"."SUB_SeedOrderHistory" ()
 folder 'Setup'
 begin
+  call microflow "ServiceDesk"."SUB_SeedRecentDemoOrder" ();
   retrieve $Seeded from "ServiceDesk"."Order" where [OrderNumber = 'SO-10101'] first;
   if $Seeded != empty then
     return;

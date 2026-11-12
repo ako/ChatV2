@@ -24,7 +24,8 @@ create or modify enumeration "ServiceDesk"."ENUM_ReturnStatus" (
   "AwaitingParcel" 'Waiting for the parcel',
   "Rejected" 'Not accepted',
   "Received" 'Parcel received',
-  "Closed" 'Closed'
+  "Closed" 'Closed',
+  "Withdrawn" 'Withdrawn'
 );
 
 create or modify enumeration "ServiceDesk"."ENUM_ReturnDecision" (
@@ -135,7 +136,7 @@ create or modify agent "ServiceDesk"."ReturnReplyAgent" folder 'Agents' (
 If a return label code is given, the return is accepted: thank them, give the label code, say the prepaid PostNL label arrives by email within one working day, ask them to send the item unused in its original packaging, and say the refund follows within 7 working days after the item is back.
 If no label code is given, the return is not accepted: explain why in plain words, from the decision reason, and offer to help further (for example a warranty claim or a ticket).
 
-Never mention internal checks, systems, tools or AI, and never quote internal notes; explain the outcome in terms of the returns policy. Follow the support agent's instructions when there are any. Use the customer's language if their reason is written in another language than English. No subject line, no placeholders, at most 120 words. Sign as "The service desk".$$,
+Never mention internal checks, systems, tools or AI, and never quote internal notes; explain the outcome in terms of the returns policy. Follow the support agent's instructions when there are any. Use the customer's language if their reason is written in another language than English. Plain text only: no markdown, no asterisks, no bullet symbols. No subject line, no placeholders, at most 120 words. Sign as "The service desk".$$,
   UserPrompt: $$Item: {{Item}}
 Decision reason: {{DecisionReason}}
 Return label code: {{ReturnLabel}}
@@ -404,8 +405,8 @@ create or modify page "ServiceDesk"."WF_ApproveReturnReply" folder 'Returns'
         dataview dvReturn (datasource: $ReturnRequest) {
           dynamictext txtHeading (content: 'Return {1}: {2}', contentparams: ({1} = ReturnNumber, {2} = Item), rendermode: H3)
           dynamictext txtDecision (content: 'Decision: {1} (by {2}). {3}', contentparams: ({1} = Decision, {2} = DecidedBy, {3} = DecisionReason))
-          textarea txtDraft (label: 'Reply to the customer (drafted by AI; edit as needed)', attribute: "DraftReply")
-          textarea txtNote (label: 'Instructions for a rewrite', attribute: "ReviewerNote")
+          textarea txtDraft (label: 'Reply to the customer (drafted by AI; edit as needed)', attribute: "DraftReply", NumberOfLines: 12, Class: 'reply-draft')
+          textarea txtNote (label: 'Instructions for a rewrite', attribute: "ReviewerNote", NumberOfLines: 2)
           footer {
             actionbutton btnSend (caption: 'Send reply', action: call microflow "ServiceDesk"."ACT_ReturnReply_Send"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest), buttonstyle: success)
             actionbutton btnRewrite (caption: 'Ask AI to rewrite', action: call microflow "ServiceDesk"."ACT_ReturnReply_Rewrite"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest))
@@ -503,6 +504,35 @@ begin
   $Workflow = call workflow "ServiceDesk"."WF_ReturnRequest" ($ReturnRequest);
 end;
 
+/** Withdraws an open return request: aborts its workflow and marks it Withdrawn. Returns false when it is already finished. */
+create or modify microflow "ServiceDesk"."SUB_ReturnRequest_Withdraw" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+returns Boolean as $Withdrawn
+folder 'Returns'
+begin
+  if $ReturnRequest/Status = ServiceDesk.ENUM_ReturnStatus.Received or $ReturnRequest/Status = ServiceDesk.ENUM_ReturnStatus.Closed
+      or $ReturnRequest/Status = ServiceDesk.ENUM_ReturnStatus.Rejected or $ReturnRequest/Status = ServiceDesk.ENUM_ReturnStatus.Withdrawn then
+    return false;
+  end if;
+  $Workflows = get workflows for $ReturnRequest;
+  loop $Workflow in $Workflows begin
+    if $Workflow/State = System.WorkflowState.InProgress or $Workflow/State = System.WorkflowState.Paused or $Workflow/State = System.WorkflowState.Incompatible or $Workflow/State = System.WorkflowState.Failed then
+      workflow operation abort $Workflow reason 'Withdrawn by the customer';
+    end if;
+  end loop;
+  change $ReturnRequest ("Status" = ServiceDesk.ENUM_ReturnStatus.Withdrawn) commit;
+  return true;
+end;
+
+/** Returns page: the customer withdraws an open return. */
+create or modify microflow "ServiceDesk"."ACT_ReturnRequest_Withdraw" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  $Withdrawn = call microflow "ServiceDesk"."SUB_ReturnRequest_Withdraw" (ReturnRequest = $ReturnRequest);
+  if not($Withdrawn) then
+    show message 'This return is already finished and cannot be withdrawn.' type Warning;
+  end if;
+end;
+
 /** Agent tool: start a return for an item of a delivered order. A customer can only return items from their own orders. Requires the user to approve the tool call. */
 create or modify microflow "ServiceDesk"."Tool_RequestReturn" ($OrderNumber: String, $Item: String, $Reason: String)
 returns String as $Answer
@@ -515,7 +545,7 @@ begin
   if $Order/Status != ServiceDesk.ENUM_OrderStatus.Delivered then
     return 'Return not started: order ' + $Order/OrderNumber + ' has status ' + getCaption($Order/Status) + '; only delivered orders can be returned.';
   end if;
-  retrieve $Open from "ServiceDesk"."ReturnRequest" where [ServiceDesk.ReturnRequest_Order = $Order][Status != 'Closed'][Status != 'Rejected'] first;
+  retrieve $Open from "ServiceDesk"."ReturnRequest" where [ServiceDesk.ReturnRequest_Order = $Order][Status != 'Closed'][Status != 'Rejected'][Status != 'Withdrawn'] first;
   if $Open != empty then
     return 'Return not started: order ' + $Order/OrderNumber + ' already has return request ' + toString($Open/ReturnNumber) + ' with status ' + getCaption($Open/Status) + '.';
   end if;
@@ -577,6 +607,9 @@ create or modify page "ServiceDesk"."Return_Overview" folder 'Returns'
             container ctReminder (Visible: $currentObject/RemindersSent > 0) {
               dynamictext txtReminder (content: 'Reminders sent: {1}', contentparams: ({1} = RemindersSent))
             }
+            actionbutton btnWithdraw (caption: 'Withdraw return', action: call microflow "ServiceDesk"."ACT_ReturnRequest_Withdraw"(ReturnRequest = $currentObject),
+              Visible: $currentObject/Status = ServiceDesk.ENUM_ReturnStatus.Requested or $currentObject/Status = ServiceDesk.ENUM_ReturnStatus.InReview
+                or $currentObject/Status = ServiceDesk.ENUM_ReturnStatus.ReplyDrafted or $currentObject/Status = ServiceDesk.ENUM_ReturnStatus.AwaitingParcel)
           }
         }
       }
@@ -591,4 +624,5 @@ grant execute on microflow "ServiceDesk"."ACT_ReturnReply_Rewrite" to "ServiceDe
 grant view on page "ServiceDesk"."WF_ReviewReturn" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."WF_ApproveReturnReply" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."WF_ReceiveReturn" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ReturnRequest_Withdraw" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant view on page "ServiceDesk"."Return_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

@@ -18,8 +18,8 @@ $CustomerCount = count $Customers;
 /
 
 /**
- * @test Startup seeds fifteen demo orders (the historical ones are SO-10101 and up)
- * @expect $OrderCount = 15
+ * @test Startup seeds sixteen demo orders: SO-10001 to SO-10016 (the historical ones are SO-10101 and up)
+ * @expect $OrderCount = 16
  */
 retrieve $Orders from ServiceDesk.Order where [OrderNumber < 'SO-10100'];
 $OrderCount = count $Orders;
