@@ -136,6 +136,19 @@ $mxcli-theme-variant: dark !default;
     border-color: rgba(255, 255, 255, 0.14);
     color: var(--mxt-ink);
   }
+  // Code blocks: Atlas colours them for a light ground (dark text), which
+  // vanishes on glass. Tool call inputs and results in the chat's details
+  // panel are code blocks.
+  pre,
+  pre code,
+  code {
+    color: var(--mxt-ink);
+    background: rgba(0, 0, 0, 0.32);
+    border-color: var(--mxt-line);
+  }
+  pre code {
+    background: transparent;
+  }
   .form-control::placeholder,
   input::placeholder,
   textarea::placeholder {
@@ -262,4 +275,4 @@ h6,
 .mx-title {
   font-family: var(--mxt-font-heading);
 }
-// mxcli:theme:end glass de00bfa6aa5f4ac5
+// mxcli:theme:end glass 28d436a05de6d670

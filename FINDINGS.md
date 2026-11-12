@@ -1427,3 +1427,9 @@ Gates:
 - `docker check`: 0 errors.
 - `test`: 45/45 pass.
 - Every script's second `exec` writes nothing.
+
+## Tool call details unreadable in the details panel (2026-11-12)
+
+Reported: "the tool call details are not working". The panel's sections did open, but the input and result inside them were Atlas's dark code colour on the glass background, so they looked empty. The glass skin now colours `pre`/`code` from `--mxt-ink` on a dark tint, app-wide. Verified with a screenshot of the expanded section.
+
+While checking, every sign-in started failing with "Sign in failed". The runtime log said: "Maximum number of sessions exceeded! (You are currently using a trial license)". Browser test scripts that died before `mx.logout()` had used up the trial licence's sessions. A restart cleared them. Test scripts must log out even when they fail.
