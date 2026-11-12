@@ -23,6 +23,14 @@ export function ChatRichText(props: ChatRichTextContainerProps): ReactElement | 
                 if (s.kind === "markdown") {
                     return <div key={i} className="crt-md" dangerouslySetInnerHTML={{ __html: md.render(s.text) }} />;
                 }
+                if (s.kind === "details") {
+                    return (
+                        <details key={i} className="crt-details">
+                            <summary>{s.summary}</summary>
+                            <div className="crt-md" dangerouslySetInnerHTML={{ __html: md.render(s.text) }} />
+                        </details>
+                    );
+                }
                 if (s.kind === "pending") {
                     return <div key={i} className="crt-card crt-pending" aria-busy="true">Preparing a card…</div>;
                 }

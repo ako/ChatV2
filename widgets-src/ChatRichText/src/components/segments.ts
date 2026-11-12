@@ -50,6 +50,7 @@ export interface Card {
 
 export type Segment =
     | { kind: "markdown"; text: string }
+    | { kind: "details"; summary: string; text: string }
     | { kind: "cards"; cards: Card[] }
     | { kind: "pending" };
 
@@ -57,6 +58,9 @@ const TONES: Tone[] = ["neutral", "good", "warning", "critical", "info"];
 const OUTLINE_DEPTH = 4;
 const MAX_POINTS = 24;
 const FENCE = /^(`{3,}|~{3,})[ \t]*(card|cards)[ \t]*$/i;
+// A collapsible section: ~~~details <summary> ... ~~~ (markdown inside; use a
+// tilde fence so the body can hold ``` code blocks).
+const DETAILS = /^(~{3,}|`{3,})[ \t]*details(?:[ \t]+(.*))?$/i;
 
 function str(v: unknown): string | undefined {
     if (v === null || v === undefined) return undefined;
@@ -160,6 +164,18 @@ export function splitMessage(content: string): Segment[] {
     };
 
     for (let i = 0; i < lines.length; i++) {
+        const det = DETAILS.exec(lines[i].trim());
+        if (det) {
+            const fence = det[1];
+            let j = i + 1;
+            const body: string[] = [];
+            while (j < lines.length && lines[j].trim() !== fence) { body.push(lines[j]); j++; }
+            flushMd();
+            if (j >= lines.length) { out.push({ kind: "pending" }); return out; }
+            out.push({ kind: "details", summary: (det[2] ?? "").trim() || "Details", text: body.join("\n") });
+            i = j;
+            continue;
+        }
         const open = FENCE.exec(lines[i].trim());
         if (!open) { md.push(lines[i]); continue; }
 

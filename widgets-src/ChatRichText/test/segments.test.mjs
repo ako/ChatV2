@@ -80,3 +80,10 @@ test("a graph card needs a clean ref", () => {
     assert.equal(toCard({ type: "graph", title: "x", ref: "../etc" }).graph, undefined);
     assert.equal(toCard({ type: "order", title: "x", ref: "BAT-418" }).graph, undefined);
 });
+
+test("a tilde details fence becomes a collapsible section that can hold code blocks", () => {
+    const segs = splitMessage("before\n~~~details Input and result of find_product\n**Input**\n```json\n{\"search\": \"EB\"}\n```\n~~~\nafter");
+    assert.deepEqual(segs.map(s => s.kind), ["markdown", "details", "markdown"]);
+    assert.equal(segs[1].summary, "Input and result of find_product");
+    assert.match(segs[1].text, /```json/);
+});

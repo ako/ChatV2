@@ -146,3 +146,10 @@
 .crt-graph-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--crt-muted); flex-wrap: wrap; }
 .crt-graph-foot a { color: var(--crt-accent); }
 .crt-card:has(.crt-graph) { max-width: 760px; }
+
+/* Collapsible section (~~~details): used for staff's tool call payloads. */
+.crt-details { border: 1px solid var(--crt-line); border-radius: 6px; background: var(--crt-surface); font-size: 13px; }
+.crt-details > summary { cursor: pointer; padding: 6px 10px; color: var(--crt-muted); font-weight: 600; }
+.crt-details[open] > summary { border-bottom: 1px solid var(--crt-line); }
+.crt-details > .crt-md { padding: 8px 10px; }
+.crt-details pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--crt-surface-alt); padding: 8px; border-radius: 4px; margin: 4px 0 8px; }

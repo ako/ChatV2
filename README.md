@@ -157,7 +157,12 @@ Change the database with the `ServiceDesk.PgVectorJdbcUrl`, `ServiceDesk.PgVecto
 
 ## Product knowledge graph (SPARQL, through MCP)
 
-The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains (with battery production batches). The graph is `tools/fuseki/products.ttl`, served read-only by **Apache Jena Fuseki** (Apache 2.0). The agent reaches it through an **MCP server**, `tools/product-graph-mcp`. The MCP server decides what the agent can see. It offers curated tools (`order_products`, `find_product`, `compatible_parts`, `known_issues`) plus a read-only `sparql_query` that refuses anything but SELECT and ASK. This follows the pattern in Mendix's [agentic apps with a knowledge graph](https://www.mendix.com/blog/beyond-chatbots-building-agentic-apps-with-altair-mendix/) post.
+The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains (with battery production batches). The graph is `tools/fuseki/products.ttl`, served read-only by **Apache Jena Fuseki** (Apache 2.0) as two datasets:
+
+- `/products`: the whole graph, orders included. Only the app queries it, server-side and after checking who is asking: the GetOrderProducts tool (`mdlsource/20-order-products-tool.mdl`), the Product graph outline and the reference API behind the chat cards and the explorer.
+- `/catalog`: the same graph **without orders**. This is all the **MCP server** (`tools/product-graph-mcp`) can reach, so no prompt and no `sparql_query` can make the AI reveal a customer's order. The server offers `find_product`, `compatible_parts`, `known_issues`, `product_outline`, and a read-only `sparql_query` (SELECT and ASK only).
+
+What an order contains comes from the app's **GetOrderProducts** tool. Like GetOrderStatus, it only finds the signed-in customer's own orders.
 
 Start both next to the app (Fuseki needs Java 21+ and downloads itself from Maven Central the first time):
 
@@ -169,7 +174,7 @@ sh tools/fuseki/start.sh
 setsid nohup python3 tools/product-graph-mcp/server.py > /tmp/product-graph.log 2>&1 &
 ```
 
-The SPARQL endpoint is `http://localhost:3030/products/sparql`, and the MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The graph does not know who is asking, so the agent is told to find an order with `GetOrderStatus`, which applies the app's access rules, before calling `order_products`. That guard is in the prompt only.
+The SPARQL endpoints are `http://localhost:3030/products/sparql` (full) and `http://localhost:3030/catalog/sparql` (no orders), and the MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The live test also checks that the catalog holds no orders, even for a query over every triple.
 
 ### Product graph page (SPARQL from the app)
 
@@ -248,3 +253,7 @@ cp widgets-src/*/dist/1.0.0/*.mpk widgets/ && ./mxcli widget init -p ServiceDesk
 ```
 
 Restart the app after installing a new widget package: the watch loop does not pick up `.mpk` changes.
+
+## Tool calls for staff
+
+Under each assistant answer, support agents and administrators see the tool calls behind it: one collapsible "Input and result of <tool>" section per call, with the call's arguments and its raw result (`ServiceDesk.DS_MessageToolPayloads`, placed by `mdlsource/13-chat-rich-text.mdl`). Customers do not see them: the list is empty for a user with the Customer role.

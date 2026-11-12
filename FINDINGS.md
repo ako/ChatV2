@@ -1301,3 +1301,43 @@ Gates:
 - `report`: 67/100.
 - `docker check`: 0 errors.
 - `test`: 33/33 pass, 4 new for the link parsing. Widget unit tests: 13/13.
+
+## Tool scoping and tool-call payloads for staff (2026-11-12)
+
+**Scoping.** The product-graph MCP tools were scoped by the prompt only: `order_products` and the free-form
+`sparql_query` could read any order, and the prompt asked the model to call GetOrderStatus first. Now:
+- Fuseki serves `/products` (full) and `/catalog` (the same file without its orders section; `tools/fuseki/start.sh`).
+- The MCP server only reaches `/catalog`. `order_products` was removed.
+- Order contents come from the app's GetOrderProducts tool, which first finds the order through the user's
+  access, then runs one SPARQL query on `/products` for that order.
+
+The live MCP test now asserts that the catalog has no orders, including for a catch-all `?s ?p ?o` query.
+Verified in the chat as demo_customer:
+- SO-10005 (Bram's): "couldn't find an order SO-10005 on your account". Its raw tool results hold only "No order
+  found … for this user".
+- SO-10016 (Ada's): listed.
+- "Which orders contain a BAT-418?": no order data. Its `sparql_query` against the catalog found nothing.
+
+As demo_agent, SO-10005 shows the batch-matched recall.
+
+**Payloads for staff.** Conversational UI shows a tool call as "Tool call was successful". Staff now see each call's
+input and result as collapsible sections under the answer (a `~~~details` fence in ChatRichText). The list's
+microflow returns nothing for the Customer role, and Conversational UI's own entity access is untouched.
+
+mxcli gaps hit on the way (mxcli `main` nightly-174 and nightly-240):
+- **ALTER SNIPPET cannot reach widgets inside a list view's specialization template** (`template for
+  ConversationalUI.ToolMessage` in Snippet_Message_Content). `insert after container15`, `insert after accordion1`
+  and `insert into accordion1 item@1` were all refused with "widget not found". The alter-page skill says
+  widgets inside a template are ordinary named widgets.
+- **`describe` drops the icon of an image widget of type icon** (it prints `ImageType: icon` only). So replacing
+  that template with its own `describe` output (drop + insert template) left five images without an icon:
+  `docker check` gave 5 × "No icon selected". The snippet unit was restored from git. The payload list went
+  under the answer instead (`insert after markdownViewer1`), outside the template.
+
+Gates:
+- `check` is clean, and a second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings.
+- `report`: 66/100.
+- `docker check`: 0 errors.
+- `test`: 37/37 pass, 4 new for GetOrderProducts. Widget unit tests: 14/14.
+- Live MCP test: all pass.
