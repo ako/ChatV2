@@ -28,6 +28,8 @@ Spec additions for a live app (all optional per beat):
   prep   off-camera steps before the beat: {"login": [user, pw]}, {"logout": true},
          {"goto": url}, {"click_text": text}, {"click_button": name}, {"wait_ms": n},
          {"wait_answer": true}, {"scroll_last_card": true}, {"js": code},
+         {"upload": {"sel", "file"}}, {"fill": [sel, text]}, {"press": key},
+         {"click": sel, "then_ms": n} (Playwright input, for file pickers and combo boxes),
          {"wait_js": expr, "timeout": s, "reload_click_text": text}
   check  {"js": expr, "why": text}: must be true before the beat is filmed, or the
          take stops (the line would say something the screen does not show)
@@ -180,6 +182,15 @@ def main(spec_path, silent=False):
                 pg.get_by_text(s["click_text"], exact=True).first.click(); pg.wait_for_timeout(1500); ready()
             elif "click_button" in s:
                 pg.get_by_role("button", name=s["click_button"]).first.click(); pg.wait_for_timeout(1500); ready()
+            elif "upload" in s:
+                pg.set_input_files(s["upload"]["sel"], s["upload"]["file"]); pg.wait_for_timeout(2000)
+            elif "fill" in s:
+                sel, text = s["fill"]
+                pg.click(sel); pg.fill(sel, text); pg.wait_for_timeout(1200)
+            elif "press" in s:
+                pg.keyboard.press(s["press"]); pg.wait_for_timeout(800)
+            elif "click" in s:
+                pg.click(s["click"]); pg.wait_for_timeout(s.get("then_ms", 1500))
             elif "check_setup" in s:
                 if not pg.evaluate(s["check_setup"]):
                     raise SystemExit("INVALID take: setup did not reach its starting state")
