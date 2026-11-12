@@ -1,0 +1,131 @@
+mdl 1;
+
+-- What an order contains, for the AI - scoped to the signed-in user.
+--
+-- The product-graph MCP server only reaches the order-free catalog dataset
+-- (tools/fuseki/start.sh), so no prompt or query can make it reveal an order.
+-- Order contents come from here instead: the agent tool GetOrderProducts first
+-- finds the order the way GetOrderStatus does (a customer only finds their own),
+-- then asks the full graph (ServiceDesk.ProductGraphSparqlEndpoint, /products)
+-- for that one order's lines and the known issues and recalls that apply to them.
+
+/** One row of the order-contents query: an order line, with one issue that applies to its product (or none). */
+create or modify non-persistent entity "ServiceDesk"."OrderProductRow" (
+  "Sku": String(50),
+  "ProductName": String(200),
+  "Quantity": String(20),
+  "UnitPrice": String(20),
+  "Batch": String(50),
+  "IssueId": String(50),
+  "IssueLabel": String(500),
+  "IssueBatch": String(50),
+  "Advice": String(2000),
+  "Via": String(50)
+);
+
+/** Flattens the order-contents SPARQL results into one flat object per row. */
+create or modify data transformer "ServiceDesk"."FlattenOrderProducts" folder 'Agent tools'
+  source json '{"head": {"vars": ["sku", "name", "qty", "price", "batch", "id", "label", "ibatch", "advice", "via"]}, "results": {"bindings": [{"sku": {"type": "literal", "value": "BAT-418"}, "name": {"type": "literal", "value": "Battery 418 Wh"}, "qty": {"type": "literal", "value": "1"}, "price": {"type": "literal", "value": "410.00"}, "batch": {"type": "literal", "value": "B2603"}, "id": {"type": "literal", "value": "REC-2026-07"}, "label": {"type": "literal", "value": "Battery 418 Wh, batch B2603: cells may swell"}, "ibatch": {"type": "literal", "value": "B2603"}, "advice": {"type": "literal", "value": "Stop charging."}, "via": {"type": "literal", "value": ""}}]}}'
+{
+  jslt $$
+[for (.results.bindings)
+  {
+    "sku": .sku.value,
+    "name": .name.value,
+    "qty": .qty.value,
+    "price": .price.value,
+    "batch": .batch.value,
+    "id": .id.value,
+    "label": .label.value,
+    "ibatch": .ibatch.value,
+    "advice": .advice.value,
+    "via": .via.value
+  }
+]
+  $$;
+};
+
+create or modify json structure "ServiceDesk"."JSON_OrderProducts" folder 'Agent tools'
+  sample '[{"sku": "BAT-418", "name": "Battery 418 Wh", "qty": "1", "price": "410.00", "batch": "B2603", "id": "REC-2026-07", "label": "Battery 418 Wh, batch B2603: cells may swell", "ibatch": "B2603", "advice": "Stop charging.", "via": "MOT-250H"}]';
+
+create or modify import mapping "ServiceDesk"."IMM_OrderProducts" folder 'Agent tools'
+  with json structure "ServiceDesk"."JSON_OrderProducts"
+{
+  create "ServiceDesk"."OrderProductRow" {
+    "Sku" = sku,
+    "ProductName" = name,
+    "Quantity" = qty,
+    "UnitPrice" = price,
+    "Batch" = batch,
+    "IssueId" = id,
+    "IssueLabel" = label,
+    "IssueBatch" = ibatch,
+    "Advice" = advice,
+    "Via" = via
+  }
+};
+
+/** One issue line under an order line: a recall says whether this unit's batch is affected. */
+create or modify microflow "ServiceDesk"."SUB_OrderProducts_IssueLine" ($Row: "ServiceDesk"."OrderProductRow")
+returns String as $Line
+folder 'Agent tools'
+begin
+  declare $Recall Boolean = $Row/IssueBatch != empty and $Row/IssueBatch != '';
+  declare $Scope String = '';
+  if $Recall then
+    set $Scope = ' Affects batch ' + $Row/IssueBatch + ' only; '
+      + (if $Row/Batch = empty or $Row/Batch = '' then 'the batch of this unit is not recorded.'
+         else 'this unit is batch ' + $Row/Batch + ': ' + (if $Row/Batch = $Row/IssueBatch then 'AFFECTED.' else 'not affected.'));
+  end if;
+  return '  ' + (if $Recall then 'RECALL ' else 'Known issue ') + $Row/IssueId
+    + (if $Row/Via = empty or $Row/Via = '' then '' else ' (via component ' + $Row/Via + ')')
+    + ': ' + $Row/IssueLabel + '.' + $Scope + ' Advice: ' + $Row/Advice;
+end;
+
+/** Agent tool: what an order contains (products, quantities, prices, production batch) and the known issues and recalls that apply to each unit. A customer only reaches their own orders. */
+create or modify microflow "ServiceDesk"."Tool_GetOrderProducts" ($OrderNumber: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'No order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  declare $NL String = urlDecode('%0A');
+  -- The order number comes from the order the user may see, not from the model.
+  declare $Query String = 'PREFIX shop: <https://example.org/bikeshop#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> '
+    + 'SELECT ?sku ?name ?qty ?price ?batch ?id ?label ?ibatch ?advice ?via WHERE { '
+    + '?o shop:orderNumber "' + $Order/OrderNumber + '" ; shop:hasLine ?l . ?l shop:product ?p ; shop:quantity ?qty ; shop:unitPrice ?price . '
+    + '?p shop:sku ?sku ; rdfs:label ?name . OPTIONAL { ?l shop:batch ?batch } '
+    + 'OPTIONAL { { ?i shop:affects ?p . BIND("" AS ?via) } UNION { ?p shop:hasComponent ?c . ?i shop:affects ?c . ?c shop:sku ?via } '
+    + '?i shop:issueId ?id ; rdfs:label ?label ; shop:advice ?advice . OPTIONAL { ?i shop:affectsBatch ?ibatch } } '
+    + '} ORDER BY ?sku ?id';
+  $Results = call rest service post @"ServiceDesk"."ProductGraphSparqlEndpoint" (
+    Headers: ('Accept': 'application/sparql-results+json', 'Content-Type': 'application/sparql-query'),
+    Body: $Query,
+    Timeout: 30,
+  ) returns String on error without rollback begin
+    log warning node 'ServiceDesk' 'Order contents for {1} not read from the product graph: {2}' with ({1} = $Order/OrderNumber, {2} = $latestError/Message);
+    return 'The product graph cannot be reached right now, so the contents of order ' + $Order/OrderNumber + ' are not available.';
+  end error;
+  $Flat = transform $Results with "ServiceDesk"."FlattenOrderProducts";
+  $Rows = import from mapping "ServiceDesk"."IMM_OrderProducts"($Flat) all;
+  $RowCount = count $Rows;
+  if $RowCount = 0 then
+    return 'Order ' + $Order/OrderNumber + ' is not in the product graph, so its contents are not known.';
+  end if;
+  declare $Text String = 'Order ' + $Order/OrderNumber + ':';
+  declare $LastSku String = '';
+  loop $Row in $Rows begin
+    if $Row/Sku != $LastSku then
+      set $Text = $Text + $NL + '- ' + $Row/Quantity + ' x ' + $Row/Sku + ' ' + $Row/ProductName + ' at EUR ' + $Row/UnitPrice
+        + (if $Row/Batch = empty or $Row/Batch = '' then '' else ', batch ' + $Row/Batch);
+      set $LastSku = $Row/Sku;
+    end if;
+    if $Row/IssueId != empty and $Row/IssueId != '' then
+      $IssueLine = call microflow "ServiceDesk"."SUB_OrderProducts_IssueLine" (Row = $Row);
+      set $Text = $Text + $NL + $IssueLine;
+    end if;
+  end loop;
+  return $Text;
+end;

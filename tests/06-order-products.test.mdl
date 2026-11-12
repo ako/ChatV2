@@ -1,0 +1,37 @@
+mdl 1;
+
+-- GetOrderProducts: scoping and the recall batch check (20-order-products-tool.mdl).
+
+/**
+ * @test An order the user cannot find is refused before the graph is asked
+ * @expect $Answer = 'No order found with number SO-99999 for this user.'
+ */
+$Answer = call microflow ServiceDesk.Tool_GetOrderProducts(OrderNumber = 'SO-99999');
+/
+
+/**
+ * @test A recall on the unit's own batch is reported as affecting it
+ * @expect $Affected = true
+ */
+$Row = create ServiceDesk.OrderProductRow (Sku = 'BAT-418', Batch = 'B2603', IssueId = 'REC-2026-07', IssueLabel = 'Cells may swell', IssueBatch = 'B2603', Advice = 'Stop charging.', Via = '');
+$Line = call microflow ServiceDesk.SUB_OrderProducts_IssueLine(Row = $Row);
+declare $Affected Boolean = contains($Line, 'RECALL REC-2026-07') and contains($Line, 'this unit is batch B2603: AFFECTED.');
+/
+
+/**
+ * @test A recall on another batch is reported as not affecting the unit
+ * @expect $NotAffected = true
+ */
+$Row = create ServiceDesk.OrderProductRow (Sku = 'EB-200', Batch = 'B2605', IssueId = 'REC-2026-07', IssueLabel = 'Cells may swell', IssueBatch = 'B2603', Advice = 'Stop charging.', Via = 'BAT-418');
+$Line = call microflow ServiceDesk.SUB_OrderProducts_IssueLine(Row = $Row);
+declare $NotAffected Boolean = contains($Line, '(via component BAT-418)') and contains($Line, 'this unit is batch B2605: not affected.');
+/
+
+/**
+ * @test A known issue without a batch is reported as a known issue
+ * @expect $Known = true
+ */
+$Row = create ServiceDesk.OrderProductRow (Sku = 'CHG-4A', IssueId = 'ISS-CHG-80', IssueLabel = 'Stops at 80%', Advice = 'Update firmware.', Via = '');
+$Line = call microflow ServiceDesk.SUB_OrderProducts_IssueLine(Row = $Row);
+declare $Known Boolean = startsWith(trim($Line), 'Known issue ISS-CHG-80') and not(contains($Line, 'batch'));
+/

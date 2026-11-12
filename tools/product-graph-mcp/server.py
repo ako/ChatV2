@@ -20,7 +20,10 @@ import urllib.request
 
 from mcp.server.mcpserver import MCPServer
 
-ENDPOINT = os.environ.get("PRODUCT_GRAPH_SPARQL", "http://localhost:3030/products/sparql")
+# The catalog dataset: the product graph WITHOUT orders (see tools/fuseki/start.sh).
+# Whatever the model asks, nothing reachable from here can reveal a customer's order;
+# order contents come from the app's GetOrderProducts tool, which checks the user.
+ENDPOINT = os.environ.get("PRODUCT_GRAPH_SPARQL", "http://localhost:3030/catalog/sparql")
 MAX_ROWS = 50
 PREFIXES = """PREFIX shop: <https://example.org/bikeshop#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -28,17 +31,17 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 """
 SCHEMA = """Prefix shop: <https://example.org/bikeshop#>, labels in rdfs:label.
 Classes: shop:Product with subclasses shop:Bike (shop:EBike), shop:Part, shop:Accessory; shop:Supplier;
-shop:KnownIssue (subclass shop:Recall); shop:Order; shop:OrderLine.
+shop:KnownIssue (subclass shop:Recall).
 Product properties: shop:sku, rdfs:label, shop:price (EUR), shop:warrantyYears, shop:suppliedBy (Supplier),
 shop:hasComponent (parts a bike ships with), shop:compatibleWith (what a part or accessory fits on or works with),
 bikes also shop:wheelSize, shop:seatPostDiameter, shop:brakes, shop:rackMount.
 Known issues: shop:issueId, rdfs:label, shop:affects (Product), shop:affectsBatch (recalls only), shop:announced, shop:advice.
-Orders: shop:orderNumber (e.g. "SO-10003"), shop:hasLine (OrderLine: shop:product, shop:quantity, shop:unitPrice, shop:batch)."""
+Orders are not in this graph: what an order contains comes from the app (GetOrderProducts), for the signed-in user only."""
 
 server = MCPServer(
     name="ProductGraph",
     version="1.0.0",
-    instructions="The bike shop's product knowledge graph: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains. " + SCHEMA,
+    instructions="The bike shop's product catalog graph: products, parts and compatibility, suppliers, known issues and recalls. " + SCHEMA,
 )
 
 
@@ -113,22 +116,6 @@ def known_issues(sku: str) -> str:
     s = _sku(sku)
     issues = _issues_for(s)
     return "\n".join(issues) if issues else f"No known issues or recalls for {s}."
-
-
-@server.tool(name="order_products", description="What an order contains according to the product graph: per line the SKU, name, quantity, unit price and production batch, plus any known issue or recall that applies to that exact unit. Input: an order number such as SO-10003.")
-def order_products(order_number: str) -> str:
-    n = order_number.strip().upper().replace('"', "")
-    rows = _select(f"""SELECT ?sku ?name ?qty ?price ?batch WHERE {{
-        ?o shop:orderNumber "{n}" ; shop:hasLine ?l . ?l shop:product ?p ; shop:quantity ?qty ; shop:unitPrice ?price .
-        ?p shop:sku ?sku ; rdfs:label ?name . OPTIONAL {{ ?l shop:batch ?batch }} }} ORDER BY ?sku""")
-    if not rows:
-        return f"Order {n} is not in the product graph."
-    out = [f"Order {n}:"]
-    for r in rows:
-        batch = r.get("batch")
-        out.append(f"- {r['qty']} x {r['sku']} {r['name']} at EUR {float(r['price']):.2f}" + (f", batch {batch}" if batch else ""))
-        out += ["  " + i for i in _issues_for(r["sku"], batch)]
-    return "\n".join(out)
 
 
 WRITE = re.compile(r"\b(INSERT|DELETE|LOAD|CLEAR|DROP|CREATE|ADD|MOVE|COPY|WITH|SERVICE)\b", re.I)

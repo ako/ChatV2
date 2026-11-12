@@ -17,11 +17,36 @@ fi
 # Fuseki writes its run directory (config, logs) to FUSEKI_BASE, else the current directory.
 export FUSEKI_BASE="${FUSEKI_BASE:-$(dirname "$FUSEKI_JAR")/run}"
 # --file serves the data read-only (no --update): the graph is a system of record, not a scratchpad.
-nohup java -jar "$FUSEKI_JAR" --localhost --port=3030 --file="$DATA" /products \
+# Two read-only datasets from the same file:
+#   /products  the whole graph, orders included: only the app queries it,
+#              server-side, after checking who is asking
+#   /catalog   the same graph without orders: what the product-graph MCP
+#              server (and so the AI) can reach, whatever it asks
+mkdir -p "$FUSEKI_BASE"
+CATALOG="$FUSEKI_BASE/catalog.ttl"
+sed '/^# ---- Orders/,$d' "$DATA" > "$CATALOG"   # the orders are the file's last section
+CONFIG="$FUSEKI_BASE/servicedesk-config.ttl"
+cat > "$CONFIG" <<CFG
+@prefix fuseki: <http://jena.apache.org/fuseki#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ja:     <http://jena.hpl.hp.com/2005/11/Assembler#> .
+[] rdf:type fuseki:Server .
+<#products> rdf:type fuseki:Service ; fuseki:name "products" ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ] ;
+    fuseki:dataset <#dsProducts> .
+<#dsProducts> rdf:type ja:MemoryDataset ; ja:data <file://$DATA> .
+<#catalog> rdf:type fuseki:Service ; fuseki:name "catalog" ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ] ;
+    fuseki:dataset <#dsCatalog> .
+<#dsCatalog> rdf:type ja:MemoryDataset ; ja:data <file://$CATALOG> .
+CFG
+nohup java -jar "$FUSEKI_JAR" --localhost --port=3030 --config="$CONFIG" \
   > "$(dirname "$FUSEKI_JAR")/fuseki.log" 2>&1 &
 for i in $(seq 1 40); do
-  if curl -fs -o /dev/null "http://localhost:3030/products/sparql?query=ASK%7B%7D"; then
-    echo "Fuseki ready: http://localhost:3030/products/sparql"; exit 0
+  if curl -fs -o /dev/null "http://localhost:3030/products/sparql?query=ASK%7B%7D" && curl -fs -o /dev/null "http://localhost:3030/catalog/sparql?query=ASK%7B%7D"; then
+    echo "Fuseki ready: http://localhost:3030/products/sparql (full) and http://localhost:3030/catalog/sparql (no orders)"; exit 0
   fi
   sleep 2
 done
