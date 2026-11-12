@@ -139,3 +139,10 @@
 .crt-root .crt-legend li > .crt-legend-label > .crt-ref-wrap > .crt-ref-panel { grid-column: 1 / -1; grid-row: 2; }
 .crt-root .crt-items li > .crt-item-title > .crt-ref-wrap > .crt-ref { font-weight: 600; }
 .crt-ref-panel { max-height: 320px; overflow-y: auto; }
+
+/* Graph card: a compact network, expandable in place. */
+.crt-graph { display: grid; gap: 6px; }
+.crt-graph .gx-canvas { border: 1px solid var(--crt-line); border-radius: 6px; background: var(--crt-surface-alt); color: var(--crt-ink); }
+.crt-graph-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--crt-muted); flex-wrap: wrap; }
+.crt-graph-foot a { color: var(--crt-accent); }
+.crt-card:has(.crt-graph) { max-width: 760px; }

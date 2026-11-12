@@ -74,3 +74,9 @@ test("refs must be plain identifiers", () => {
     assert.equal(card.fields[0].ref, "CellPower");
     assert.equal(card.items[0].ref, undefined);
 });
+
+test("a graph card needs a clean ref", () => {
+    assert.equal(toCard({ type: "graph", title: "BAT-418", ref: "BAT-418" }).graph.ref, "BAT-418");
+    assert.equal(toCard({ type: "graph", title: "x", ref: "../etc" }).graph, undefined);
+    assert.equal(toCard({ type: "order", title: "x", ref: "BAT-418" }).graph, undefined);
+});

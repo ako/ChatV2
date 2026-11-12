@@ -1,0 +1,40 @@
+mdl 1;
+
+-- The graph views' link details: relation and direction parsed from the
+-- outline's fact labels (17-graph-node-api.mdl).
+
+/**
+ * @test An outgoing link gives its relation and direction
+ * @expect $Outcome = 'supplied by|out'
+ */
+$Fact = create ServiceDesk.GraphNode (NodeKey = 'test|out', Label = '→ supplied by: CellPower GmbH', Kind = 'link');
+$Link = call microflow ServiceDesk.SUB_GraphFact_Describe(Fact = $Fact);
+declare $Outcome String = $Link/Relation + '|' + $Link/Dir;
+/
+
+/**
+ * @test An incoming link gives its relation and direction
+ * @expect $Outcome = 'known issue affects product|in'
+ */
+$Fact = create ServiceDesk.GraphNode (NodeKey = 'test|in', Label = '← known issue affects product: Battery 418 Wh, batch B2603: cells may swell', Kind = 'inlink');
+$Link = call microflow ServiceDesk.SUB_GraphFact_Describe(Fact = $Fact);
+declare $Outcome String = $Link/Relation + '|' + $Link/Dir;
+/
+
+/**
+ * @test A value fact is a value, named by its property
+ * @expect $Outcome = 'price in EUR|value'
+ */
+$Fact = create ServiceDesk.GraphNode (NodeKey = 'test|value', Label = 'price in EUR: 410.00', Kind = 'value');
+$Link = call microflow ServiceDesk.SUB_GraphFact_Describe(Fact = $Fact);
+declare $Outcome String = $Link/Relation + '|' + $Link/Dir;
+/
+
+/**
+ * @test An order line points out of the order
+ * @expect $Outcome = 'order line|out'
+ */
+$Fact = create ServiceDesk.GraphNode (NodeKey = 'test|line', Label = 'order line: 1 × BAT-418 Battery 418 Wh at EUR 410.00, batch B2603', Kind = 'line');
+$Link = call microflow ServiceDesk.SUB_GraphFact_Describe(Fact = $Fact);
+declare $Outcome String = $Link/Relation + '|' + $Link/Dir;
+/

@@ -1,0 +1,38 @@
+{
+  "name": "graph-explorer",
+  "widgetName": "GraphExplorer",
+  "version": "1.0.0",
+  "description": "Explore the product graph: search, expand nodes, filter relations.",
+  "license": "Apache-2.0",
+  "config": {
+    "projectPath": "../../",
+    "mendixHost": "http://localhost:8080",
+    "developmentPort": 3000
+  },
+  "packagePath": "com.servicedesk.widgets",
+  "scripts": {
+    "prebuild": "rm -rf src/shared && cp -r ../shared src/shared",
+    "build": "pluggable-widgets-tools release:web"
+  },
+  "devDependencies": {
+    "@mendix/pluggable-widgets-tools": "11.16.0",
+    "@types/cytoscape": "^3.21.9"
+  },
+  "dependencies": {
+    "cytoscape": "^3.30.2"
+  },
+  "resolutions": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  },
+  "overrides": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "minimatch@7.0.0 - 11.0.0": "^11.0.1",
+    "glob@9.0.0 - 14.0.1": "^14.0.2"
+  }
+}

@@ -43,6 +43,8 @@ export interface Card {
     items: CardItem[];
     chart?: Chart;
     outline: OutlineNode[];
+    // A network around one graph node, expandable in place.
+    graph?: { ref: string };
     note?: string;
 }
 
@@ -140,9 +142,10 @@ export function toCard(raw: unknown): Card | undefined {
         }),
         chart: toChart(o),
         outline: toOutline(o.outline, 1),
+        graph: (str(o.type) ?? "").toLowerCase() === "graph" && cleanRef(o.ref) ? { ref: cleanRef(o.ref) as string } : undefined,
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.note;
     return empty ? undefined : card;
 }
 

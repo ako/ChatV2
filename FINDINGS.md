@@ -1267,3 +1267,37 @@ Gates:
 - `test`: 27/27 pass, 7 of them new. The tests cover the facts, the fallback to review when the agent can't
   answer, accept and decline, the label and the sent reply, the refund on receipt, and the tool refusing an
   order that hasn't been delivered.
+
+## Product explorer and graph cards (2026-11-12)
+
+An interactive network view of the product graph, as a page (GraphExplorer widget) and as a chat card
+(ChatRichText `graph` card). Both use one shared Cytoscape.js component.
+
+- **Two widgets share code by copying, not by a package.** pluggable-widgets-tools builds one widget per package
+  and compiles only `src/`. A `prebuild` step copies `widgets-src/shared` into each widget's `src/shared`
+  (gitignored). Each widget bundles Cytoscape: ChatRichText grew from about 110 KB to 344 KB.
+- **The explorer needed little server work.** The chat's reference API already returned a node's links. It now
+  adds each link's relation, direction, and the target's kind and name (so unexpanded nodes get their colour and
+  label), plus a search (`?q=`) in the same response shape. Rebuilding `REST_GetGraphNode`'s loop needed a drop
+  and recreate (MDL-V1-REBUILD), as before.
+- **The graph snapshot is reloaded at startup now.** It used to load only when empty, so new graph data (SO-10016)
+  never reached the explorer's search until someone pressed "Reload from graph".
+- **Testing a canvas.** The nodes are not DOM elements, so the graph view puts its Cytoscape instance on its
+  container (`.gx-canvas.__cy`). A test reads a node's rendered position from there and clicks the real canvas.
+
+Verified live as demo_customer:
+- **Explorer:**
+  - It opens on `?ref=BAT-418`.
+  - Expanding the supplier and switching "compatible with" off leave the supplier, component and recall links.
+  - A canvas click on the recall expands it.
+  - Searching "SO-10" finds only Ada's four orders.
+- **Chat:** "How is the BAT-418 battery connected to other products?" gives a graph card centred on BAT-418, with
+  coloured, dashed neighbours. Its link opens the explorer on BAT-418.
+- No console errors in either.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings (unchanged).
+- `report`: 67/100.
+- `docker check`: 0 errors.
+- `test`: 33/33 pass, 4 new for the link parsing. Widget unit tests: 13/13.

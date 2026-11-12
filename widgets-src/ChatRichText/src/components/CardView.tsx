@@ -3,11 +3,12 @@ import { Card } from "./segments";
 import { ChartView } from "./ChartView";
 import { OutlineView } from "./OutlineView";
 import { MaybeRef } from "./RefLink";
+import { GraphView } from "../shared/graph/GraphView";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
     issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info",
-    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery"
+    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections"
 };
 
 function label(type: string): string {
@@ -48,6 +49,15 @@ export function CardView({ card }: { card: Card }): ReactElement {
             )}
             {card.chart && <ChartView chart={card.chart} />}
             {card.outline.length > 0 && <OutlineView nodes={card.outline} />}
+            {card.graph && (
+                <div className="crt-graph">
+                    <GraphView startRef={card.graph.ref} height={300} compact />
+                    <div className="crt-graph-foot">
+                        <span>Click a node to show what it connects to.</span>
+                        <a href={`p/product-explorer?ref=${encodeURIComponent(card.graph.ref)}`}>Open in the product explorer</a>
+                    </div>
+                </div>
+            )}
             {card.timeline.length > 0 && (
                 <ol className="crt-timeline">
                     {card.timeline.map((ev, i) => (

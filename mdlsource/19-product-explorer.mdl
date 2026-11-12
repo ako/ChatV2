@@ -1,0 +1,32 @@
+mdl 1;
+
+-- Product explorer: the product graph as an interactive network (GraphExplorer
+-- widget, widgets-src/GraphExplorer). Search a starting point, click nodes to
+-- expand their neighbours, switch relation types off, read a node's details.
+-- The chat's graph cards link here with ?ref=<node>. Open to every role: the
+-- widget reads the graph through the reference API (17-graph-node-api.mdl),
+-- which shows a customer no orders but their own.
+
+/** The product graph as an interactive network: search, expand, filter relations. Opened from chat graph cards with ?ref=. */
+create or modify page "ServiceDesk"."ProductGraph_Explorer" folder 'Product graph'
+(
+  title: 'Product explorer',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'product-explorer'
+)
+{
+  layoutgrid lgExplorer {
+    row {
+      column (desktopwidth: autofill) {
+        dynamictext txtHeading (content: 'Product explorer', rendermode: H2)
+        dynamictext txtIntro (content: 'Search for a product, part, supplier, issue or order, then click a node to see what it connects to. Dashed nodes are not expanded yet; the relation buttons switch link types on and off.', rendermode: Paragraph)
+        pluggablewidget 'com.servicedesk.widgets.graphexplorer.GraphExplorer' gxProducts (
+          startRef: 'EB-200',
+          height: 620
+        )
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ProductGraph_Explorer" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

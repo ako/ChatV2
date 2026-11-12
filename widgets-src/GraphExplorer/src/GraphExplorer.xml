@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget id="com.servicedesk.widgets.graphexplorer.GraphExplorer" pluginWidget="true" needsEntityContext="false" offlineCapable="false"
+        supportedPlatform="Web"
+        xmlns="http://www.mendix.com/widget/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.mendix.com/widget/1.0/ ../node_modules/mendix/custom_widget.xsd">
+    <name>Graph explorer</name>
+    <description>Explore the product graph: search for a node, expand its neighbours, filter relations and read the details.</description>
+    <properties>
+        <propertyGroup caption="General">
+            <propertyGroup caption="Graph">
+                <property key="startRef" type="string" required="false">
+                    <caption>Start node</caption>
+                    <description>The node to start from when the page URL has no ?ref= (a SKU, issue id, supplier or order number).</description>
+                </property>
+                <property key="height" type="integer" defaultValue="620">
+                    <caption>Height</caption>
+                    <description>Height of the graph area in pixels.</description>
+                </property>
+            </propertyGroup>
+        </propertyGroup>
+    </properties>
+</widget>

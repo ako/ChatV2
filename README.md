@@ -227,3 +227,24 @@ A customer asks the assistant to return something ("I'd like to return the child
 Customers follow their returns on the **Returns** page and can ask the assistant about them (tool GetReturnStatus). Support agents find the tasks under **My tasks**.
 
 Start the helper servers (carrier, product graph, product graph MCP) with `sh tools/start-helpers.sh`; a recycled container stops them.
+
+## Product explorer and graph cards
+
+The product graph can be explored as a network, not only as an outline:
+
+- **Product explorer** (menu, all roles; `mdlsource/19-product-explorer.mdl`, widget `widgets-src/GraphExplorer`). Search for a product, part, supplier, issue or order, and click a node to show its neighbours (dashed nodes are not expanded yet). Switch relation types on and off with the buttons above the graph. The panel shows the selected node's values and links. Colours mark the kind: bike, part, accessory, supplier, known issue, recall, order. Open it on a node with `p/product-explorer?ref=BAT-418`.
+- **Graph cards in the chat**: ask "how is the BAT-418 battery connected to other products?" and the answer carries a small network around it, expandable in place, with a link to open it in the explorer.
+
+Both draw with Cytoscape.js from one shared component (`widgets-src/shared/graph`, copied into each widget by its prebuild step). They read the graph through the reference API: `GET rest/productgraph/v1/nodes/{ref}` for a node and its links, and `GET rest/productgraph/v1/nodes?q=` to search. The API uses the signed-in user's session, so a customer finds and sees no orders but their own.
+
+Build the widgets after changing them (`npm install` once in each):
+
+```bash
+cd widgets-src/ChatRichText && npm run build && cd ../GraphExplorer && npm run build
+```
+
+```bash
+cp widgets-src/*/dist/1.0.0/*.mpk widgets/ && ./mxcli widget init -p ServiceDeskCopilot.mpr
+```
+
+Restart the app after installing a new widget package: the watch loop does not pick up `.mpk` changes.
