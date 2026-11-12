@@ -1,0 +1,355 @@
+mdl 1;
+
+-- Delivery statistics: the carrier's tracking scans are synced into the app
+-- (Shipment, TrackingEvent), each scan is labelled with the delivery leg it
+-- ends and how long that leg took, and view entities aggregate the legs in
+-- the database. The agent tool GetDeliveryStatistics reads those views, so
+-- the model reports numbers the database computed instead of doing arithmetic.
+--
+-- Legs, from the order to the doorstep:
+--   Warehouse   order placed  -> picked up by the carrier
+--   InTransit   picked up     -> arrived at the carrier's hub
+--   AtHub       at the hub    -> out for delivery (delays at the hub count here)
+--   LastMile    out for delivery -> delivered
+--
+-- Source: GET <CarrierApiUrl>/api/parcels (tools/carrier-mcp/server.py), the
+-- same data its track_parcel MCP tool serves. Synced at startup.
+
+/** Base URL of the carrier's REST API (tools/carrier-mcp). */
+create or modify constant "ServiceDesk"."CarrierApiUrl" folder 'Delivery' ( Type: String, DefaultValue: 'http://127.0.0.1:8765' );
+
+/** The leg of a delivery a tracking scan ends. */
+create or modify enumeration "ServiceDesk"."ENUM_DeliveryLeg" (
+  "Warehouse" 'Warehouse (order to pickup)',
+  "InTransit" 'To the hub',
+  "AtHub" 'At the hub',
+  "LastMile" 'Last mile'
+);
+
+/** A parcel as the carrier tracks it, synced from the carrier's API. DeliveryDays runs from the order date to delivery. */
+create or modify persistent entity "ServiceDesk"."Shipment" (
+  "TrackingCode": String(100) not null unique,
+  "Carrier": String(50),
+  "OrderNumber": String(20),
+  "Delivered": Boolean default false,
+  "DeliveredOn": DateTime,
+  "DeliveryDays": Decimal
+)
+index ("TrackingCode");
+
+/** One tracking scan of a shipment. Leg, LegLocation and LegHours describe the leg this scan ends. */
+create or modify persistent entity "ServiceDesk"."TrackingEvent" (
+  "At": DateTime,
+  "Location": String(100),
+  "Stage": String(30),
+  "Text": String(500),
+  "Leg": Enumeration("ServiceDesk"."ENUM_DeliveryLeg"),
+  "LegLocation": String(100),
+  "LegHours": Decimal
+);
+
+create or modify association "ServiceDesk"."Shipment_Order"
+  from "ServiceDesk"."Shipment" to "ServiceDesk"."Order"
+  type Reference;
+
+create or modify association "ServiceDesk"."TrackingEvent_Shipment"
+  from "ServiceDesk"."TrackingEvent" to "ServiceDesk"."Shipment"
+  type Reference
+  on delete cascade;
+
+grant read * on entity "ServiceDesk"."Shipment" to "ServiceDesk"."Customer"
+  where [ServiceDesk.Shipment_Order/ServiceDesk.Order/ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read * on entity "ServiceDesk"."TrackingEvent" to "ServiceDesk"."Customer"
+  where [ServiceDesk.TrackingEvent_Shipment/ServiceDesk.Shipment/ServiceDesk.Shipment_Order/ServiceDesk.Order/ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read * on entity "ServiceDesk"."Shipment" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."TrackingEvent" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The carrier's parcel feed: every parcel with its scans. */
+create or modify json structure "ServiceDesk"."JSON_CarrierParcels" folder 'Delivery'
+  sample '{"parcels": [{"trackingCode": "3SABCD000101", "carrier": "PostNL", "orderNumber": "SO-10001", "events": [{"at": "2026-10-09T16:10:00Z", "location": "Tilburg", "stage": "PICKED_UP", "text": "Picked up at the shop"}]}]}';
+
+/** Parcels to Shipment objects with their TrackingEvents. */
+create or modify import mapping "ServiceDesk"."IMM_CarrierParcels" folder 'Delivery'
+  with json structure "ServiceDesk"."JSON_CarrierParcels" root parcels
+{
+  create "ServiceDesk"."Shipment" {
+    "TrackingCode" = trackingCode,
+    "Carrier" = carrier,
+    "OrderNumber" = orderNumber,
+    create "ServiceDesk"."TrackingEvent_Shipment"/"ServiceDesk"."TrackingEvent" = events {
+      "At" = at,
+      "Location" = location,
+      "Stage" = stage,
+      "Text" = text
+    }
+  }
+};
+
+/** Links a synced shipment to its order and labels each scan with the leg it ends and how long it took. The first leg starts at the order date. */
+create or modify microflow "ServiceDesk"."SUB_Shipment_ComputeLegs" ($Shipment: "ServiceDesk"."Shipment")
+folder 'Delivery'
+begin
+  retrieve $Order from "ServiceDesk"."Order" where [OrderNumber = $Shipment/OrderNumber] first;
+  retrieve $Events from "ServiceDesk"."TrackingEvent" where [ServiceDesk.TrackingEvent_Shipment = $Shipment] sort by "At" asc;
+  declare $PrevAt DateTime = empty;
+  declare $PrevLocation String = 'Shop warehouse';
+  if $Order != empty then
+    set $PrevAt = $Order/OrderDate;
+  end if;
+  loop $Event in $Events begin
+    if $PrevAt != empty then
+      change $Event (
+        "Leg" = (if $Event/Stage = 'PICKED_UP' then ServiceDesk.ENUM_DeliveryLeg.Warehouse
+          else if $Event/Stage = 'AT_HUB' then ServiceDesk.ENUM_DeliveryLeg.InTransit
+          else if $Event/Stage = 'DELIVERED' then ServiceDesk.ENUM_DeliveryLeg.LastMile
+          else ServiceDesk.ENUM_DeliveryLeg.AtHub),
+        "LegLocation" = (if $Event/Stage = 'PICKED_UP' then 'Shop warehouse'
+          else if $Event/Stage = 'AT_HUB' then $Event/Location
+          else $PrevLocation),
+        "LegHours" = hoursBetween($PrevAt, $Event/At)
+      );
+    end if;
+    set $PrevAt = $Event/At;
+    set $PrevLocation = $Event/Location;
+  end loop;
+  commit $Events;
+  $Delivered = find $Events where $currentObject/Stage = 'DELIVERED';
+  change $Shipment (
+    "Shipment_Order" = $Order,
+    "Delivered" = $Delivered != empty,
+    "DeliveredOn" = (if $Delivered = empty then empty else $Delivered/At),
+    "DeliveryDays" = (if $Delivered = empty or $Order = empty then empty else hoursBetween($Order/OrderDate, $Delivered/At) div 24)
+  ) commit;
+end;
+
+/** Replaces the synced shipments with the carrier's current parcel feed. Returns false, keeping the old data, when the carrier cannot be reached. */
+create or modify microflow "ServiceDesk"."SUB_Shipments_Sync" ()
+returns Boolean as $Synced
+folder 'Delivery'
+begin
+  $Feed = call rest service get @"ServiceDesk"."CarrierApiUrl" + '/api/parcels' (
+    Headers: ('Accept': 'application/json'),
+    Timeout: 30,
+  ) returns String on error without rollback begin
+    log warning node 'ServiceDesk' 'Shipments not synced, the carrier API cannot be reached: {1}' with ({1} = $latestError/Message);
+    return false;
+  end error;
+  retrieve $Old from "ServiceDesk"."Shipment";
+  delete $Old;
+  $Shipments = import from mapping "ServiceDesk"."IMM_CarrierParcels"($Feed) all;
+  loop $Shipment in $Shipments begin
+    call microflow "ServiceDesk"."SUB_Shipment_ComputeLegs" (Shipment = $Shipment);
+  end loop;
+  log info node 'ServiceDesk' 'Synced {1} shipments from the carrier.' with ({1} = toString(length($Shipments)));
+  return true;
+end;
+
+-- Aggregations, in the database. Only delivered shipments count, so a parcel
+-- still on its way does not drag the averages. Hours per leg are summed per
+-- parcel (a parcel delayed at the hub has two AtHub scans).
+
+/** Average hours per delivery leg over all delivered shipments. */
+create or modify view entity "ServiceDesk"."DeliveryLegStats" (
+  "Leg": Enumeration("ServiceDesk"."ENUM_DeliveryLeg"),
+  "Parcels": Integer,
+  "TotalHours": Decimal
+) as (
+  select e.Leg as Leg, count(distinct s.ID) as Parcels, sum(e.LegHours) as TotalHours
+  from ServiceDesk.TrackingEvent as e
+  inner join e/ServiceDesk.TrackingEvent_Shipment/ServiceDesk.Shipment as s
+  where s.Delivered = true and e.Leg is not null
+  group by e.Leg
+);
+
+/** Hours spent at each carrier hub over all delivered shipments. */
+create or modify view entity "ServiceDesk"."DeliveryHubStats" (
+  "Carrier": String(50),
+  "Hub": String(100),
+  "Parcels": Integer,
+  "TotalHours": Decimal
+) as (
+  select s.Carrier as Carrier, e.LegLocation as Hub, count(distinct s.ID) as Parcels, sum(e.LegHours) as TotalHours
+  from ServiceDesk.TrackingEvent as e
+  inner join e/ServiceDesk.TrackingEvent_Shipment/ServiceDesk.Shipment as s
+  where s.Delivered = true and e.Leg = 'AtHub'
+  group by s.Carrier, e.LegLocation
+);
+
+/** Order-to-delivery time per carrier over all delivered shipments. */
+create or modify view entity "ServiceDesk"."DeliveryCarrierStats" (
+  "Carrier": String(50),
+  "Parcels": Integer,
+  "AvgDays": Decimal,
+  "MinDays": Decimal,
+  "MaxDays": Decimal
+) as (
+  select s.Carrier as Carrier, count(s.ID) as Parcels, avg(s.DeliveryDays) as AvgDays, min(s.DeliveryDays) as MinDays, max(s.DeliveryDays) as MaxDays
+  from ServiceDesk.Shipment as s
+  where s.Delivered = true and s.DeliveryDays is not null
+  group by s.Carrier
+);
+
+/** Hours per delivery leg per customer, for a customer's own statistics. */
+create or modify view entity "ServiceDesk"."CustomerDeliveryLegStats" (
+  "CustomerEmail": String(200),
+  "Leg": Enumeration("ServiceDesk"."ENUM_DeliveryLeg"),
+  "Parcels": Integer,
+  "TotalHours": Decimal
+) as (
+  select c.Email as CustomerEmail, e.Leg as Leg, count(distinct s.ID) as Parcels, sum(e.LegHours) as TotalHours
+  from ServiceDesk.TrackingEvent as e
+  inner join e/ServiceDesk.TrackingEvent_Shipment/ServiceDesk.Shipment as s
+  inner join s/ServiceDesk.Shipment_Order/ServiceDesk."Order" as o
+  inner join o/ServiceDesk.Order_Customer/ServiceDesk.Customer as c
+  where s.Delivered = true and e.Leg is not null
+  group by c.Email, e.Leg
+);
+
+/** Hours at each hub per customer. */
+create or modify view entity "ServiceDesk"."CustomerDeliveryHubStats" (
+  "CustomerEmail": String(200),
+  "Carrier": String(50),
+  "Hub": String(100),
+  "Parcels": Integer,
+  "TotalHours": Decimal
+) as (
+  select c.Email as CustomerEmail, s.Carrier as Carrier, e.LegLocation as Hub, count(distinct s.ID) as Parcels, sum(e.LegHours) as TotalHours
+  from ServiceDesk.TrackingEvent as e
+  inner join e/ServiceDesk.TrackingEvent_Shipment/ServiceDesk.Shipment as s
+  inner join s/ServiceDesk.Shipment_Order/ServiceDesk."Order" as o
+  inner join o/ServiceDesk.Order_Customer/ServiceDesk.Customer as c
+  where s.Delivered = true and e.Leg = 'AtHub'
+  group by c.Email, s.Carrier, e.LegLocation
+);
+
+/** Order-to-delivery time per customer and carrier. */
+create or modify view entity "ServiceDesk"."CustomerDeliveryTimes" (
+  "CustomerEmail": String(200),
+  "Carrier": String(50),
+  "Parcels": Integer,
+  "AvgDays": Decimal,
+  "MinDays": Decimal,
+  "MaxDays": Decimal
+) as (
+  select c.Email as CustomerEmail, s.Carrier as Carrier, count(s.ID) as Parcels, avg(s.DeliveryDays) as AvgDays, min(s.DeliveryDays) as MinDays, max(s.DeliveryDays) as MaxDays
+  from ServiceDesk.Shipment as s
+  inner join s/ServiceDesk.Shipment_Order/ServiceDesk."Order" as o
+  inner join o/ServiceDesk.Order_Customer/ServiceDesk.Customer as c
+  where s.Delivered = true and s.DeliveryDays is not null
+  group by c.Email, s.Carrier
+);
+
+grant read * on entity "ServiceDesk"."DeliveryLegStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."DeliveryHubStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."DeliveryCarrierStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."CustomerDeliveryLegStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."CustomerDeliveryHubStats" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."CustomerDeliveryTimes" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** One line per delivery leg, with its share of the total: "At the hub: 1.8 days per parcel (52%)". */
+create or modify microflow "ServiceDesk"."SUB_DeliveryStats_LegLine" ($Leg: "ServiceDesk"."ENUM_DeliveryLeg", $Parcels: Integer, $TotalHours: Decimal, $AllHours: Decimal)
+returns String as $Line
+folder 'Delivery'
+begin
+  if $Parcels = 0 or $AllHours = 0 then
+    return '';
+  end if;
+  return '- ' + getCaption($Leg) + ': ' + formatDecimal($TotalHours div $Parcels div 24, '0.0') + ' days per parcel ('
+    + formatDecimal($TotalHours * 100 div $AllHours, '0') + '% of the time)' + urlDecode('%0A');
+end;
+
+/** The delivery statistics answer for one customer's own delivered orders. */
+create or modify microflow "ServiceDesk"."SUB_DeliveryStats_ForCustomer" ($Customer: "ServiceDesk"."Customer")
+returns String as $Answer
+folder 'Delivery'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Times String = '';
+  declare $Legs String = '';
+  declare $Hubs String = '';
+  declare $Parcels Integer = 0;
+  declare $DaysSum Decimal = 0;
+  declare $MinDays Decimal = empty;
+  declare $MaxDays Decimal = empty;
+  retrieve $CustTimes from "ServiceDesk"."CustomerDeliveryTimes" where [CustomerEmail = $Customer/Email] sort by "Carrier" asc;
+  loop $T in $CustTimes begin
+    set $Times = $Times + '- ' + $T/Carrier + ': ' + toString($T/Parcels) + ' parcels, average ' + formatDecimal($T/AvgDays, '0.0') + ' days (fastest ' + formatDecimal($T/MinDays, '0.0') + ', slowest ' + formatDecimal($T/MaxDays, '0.0') + ')' + $NL;
+    set $Parcels = $Parcels + $T/Parcels;
+    set $DaysSum = $DaysSum + $T/AvgDays * $T/Parcels;
+    set $MinDays = (if $MinDays = empty or $T/MinDays < $MinDays then $T/MinDays else $MinDays);
+    set $MaxDays = (if $MaxDays = empty or $T/MaxDays > $MaxDays then $T/MaxDays else $MaxDays);
+  end loop;
+  retrieve $CustLegs from "ServiceDesk"."CustomerDeliveryLegStats" where [CustomerEmail = $Customer/Email];
+  $CustAllHours = sum $CustLegs by TotalHours;
+  loop $L in $CustLegs begin
+    $CustLegLine = call microflow "ServiceDesk"."SUB_DeliveryStats_LegLine" (Leg = $L/Leg, Parcels = $L/Parcels, TotalHours = $L/TotalHours, AllHours = $CustAllHours);
+    set $Legs = $Legs + $CustLegLine;
+  end loop;
+  retrieve $CustHubs from "ServiceDesk"."CustomerDeliveryHubStats" where [CustomerEmail = $Customer/Email] sort by "TotalHours" desc;
+  loop $H in $CustHubs begin
+    set $Hubs = $Hubs + '- ' + $H/Hub + ' (' + $H/Carrier + '): ' + formatDecimal($H/TotalHours div $H/Parcels div 24, '0.0') + ' days per parcel over ' + toString($H/Parcels) + ' parcels' + $NL;
+  end loop;
+  if $Parcels = 0 then
+    return 'There are no delivered orders with tracking data for ' + 'your delivered orders' + ' yet.';
+  end if;
+  return 'Delivery statistics for ' + 'your delivered orders' + ' (' + toString($Parcels) + ' delivered parcels, from order date to delivery):' + $NL
+    + 'Average ' + formatDecimal($DaysSum div $Parcels, '0.0') + ' days; fastest ' + formatDecimal($MinDays, '0.0') + ', slowest ' + formatDecimal($MaxDays, '0.0') + '.' + $NL
+    + 'By carrier:' + $NL + $Times
+    + 'Where the time goes (average per parcel, by leg of the delivery):' + $NL + $Legs
+    + 'Time at each hub (includes delays at the hub):' + $NL + $Hubs;
+end;
+
+/** The delivery statistics answer over all delivered orders (staff). */
+create or modify microflow "ServiceDesk"."SUB_DeliveryStats_All" ()
+returns String as $Answer
+folder 'Delivery'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Times String = '';
+  declare $Legs String = '';
+  declare $Hubs String = '';
+  declare $Parcels Integer = 0;
+  declare $DaysSum Decimal = 0;
+  declare $MinDays Decimal = empty;
+  declare $MaxDays Decimal = empty;
+  retrieve $AllTimes from "ServiceDesk"."DeliveryCarrierStats" sort by "Carrier" asc;
+  loop $AllT in $AllTimes begin
+    set $Times = $Times + '- ' + $AllT/Carrier + ': ' + toString($AllT/Parcels) + ' parcels, average ' + formatDecimal($AllT/AvgDays, '0.0') + ' days (fastest ' + formatDecimal($AllT/MinDays, '0.0') + ', slowest ' + formatDecimal($AllT/MaxDays, '0.0') + ')' + $NL;
+    set $Parcels = $Parcels + $AllT/Parcels;
+    set $DaysSum = $DaysSum + $AllT/AvgDays * $AllT/Parcels;
+    set $MinDays = (if $MinDays = empty or $AllT/MinDays < $MinDays then $AllT/MinDays else $MinDays);
+    set $MaxDays = (if $MaxDays = empty or $AllT/MaxDays > $MaxDays then $AllT/MaxDays else $MaxDays);
+  end loop;
+  retrieve $AllLegs from "ServiceDesk"."DeliveryLegStats";
+  $AllHours = sum $AllLegs by TotalHours;
+  loop $AllL in $AllLegs begin
+    $LegLine = call microflow "ServiceDesk"."SUB_DeliveryStats_LegLine" (Leg = $AllL/Leg, Parcels = $AllL/Parcels, TotalHours = $AllL/TotalHours, AllHours = $AllHours);
+    set $Legs = $Legs + $LegLine;
+  end loop;
+  retrieve $AllHubs from "ServiceDesk"."DeliveryHubStats" sort by "TotalHours" desc;
+  loop $AllH in $AllHubs begin
+    set $Hubs = $Hubs + '- ' + $AllH/Hub + ' (' + $AllH/Carrier + '): ' + formatDecimal($AllH/TotalHours div $AllH/Parcels div 24, '0.0') + ' days per parcel over ' + toString($AllH/Parcels) + ' parcels' + $NL;
+  end loop;
+  if $Parcels = 0 then
+    return 'There are no delivered orders with tracking data for ' + 'all delivered orders' + ' yet.';
+  end if;
+  return 'Delivery statistics for ' + 'all delivered orders' + ' (' + toString($Parcels) + ' delivered parcels, from order date to delivery):' + $NL
+    + 'Average ' + formatDecimal($DaysSum div $Parcels, '0.0') + ' days; fastest ' + formatDecimal($MinDays, '0.0') + ', slowest ' + formatDecimal($MaxDays, '0.0') + '.' + $NL
+    + 'By carrier:' + $NL + $Times
+    + 'Where the time goes (average per parcel, by leg of the delivery):' + $NL + $Legs
+    + 'Time at each hub (includes delays at the hub):' + $NL + $Hubs;
+end;
+
+/** Agent tool: how long delivered orders took, and where the time went (per leg, per hub, per carrier). A customer gets their own orders; staff get all delivered orders. Numbers come from view entities, so the model never has to compute them. */
+create or modify microflow "ServiceDesk"."Tool_GetDeliveryStatistics" ()
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  if $Customer != empty then
+    $OwnStats = call microflow "ServiceDesk"."SUB_DeliveryStats_ForCustomer" (Customer = $Customer);
+    return $OwnStats;
+  end if;
+  $AllStats = call microflow "ServiceDesk"."SUB_DeliveryStats_All" ();
+  return $AllStats;
+end;

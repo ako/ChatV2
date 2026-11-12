@@ -27,13 +27,15 @@ begin
   return true;
 end;
 
-/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint. */
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data and syncs shipments from the carrier, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint. */
 create or modify microflow "ServiceDesk"."ASU_App" ()
 returns Boolean as $Started
 folder 'Setup'
 begin
   $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
   $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  call microflow "ServiceDesk"."SUB_SeedOrderHistory" ();
+  $ShipmentsSynced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
   $McpStarted = call microflow "ServiceDesk"."MCP_Initialize" ();
   $RuntimeAgentReady = call microflow "ServiceDesk"."SUB_SetUpRuntimeAgent" ();
   return true;

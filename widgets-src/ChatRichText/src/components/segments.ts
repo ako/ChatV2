@@ -15,9 +15,22 @@
 
 export type Tone = "neutral" | "good" | "warning" | "critical" | "info";
 
-export interface CardField { label: string; value: string }
+// `ref` names a node of the product graph (a SKU, issue id or order number).
+// The widget turns it into a link that loads that node's details on demand.
+export interface CardField { label: string; value: string; ref?: string }
 export interface CardEvent { date: string; text: string }
-export interface CardItem { title: string; text?: string; value?: string }
+export interface CardItem { title: string; text?: string; value?: string; ref?: string }
+
+// A chart: one value per label, drawn as bars ("bars") or as one bar split
+// into shares of the total ("stacked", for "where does the time go").
+// share: the percentage of the total as the data source computed it; shown instead
+// of one the widget would compute from (possibly rounded) values.
+export interface ChartPoint { label: string; value: number; share?: number; ref?: string }
+export interface Chart { kind: "bars" | "stacked"; unit?: string; points: ChartPoint[]; highlight?: string }
+
+// An outline: a collapsible tree, e.g. a product with its components, parts
+// and issues. Nodes nest up to OUTLINE_DEPTH levels.
+export interface OutlineNode { label: string; value?: string; ref?: string; children: OutlineNode[] }
 
 export interface Card {
     type: string;
@@ -28,6 +41,8 @@ export interface Card {
     fields: CardField[];
     timeline: CardEvent[];
     items: CardItem[];
+    chart?: Chart;
+    outline: OutlineNode[];
     note?: string;
 }
 
@@ -37,6 +52,8 @@ export type Segment =
     | { kind: "pending" };
 
 const TONES: Tone[] = ["neutral", "good", "warning", "critical", "info"];
+const OUTLINE_DEPTH = 4;
+const MAX_POINTS = 24;
 const FENCE = /^(`{3,}|~{3,})[ \t]*(card|cards)[ \t]*$/i;
 
 function str(v: unknown): string | undefined {
@@ -56,6 +73,41 @@ function list<T>(v: unknown, map: (x: unknown) => T | undefined): T[] {
     return out;
 }
 
+/** A reference to a graph node: letters, digits and - _ . : only, so it is safe in a URL path. */
+export function cleanRef(v: unknown): string | undefined {
+    const s = str(v)?.trim();
+    return s && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(s) ? s : undefined;
+}
+
+function num(v: unknown): number | undefined {
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(",", ".")) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+}
+
+function toChart(o: Record<string, unknown>): Chart | undefined {
+    const source = o.data ?? o.series ?? (o.chart && typeof o.chart === "object" ? (o.chart as Record<string, unknown>).data : undefined);
+    const points = list(source, p => {
+        if (!p || typeof p !== "object") return undefined;
+        const r = p as Record<string, unknown>;
+        const label = str(r.label), value = num(r.value);
+        return label !== undefined && value !== undefined && value >= 0 ? { label, value, share: num(r.share), ref: cleanRef(r.ref) } : undefined;
+    }).slice(0, MAX_POINTS);
+    if (!points.length) return undefined;
+    const kindRaw = (str(typeof o.chart === "string" ? o.chart : o.kind) ?? "bars").toLowerCase();
+    return { kind: kindRaw === "stacked" ? "stacked" : "bars", unit: str(o.unit), points, highlight: str(o.highlight) };
+}
+
+function toOutline(v: unknown, depth: number): OutlineNode[] {
+    if (depth > OUTLINE_DEPTH) return [];
+    return list(v, n => {
+        if (typeof n === "string") return { label: n, children: [] };
+        if (!n || typeof n !== "object") return undefined;
+        const r = n as Record<string, unknown>;
+        const label = str(r.label) ?? str(r.title);
+        return label !== undefined ? { label, value: str(r.value), ref: cleanRef(r.ref), children: toOutline(r.children, depth + 1) } : undefined;
+    });
+}
+
 /** Turns one parsed JSON value into a Card, or undefined when it has nothing to show. */
 export function toCard(raw: unknown): Card | undefined {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
@@ -71,7 +123,7 @@ export function toCard(raw: unknown): Card | undefined {
             if (!f || typeof f !== "object") return undefined;
             const r = f as Record<string, unknown>;
             const label = str(r.label), value = str(r.value);
-            return label !== undefined && value !== undefined ? { label, value } : undefined;
+            return label !== undefined && value !== undefined ? { label, value, ref: cleanRef(r.ref) } : undefined;
         }),
         timeline: list(o.timeline, e => {
             if (!e || typeof e !== "object") return undefined;
@@ -84,11 +136,13 @@ export function toCard(raw: unknown): Card | undefined {
             if (!i || typeof i !== "object") return undefined;
             const r = i as Record<string, unknown>;
             const title = str(r.title);
-            return title !== undefined ? { title, text: str(r.text), value: str(r.value) } : undefined;
+            return title !== undefined ? { title, text: str(r.text), value: str(r.value), ref: cleanRef(r.ref) } : undefined;
         }),
+        chart: toChart(o),
+        outline: toOutline(o.outline, 1),
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.note;
     return empty ? undefined : card;
 }
 

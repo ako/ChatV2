@@ -24,3 +24,11 @@ Agent Editor supports only Mendix Cloud GenAI and Azure AI Foundry for models an
 ## Conversational UI's message snippet is customised: both Markdown viewers are replaced by the ChatRichText widget (mdlsource/13-chat-rich-text.mdl). Re-run that script after updating Conversational UI.
 
 Anchors: none · id `ce67f4` · 2026-11-11
+
+## Delivery statistics come from shipments synced into the app from the carrier's REST API, aggregated by OQL view entities; the agent reports the tool's numbers and never computes averages itself
+
+Anchors: none · id `ac79df` · 2026-11-12
+
+## Card references are product graph node ids (SKU, supplier, issue id, order number), resolved by rest/productgraph/v1/nodes/{ref} with the user's session; customers never see other customers' orders through it
+
+Anchors: none · id `813667` · 2026-11-12

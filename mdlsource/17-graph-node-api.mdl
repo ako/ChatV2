@@ -1,0 +1,132 @@
+mdl 1;
+
+-- Reference details for the chat cards: GET rest/productgraph/v1/nodes/{ref}
+-- returns one node of the product graph (a SKU, supplier, issue id or order
+-- number) with its facts, from the GraphNode snapshot (14-product-graph-outline.mdl).
+-- The ChatRichText widget calls it when a user clicks a reference in a card.
+--
+-- It authenticates with the user's active session (the widget sends the
+-- session's CSRF token) and decides itself what that user may see: a customer
+-- gets only their own orders, and no facts that point at other customers' orders.
+
+/** Details of one product graph node, as the reference API returns it. */
+create or modify non-persistent entity "ServiceDesk"."GraphNodeDetails" (
+  "Ref": String(100),
+  "Label": String(1000),
+  "Kind": String(100)
+);
+
+/** The facts array of GraphNodeDetails (export mappings need a container per array). */
+create or modify non-persistent entity "ServiceDesk"."GraphNodeFacts" ();
+
+/** One fact of a graph node. Ref is set when the fact points at another node. */
+create or modify non-persistent entity "ServiceDesk"."GraphNodeFact" (
+  "Label": String(1000),
+  "Ref": String(100)
+);
+
+create or modify association "ServiceDesk"."GraphNodeFacts_GraphNodeDetails"
+  from "ServiceDesk"."GraphNodeFacts" to "ServiceDesk"."GraphNodeDetails";
+
+create or modify association "ServiceDesk"."GraphNodeFact_GraphNodeFacts"
+  from "ServiceDesk"."GraphNodeFact" to "ServiceDesk"."GraphNodeFacts";
+
+grant read *, write * on entity "ServiceDesk"."GraphNodeDetails" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."GraphNodeFacts" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."GraphNodeFact" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The reference API's response body. */
+create or modify json structure "ServiceDesk"."JSON_GraphNodeDetails" folder 'Product graph'
+  sample '{"ref": "BAT-418", "label": "BAT-418 · Battery 418 Wh", "kind": "Part", "facts": [{"label": "→ supplied by: CellPower GmbH", "ref": "CellPower"}]}';
+
+create or modify export mapping "ServiceDesk"."EMM_GraphNodeDetails" folder 'Product graph'
+  with json structure "ServiceDesk"."JSON_GraphNodeDetails"
+{
+  "ServiceDesk"."GraphNodeDetails" {
+    ref = "Ref",
+    label = "Label",
+    kind = "Kind",
+    "ServiceDesk"."GraphNodeFacts_GraphNodeDetails"/"ServiceDesk"."GraphNodeFacts" as facts {
+      "ServiceDesk"."GraphNodeFact_GraphNodeFacts"/"ServiceDesk"."GraphNodeFact" as factsItem {
+        label = "Label",
+        ref = "Ref"
+      }
+    }
+  }
+};
+
+/** Whether the current user may see a node that is an order: staff always, a customer only their own. */
+create or modify microflow "ServiceDesk"."SUB_GraphNode_MaySeeOrder" ($OrderNumber: String, $Customer: "ServiceDesk"."Customer")
+returns Boolean as $MaySee
+folder 'Product graph'
+begin
+  if $Customer = empty then
+    return true;
+  end if;
+  retrieve $Own from "ServiceDesk"."Order" where [OrderNumber = $OrderNumber][ServiceDesk.Order_Customer = $Customer] first;
+  return $Own != empty;
+end;
+
+/** REST: one product graph node and its facts, by reference (the part of its IRI after #). 404 when it does not exist or the user may not see it. */
+create or modify microflow "ServiceDesk"."REST_GetGraphNode" ($ref: String, $httpResponse: System.HttpResponse)
+returns "ServiceDesk"."GraphNodeDetails" as $Details
+folder 'Product graph'
+begin
+  declare $Base String = 'https://example.org/bikeshop#';
+  declare $OrderClass String = 'https://example.org/bikeshop#Order';
+  $IsLoaded = call microflow "ServiceDesk"."SUB_ProductGraph_IsLoaded" ();
+  if not($IsLoaded) then
+    $Loaded = call microflow "ServiceDesk"."SUB_ProductGraph_Load" ();
+  end if;
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  declare $Key String = $Base + $ref;
+  retrieve $Node from "ServiceDesk"."GraphNode" where [NodeKey = $Key][Kind = 'resource'] first;
+  if $Node = empty then
+    change $httpResponse ("StatusCode" = 404);
+    return empty;
+  end if;
+  if $Node/ParentKey = $OrderClass then
+    $MaySeeNode = call microflow "ServiceDesk"."SUB_GraphNode_MaySeeOrder" (OrderNumber = $ref, Customer = $Customer);
+    if not($MaySeeNode) then
+      change $httpResponse ("StatusCode" = 404);
+      return empty;
+    end if;
+  end if;
+  retrieve $Class from "ServiceDesk"."GraphNode" where [NodeKey = $Node/ParentKey] first;
+  $Result = create "ServiceDesk"."GraphNodeDetails" ("Ref" = $ref, "Label" = $Node/Label, "Kind" = (if $Class = empty then '' else $Class/Label));
+  $FactList = create "ServiceDesk"."GraphNodeFacts" ("ServiceDesk"."GraphNodeFacts_GraphNodeDetails" = $Result);
+  retrieve $Facts from "ServiceDesk"."GraphNode" where [ParentKey = $Node/NodeKey] sort by "SortKey" asc;
+  retrieve $Orders from "ServiceDesk"."GraphNode" where [ParentKey = $OrderClass];
+  loop $Fact in $Facts begin
+    declare $TargetRef String = '';
+    declare $Show Boolean = true;
+    if $Fact/Detail != empty and startsWith($Fact/Detail, $Base) then
+      set $TargetRef = substring($Fact/Detail, length($Base));
+      $TargetOrder = find $Orders where $currentObject/NodeKey = $Fact/Detail;
+      if $TargetOrder != empty then
+        $MaySeeTarget = call microflow "ServiceDesk"."SUB_GraphNode_MaySeeOrder" (OrderNumber = $TargetRef, Customer = $Customer);
+        set $Show = $MaySeeTarget;
+      end if;
+    end if;
+    if $Show then
+      create "ServiceDesk"."GraphNodeFact" ("Label" = $Fact/Label, "Ref" = $TargetRef, "ServiceDesk"."GraphNodeFact_GraphNodeFacts" = $FactList);
+    end if;
+  end loop;
+  return $Result;
+end;
+
+/** Product graph references for the chat cards. Signed-in users only (active session). */
+create or modify published rest service "ServiceDesk"."ProductGraphApi" (
+  Path: 'rest/productgraph/v1',
+  Version: '1.0.0',
+  ServiceName: 'Product graph references',
+  Authentication: (session)
+)
+{
+  resource 'nodes' {
+    get '{ref}' microflow "ServiceDesk"."REST_GetGraphNode" export mapping "ServiceDesk"."EMM_GraphNodeDetails";
+  }
+};
+
+grant execute on microflow "ServiceDesk"."REST_GetGraphNode" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant access on published rest service "ServiceDesk"."ProductGraphApi" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

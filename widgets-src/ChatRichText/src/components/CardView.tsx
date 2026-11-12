@@ -1,9 +1,13 @@
 import { ReactElement } from "react";
 import { Card } from "./segments";
+import { ChartView } from "./ChartView";
+import { OutlineView } from "./OutlineView";
+import { MaybeRef } from "./RefLink";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
-    issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info"
+    issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info",
+    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery"
 };
 
 function label(type: string): string {
@@ -26,7 +30,7 @@ export function CardView({ card }: { card: Card }): ReactElement {
                     {card.fields.map((f, i) => (
                         <div className="crt-field" key={i}>
                             <dt>{f.label}</dt>
-                            <dd>{f.value}</dd>
+                            <dd><MaybeRef refId={f.ref}>{f.value}</MaybeRef></dd>
                         </div>
                     ))}
                 </dl>
@@ -35,13 +39,15 @@ export function CardView({ card }: { card: Card }): ReactElement {
                 <ul className="crt-items">
                     {card.items.map((it, i) => (
                         <li key={i}>
-                            <span className="crt-item-title">{it.title}</span>
+                            <span className="crt-item-title"><MaybeRef refId={it.ref}>{it.title}</MaybeRef></span>
                             {it.text && <span className="crt-item-text">{it.text}</span>}
                             {it.value && <span className="crt-item-value">{it.value}</span>}
                         </li>
                     ))}
                 </ul>
             )}
+            {card.chart && <ChartView chart={card.chart} />}
+            {card.outline.length > 0 && <OutlineView nodes={card.outline} />}
             {card.timeline.length > 0 && (
                 <ol className="crt-timeline">
                     {card.timeline.map((ev, i) => (

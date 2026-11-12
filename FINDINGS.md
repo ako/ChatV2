@@ -1160,3 +1160,56 @@ Found on the way:
 Gates: check clean, and the second exec writes nothing; lint 0 errors, 18 warnings (the new one is ARCH002 on
 the read-only snapshot entity); report 74/100; docker check 0 errors; tests 16/16. Customers do not see the menu
 item (page and microflows are granted to SupportAgent and Admin only).
+
+## Delivery statistics, chart and outline cards, clickable references (2026-11-12)
+
+What was built: shipments synced from the carrier's REST API, legs computed per scan, six OQL view entities, a
+scoped agent tool (GetDeliveryStatistics), chart and outline card types in ChatRichText, and a session-authenticated
+REST endpoint that serves product graph node details for clickable references.
+
+Found on the way:
+- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.**
+  - `e.Leg != empty` in a view entity: OQL has no `empty`, it needs `is not null`.
+  - An unquoted `ServiceDesk.Order` in a join path: `Order` is an OQL reserved word, so write `ServiceDesk."Order"`.
+  - Separately, division in OQL is `:`, not `/`, which is the path separator.
+- **A `run --watch` *reload* does not re-run the after-startup microflow.** So Agent Editor prompts that changed in
+  `07-agents.mdl` were not re-imported into Agent Commons, and the agent kept answering with the old prompt. Only
+  the first edit had landed, from an earlier restart. A full restart (`start-app.sh`) re-imports. Check the in-use
+  prompt with OQL on `AgentCommons.Version` before blaming the model.
+- **`run --watch` does not notice a new widget `.mpk`** ("no change since the boot"). After `widget init`, restart
+  the app.
+- **Session auth on a published REST service needs the CSRF token.** Without `X-Csrf-Token` the answer is 401. The
+  token is `mx.session.getConfig("csrftoken")` in the browser, which is what the widget sends.
+- **Conversational UI's markdown styles beat the widget's list layout.** The widget root also carries the
+  `widget-markdown` class, so the chart legend's grid was sized to its content. The fix was higher specificity
+  (`.crt-root .crt-legend …`) plus an explicit `grid-template-columns`.
+- **Percentages:** the widget computed shares from rounded values (36%) while the tool said 37%. Chart points now
+  carry the tool's `share`, and the widget only computes one when it is missing.
+- **The model "corrected" earlier answers that were right** ("I showed these figures before calling the tool").
+  Two prompt rules stopped it: call the tools before writing any of the answer, and don't comment on earlier
+  answers unless asked.
+- Reshaping an existing microflow (splitting the statistics tool) was refused by `create or modify` with
+  MDL-V1-REBUILD. Dropping it once and letting the script recreate it was the right call for a new, mxcli-authored
+  flow.
+
+Verified live:
+- **As demo_customer:**
+  - "On average, how long did my orders take to deliver?" gives a bars chart per carrier (9 parcels, average 3.9
+    days, fastest 2.5, slowest 6.5).
+  - "Where is most time spent…" gives a stacked chart with the hub at 42% and the warehouse at 37%. The numbers
+    match the view entities queried with OQL.
+  - The order card's product reference opens CHS-MAXI's details.
+  - The reference API returns 404 for another customer's order, and hides "in order SO-10005" (not hers) from
+    BAT-418's facts.
+- **As demo_agent:**
+  - The all-orders statistics show 56 parcels, with the warehouse at 41% and the hub at 39%.
+  - The product outline renders with 6 references, and supplier → part drill-down works.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 19 warnings. The new one is ARCH003 on TrackingEvent: a scan has no natural key.
+- `report`: 71/100.
+- `docker check`: 0 errors.
+- `test`: 20/20 pass, including 4 new ones (history seed, leg computation from a hand-made shipment, leg line,
+  empty leg).
+- Widget unit tests: 12/12 pass.

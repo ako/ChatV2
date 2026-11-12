@@ -74,3 +74,68 @@
     .crt-pending { animation: crt-pulse 1.2s ease-in-out infinite; }
 }
 @keyframes crt-pulse { 50% { opacity: .55; } }
+
+/* Charts: bars scaled to the largest value, or one stacked bar of shares. */
+.crt-chart { margin: 0; display: grid; gap: 6px; }
+/* A categorical palette of six clearly different hues (the theme has none):
+   the brand colour first, then amber, indigo, purple, green and grey. */
+.crt-series-0 { --crt-series: var(--crt-accent); }
+.crt-series-1 { --crt-series: #c27c0e; }
+.crt-series-2 { --crt-series: #4f6bd8; }
+.crt-series-3 { --crt-series: #9b5bb5; }
+.crt-series-4 { --crt-series: #3d8b5a; }
+.crt-series-5 { --crt-series: #8a94a3; }
+.crt-bar-row { display: grid; grid-template-columns: minmax(90px, 34%) 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
+.crt-bar-label { overflow-wrap: anywhere; }
+.crt-bar-track { height: 10px; border-radius: 5px; background: var(--crt-surface-alt); overflow: hidden; }
+.crt-bar { display: block; height: 100%; border-radius: 5px; background: var(--crt-muted); opacity: .55; }
+.crt-highlight .crt-bar { background: var(--crt-accent); opacity: 1; }
+.crt-highlight .crt-bar-label, .crt-highlight .crt-legend-label { font-weight: 600; }
+.crt-bar-value, .crt-legend-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--crt-muted); }
+.crt-stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--crt-surface-alt); gap: 2px; }
+.crt-stack-seg { display: block; height: 100%; background: var(--crt-series); min-width: 3px; }
+.crt-root .crt-legend { width: 100%; grid-template-columns: minmax(0, 1fr); justify-items: stretch; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.crt-root .crt-legend li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; margin: 0; gap: 8px; align-items: center; font-size: 14px; }
+.crt-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--crt-series); }
+
+/* Outline: a collapsible tree. */
+.crt-outline, .crt-outline ul { list-style: none; margin: 0; padding: 0; }
+.crt-outline ul { padding-left: 16px; border-left: 1px solid var(--crt-line); margin-left: 5px; }
+.crt-outline li { padding: 2px 0; font-size: 14px; }
+.crt-outline summary { cursor: pointer; font-weight: 600; list-style-position: outside; }
+.crt-outline summary::marker { color: var(--crt-muted); }
+.crt-outline-leaf { padding-left: 2px; }
+.crt-outline-label { display: inline; }
+.crt-outline-value { margin-left: 8px; color: var(--crt-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.crt-outline-count { font-size: 11px; font-weight: 600; color: var(--crt-muted); background: var(--crt-surface-alt); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+
+/* References: a node of the product graph; click to load its details. */
+.crt-ref { font: inherit; color: var(--crt-accent); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.crt-ref:hover, .crt-ref-open { text-decoration-style: solid; }
+.crt-ref:focus-visible { outline: 2px solid var(--crt-accent); outline-offset: 2px; border-radius: 2px; }
+.crt-ref-panel { display: grid; gap: 6px; margin: 6px 0 4px; padding: 8px 10px; border: 1px solid var(--crt-line); border-radius: 6px; background: var(--crt-surface-alt); font-size: 13px; font-weight: 400; color: var(--crt-ink); }
+.crt-ref-head { display: grid; gap: 1px; }
+.crt-ref-title { font-weight: 600; font-size: 14px; }
+.crt-ref-facts { display: grid; gap: 3px; }
+.crt-ref-fact { overflow-wrap: anywhere; }
+.crt-ref-loading, .crt-ref-empty { color: var(--crt-muted); }
+.crt-ref-error { color: var(--mxt-tone-risk, #c62828); }
+.crt-ref-wrap { display: inline; }
+.crt-ref-wrap > .crt-ref-panel { display: grid; }
+
+/* An open reference panel takes the card's full width instead of the narrow
+   column its link sits in: a field spans every column, and in grid rows
+   (items, bars, legend) the link's wrappers step aside (display: contents)
+   so the panel becomes a row of its own. */
+.crt-root .crt-field:has(> dd > .crt-ref-wrap > .crt-ref-open) { grid-column: 1 / -1; }
+.crt-root .crt-items li:has(> .crt-item-title > .crt-ref-wrap > .crt-ref-open) > .crt-item-title,
+.crt-root .crt-items li > .crt-item-title > .crt-ref-wrap:has(> .crt-ref-open),
+.crt-root .crt-bar-row:has(> .crt-bar-label > .crt-ref-wrap > .crt-ref-open) > .crt-bar-label,
+.crt-root .crt-bar-row > .crt-bar-label > .crt-ref-wrap:has(> .crt-ref-open),
+.crt-root .crt-legend li:has(> .crt-legend-label > .crt-ref-wrap > .crt-ref-open) > .crt-legend-label,
+.crt-root .crt-legend li > .crt-legend-label > .crt-ref-wrap:has(> .crt-ref-open) { display: contents; }
+.crt-root .crt-items li > .crt-item-title > .crt-ref-wrap > .crt-ref-panel,
+.crt-root .crt-bar-row > .crt-bar-label > .crt-ref-wrap > .crt-ref-panel,
+.crt-root .crt-legend li > .crt-legend-label > .crt-ref-wrap > .crt-ref-panel { grid-column: 1 / -1; grid-row: 2; }
+.crt-root .crt-items li > .crt-item-title > .crt-ref-wrap > .crt-ref { font-weight: 600; }
+.crt-ref-panel { max-height: 320px; overflow-y: auto; }

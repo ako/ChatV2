@@ -204,3 +204,12 @@ cd widgets-src/ChatRichText && npm install && npm test && npm run build
 ```bash
 cp widgets-src/ChatRichText/dist/1.0.0/com.servicedesk.widgets.ChatRichText.mpk widgets/ && ./mxcli widget init -p ServiceDeskCopilot.mpr
 ```
+
+## Delivery statistics, charts and product outlines in the chat
+
+Ask the assistant "On average, how long did my orders take to deliver?" or "Where is most time spent delivering my parcels?" and the answer is a **chart card**. Ask for "an overview of the EB-200" and it is a **product outline card**: a collapsible tree of what the product ships with, what fits it, what it fits on, and its known issues and recalls.
+
+- **Delivery data** comes from the carrier. `tools/carrier-mcp/server.py` serves each parcel's scans over MCP (`track_parcel`, for the agent) and over plain REST (`GET /api/parcels`, for systems). The app syncs them at startup (`mdlsource/16-delivery-statistics.mdl`) into `Shipment` and `TrackingEvent`, and labels each scan with the leg it ends: warehouse, to the hub, at the hub, last mile. View entities (OQL) aggregate the legs per carrier, hub and customer. The agent tool **GetDeliveryStatistics** reads them, scoped to the customer's own orders, so the model reports numbers the database computed.
+- **Demo history**: `python3 tools/demo-data/generate_deliveries.py` writes the carrier's `parcels.json` and the matching seed of 48 historical delivered orders (`mdlsource/15-order-history-seed.mdl`, generated; SO-10101 and up). DHL's Venlo hub is slow on purpose.
+- **Clickable references**: any card field, item, chart label or outline node with a `ref` (a SKU, supplier, issue id or order number) is a link. Clicking it loads that node's details from the product graph, through `GET rest/productgraph/v1/nodes/{ref}` (`mdlsource/17-graph-node-api.mdl`). The endpoint uses the signed-in user's session, and a customer never sees another customer's orders in it.
+- The outline card comes ready-made from the product graph MCP server's `product_outline` tool.
