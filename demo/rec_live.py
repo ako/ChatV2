@@ -36,6 +36,7 @@ import hashlib, json, os, shutil, subprocess, sys, time
 from playwright.sync_api import sync_playwright
 
 LEAD, TAIL, SETTLE = 0.45, 0.9, 1.5
+HOLD = 1.5                       # seconds held after each beat, off camera
 ZOOM = 1.2                       # 1920x1080 video of a 1600x900 CSS layout
 SIZE = {"width": 1920, "height": 1080}
 CHROME = None   # None: the preinstalled Chromium that matches this Playwright
@@ -239,6 +240,10 @@ def main(spec_path, silent=False):
                 pg.wait_for_timeout(rest * 1000)
             windows.append((t0 - t_open, dur))
             print(name, "beat", i, round(dur, 1), "s", flush=True)
+            # Hold still before the next off-camera step: the cut is placed on a
+            # measured clock map, and a fraction of a second of drift must land
+            # on this beat's last frame, not on a logout or a page change.
+            pg.wait_for_timeout(HOLD * 1000)
         try:
             pg.evaluate("mx.logout()")
         except Exception:
