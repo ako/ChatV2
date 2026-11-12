@@ -35,6 +35,7 @@ export function GraphView(props: GraphViewProps): ReactElement {
     const box = useRef<HTMLDivElement>(null);
     const cyRef = useRef<Core | null>(null);
     const expanded = useRef(new Set<string>());
+    const running = useRef<cytoscape.Layouts | null>(null);
     const propsRef = useRef(props);
     propsRef.current = props;
 
@@ -71,7 +72,10 @@ export function GraphView(props: GraphViewProps): ReactElement {
                 { selector: "edge.lit, edge:selected", style: { "label": "data(relation)", "line-color": "#5b6675", "target-arrow-color": "#5b6675", "width": 2 } },
                 { selector: ".hidden", style: { "display": "none" } }
             ],
-            layout: { name: "preset" }
+            layout: { name: "preset" },
+            // smoother pan and zoom: draw a cached bitmap while the view moves
+            textureOnViewport: true,
+            motionBlur: false
         });
         cyRef.current = cy;
         // for browser tests: the container carries its graph
@@ -92,11 +96,20 @@ export function GraphView(props: GraphViewProps): ReactElement {
                 n.toggleClass("hidden", !visible && !expanded.current.has(n.id()) && cy.nodes().length > 1);
             });
         };
-        const relayout = (around?: NodeSingular): void => {
+        // The force layout is computed first and then played as ONE eased move
+        // of every node (and the view), instead of redrawing each of its
+        // iterations, which is what made it stutter. New nodes fade in on the
+        // way. A layout still running is stopped first, so two never fight.
+        const relayout = (around?: NodeSingular, fresh?: cytoscape.CollectionReturnValue): void => {
+            running.current?.stop();
             const layout = cy.layout({
-                name: "cose", animate: true, animationDuration: 450, randomize: false, fit: true, padding: 24,
+                name: "cose", animate: "end", animationDuration: 600, animationEasing: "ease-in-out-cubic",
+                randomize: false, fit: true, padding: 24, numIter: 1500,
                 nodeRepulsion: () => 9000, idealEdgeLength: () => (propsRef.current.compact ? 70 : 95), nodeDimensionsIncludeLabels: true
             } as cytoscape.LayoutOptions);
+            running.current = layout;
+            layout.one("layoutstop", () => { if (running.current === layout) running.current = null; });
+            fresh?.animate({ style: { opacity: 1 } }, { duration: 500, easing: "ease-out-cubic" });
             layout.run();
             if (around) { cy.elements().unselect(); around.select(); }
         };
@@ -107,7 +120,10 @@ export function GraphView(props: GraphViewProps): ReactElement {
             const def: ElementDefinition = {
                 group: "nodes",
                 data: { id: ref, label, kind, color: kindColor(kind), caption: [ref, shortName(label, ref)].filter(Boolean).join("\n") },
-                position: { x: p.x + (Math.random() - 0.5) * 120, y: p.y + (Math.random() - 0.5) * 120 },
+                // start on the node that brought it in (a hair apart, so the
+                // layout can separate them), and fade in from there
+                position: { x: p.x + (Math.random() - 0.5) * 8, y: p.y + (Math.random() - 0.5) * 8 },
+                style: near ? { opacity: 0 } : undefined,
                 classes: "collapsed"
             };
             return cy.add(def) as unknown as NodeSingular;
@@ -118,6 +134,7 @@ export function GraphView(props: GraphViewProps): ReactElement {
                 node.data({ label: details.label, kind: details.kind, color: kindColor(details.kind), caption: [ref, shortName(details.label, ref)].filter(Boolean).join("\n") });
                 node.removeClass("collapsed");
                 expanded.current.add(ref);
+                const before = cy.elements();
                 for (const f of details.facts) {
                     if (!f.ref || f.dir === "value") continue;
                     addNode(f.ref, f.target || f.ref, f.kind || "", node);
@@ -129,7 +146,9 @@ export function GraphView(props: GraphViewProps): ReactElement {
                 }
                 applyHidden();
                 report();
-                relayout(node);
+                const fresh = cy.elements().difference(before);
+                fresh.edges().style("opacity", 0);
+                relayout(node, fresh);
                 propsRef.current.onSelect?.(details);
             }).catch(() => { /* the node keeps its collapsed look; nothing else to do */ });
         };
@@ -151,13 +170,13 @@ export function GraphView(props: GraphViewProps): ReactElement {
                 n.addClass("center");
                 expand(ref);
             },
-            fit() { cy.animate({ fit: { eles: cy.elements(":visible"), padding: 24 } }, { duration: 300 }); },
-            clear() { cy.elements().remove(); expanded.current.clear(); report(); }
+            fit() { cy.animate({ fit: { eles: cy.elements(":visible"), padding: 24 } }, { duration: 400, easing: "ease-in-out-cubic" }); },
+            clear() { running.current?.stop(); cy.elements().remove(); expanded.current.clear(); report(); }
         };
         (cy as unknown as { __apply: () => void }).__apply = applyHidden;
         props.apiRef?.(api);
         if (props.startRef) api.focus(props.startRef);
-        return () => { cy.destroy(); cyRef.current = null; };
+        return () => { running.current?.stop(); cy.destroy(); cyRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

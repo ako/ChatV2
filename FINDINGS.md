@@ -1433,3 +1433,22 @@ Gates:
 Reported: "the tool call details are not working". The panel's sections did open, but the input and result inside them were Atlas's dark code colour on the glass background, so they looked empty. The glass skin now colours `pre`/`code` from `--mxt-ink` on a dark tint, app-wide. Verified with a screenshot of the expanded section.
 
 While checking, every sign-in started failing with "Sign in failed". The runtime log said: "Maximum number of sessions exceeded! (You are currently using a trial license)". Browser test scripts that died before `mx.logout()` had used up the trial licence's sessions. A restart cleared them. Test scripts must log out even when they fail.
+
+## Graph animation: smooth instead of stuttery (2026-11-12)
+
+Reported: the graph widget's animation was stuttery (Product explorer and the chat's graph card share `widgets-src/shared/graph/GraphView.tsx`). Two causes:
+- Cytoscape's `cose` layout with `animate: true` redraws its iterations as it computes, with `fit` re-zooming along the way.
+- New nodes appeared at random spots up to 60 px away and jumped from there.
+
+The fix:
+- **One eased move:** `animate: "end"` computes the layout first and plays it as one move (600 ms, ease-in-out-cubic), view included.
+- **Fade-in:** new nodes start on the node that was clicked and fade in.
+- **One layout at a time:** a layout still running is stopped before the next.
+- **Pan and zoom:** `textureOnViewport` draws a cached bitmap while the view moves.
+
+**Measuring it.** Frame rate does not show stutter. Both versions held 60 fps with no frame over 17 ms in headless Chromium, so that metric could not tell them apart. Per-frame node displacement does: sample every node's rendered position each `requestAnimationFrame` while a node expands.
+
+| | Biggest jump in one frame | Spread over |
+|---|---|---|
+| Old widget (control, the committed mpk reinstalled) | 452 px | 18 frames |
+| New | 38 px | 34 frames (≈ 600 ms) |
