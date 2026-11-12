@@ -1,0 +1,83 @@
+mdl 1;
+
+-- Return requests: the deterministic parts around the two agent steps. The
+-- agents themselves are checked live (FINDINGS.md); here the agent calls
+-- fail (no GenAI key in the test runtime), which exercises the fallbacks.
+
+/**
+ * @test The eligibility facts come from the order and its delivery
+ * @expect $HasFacts = true
+ */
+$Order = create ServiceDesk.Order (OrderNumber = 'SO-TEST-RET1', OrderDate = addDays([%CurrentDateTime%], -12), Status = ServiceDesk.ENUM_OrderStatus.Delivered, TotalAmount = 89.50) commit;
+$Shipment = create ServiceDesk.Shipment (TrackingCode = 'TEST-RET-1', Carrier = 'PostNL', OrderNumber = 'SO-TEST-RET1', Delivered = true, DeliveredOn = addDays([%CurrentDateTime%], -10), ServiceDesk.Shipment_Order = $Order) commit;
+$Return = create ServiceDesk.ReturnRequest (Item = 'CHG-4A Fast charger 4 A', Reason = 'Unused', RequestedOn = [%CurrentDateTime%], ServiceDesk.ReturnRequest_Order = $Order) commit;
+$Facts = call microflow ServiceDesk.SUB_ReturnRequest_Facts(ReturnRequest = $Return);
+declare $HasFacts Boolean = contains($Facts, 'Order: SO-TEST-RET1, status Delivered') and contains($Facts, 'by PostNL (10 days ago)');
+/
+
+/**
+ * @test When the eligibility agent cannot answer, a person reviews the return
+ * @expect $Outcome = 'NeedsReview|InReview|System'
+ */
+$Order = create ServiceDesk.Order (OrderNumber = 'SO-TEST-RET2', OrderDate = addDays([%CurrentDateTime%], -5), Status = ServiceDesk.ENUM_OrderStatus.Delivered, TotalAmount = 32.75) commit;
+$Return = create ServiceDesk.ReturnRequest (Item = 'TUB-28 Inner tube', Reason = 'Wrong size', RequestedOn = [%CurrentDateTime%], ServiceDesk.ReturnRequest_Order = $Order) commit;
+$Decision = call microflow ServiceDesk.WFA_Return_CheckEligibility(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'TUB-28 Inner tube'] first;
+declare $Outcome String = getKey($Decision) + '|' + getKey($After/Status) + '|' + $After/DecidedBy;
+/
+
+/**
+ * @test Accepting after review makes the return eligible, decided by a person
+ * @expect $Outcome = 'Eligible|Support agent'
+ */
+$Return = create ServiceDesk.ReturnRequest (Item = 'BRK-PAD Disc brake pad set', Reason = 'Ordered twice', RequestedOn = [%CurrentDateTime%], Decision = ServiceDesk.ENUM_ReturnDecision.NeedsReview) commit;
+call microflow ServiceDesk.WFA_Return_Accept(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'BRK-PAD Disc brake pad set'] first;
+declare $Outcome String = getKey($After/Decision) + '|' + $After/DecidedBy;
+/
+
+/**
+ * @test An accepted return gets a label, a draft, and waits for the parcel once sent
+ * @expect $Outcome = 'label ok|draft ok|AwaitingParcel'
+ */
+$Return = create ServiceDesk.ReturnRequest (Item = 'RCK-26 Rear rack', Reason = 'Does not fit', RequestedOn = [%CurrentDateTime%], Decision = ServiceDesk.ENUM_ReturnDecision.Eligible, DecisionReason = 'Within 45 days, unused.') commit;
+$Drafted = call microflow ServiceDesk.WFA_Return_DraftReply(ReturnRequest = $Return);
+call microflow ServiceDesk.WFA_Return_SendReply(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'RCK-26 Rear rack'] first;
+declare $Outcome String = (if $After/ReturnLabel = 'RL-' + toString($After/ReturnNumber) then 'label ok' else 'label ' + $After/ReturnLabel)
+  + '|' + (if $After/FinalReply != empty and $After/FinalReply = $After/DraftReply then 'draft ok' else 'no draft')
+  + '|' + getKey($After/Status);
+/
+
+/**
+ * @test A declined return gets no label and is marked not accepted once the reply is sent
+ * @expect $Outcome = 'no label|Rejected'
+ */
+$Return = create ServiceDesk.ReturnRequest (Item = 'EB-500 Trekking E-bike', Reason = 'Rode it 300 km', RequestedOn = [%CurrentDateTime%]) commit;
+call microflow ServiceDesk.WFA_Return_Decline(ReturnRequest = $Return);
+$Drafted = call microflow ServiceDesk.WFA_Return_DraftReply(ReturnRequest = $Return);
+call microflow ServiceDesk.WFA_Return_SendReply(ReturnRequest = $Return);
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'EB-500 Trekking E-bike'] first;
+declare $Outcome String = (if $After/ReturnLabel = empty then 'no label' else 'label') + '|' + getKey($After/Status);
+/
+
+/**
+ * @test A received parcel requests a refund of the order total and closes the return
+ * @expect $Outcome = '54.20|Closed'
+ */
+$Order = create ServiceDesk.Order (OrderNumber = 'SO-TEST-RET3', OrderDate = addDays([%CurrentDateTime%], -20), Status = ServiceDesk.ENUM_OrderStatus.Delivered, TotalAmount = 54.20) commit;
+$Return = create ServiceDesk.ReturnRequest (Item = 'LGT-USB USB light set', Reason = 'Unused', RequestedOn = [%CurrentDateTime%], Decision = ServiceDesk.ENUM_ReturnDecision.Eligible, ServiceDesk.ReturnRequest_Order = $Order) commit;
+call microflow ServiceDesk.WFA_Return_MarkReceived(ReturnRequest = $Return);
+call microflow ServiceDesk.WFA_Return_Close(ReturnRequest = $Return);
+retrieve $Refund from ServiceDesk.RefundRequest where [ServiceDesk.RefundRequest_Order = $Order] first;
+retrieve $After from ServiceDesk.ReturnRequest where [Item = 'LGT-USB USB light set'] first;
+declare $Outcome String = formatDecimal($Refund/Amount, '0.00') + '|' + getKey($After/Status);
+/
+
+/**
+ * @test The chat tool refuses a return for an order that has not been delivered
+ * @expect $Refused = true
+ */
+$Answer = call microflow ServiceDesk.Tool_RequestReturn(OrderNumber = 'SO-10003', Item = 'EB-200', Reason = 'Changed my mind');
+declare $Refused Boolean = startsWith($Answer, 'Return not started');
+/

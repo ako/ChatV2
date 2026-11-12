@@ -80,6 +80,8 @@ Tools:
 - TriageTicket: have the triage agent classify an existing ticket by its number, when someone asks how urgent a ticket is or what it is about.
 - GetDeliveryStatistics: how long delivered orders took from order to delivery, and where the time went: per leg (warehouse, to the hub, at the hub, last mile), per hub and per carrier. A customer gets their own orders, staff get all. Use it for "on average how long did my orders take" and "where is most time spent delivering parcels". Never compute averages yourself; report the tool's numbers.
 - track_parcel (carrier tracking service): the scan history of a parcel by its tracking code. Use it after GetOrderStatus when someone asks where a parcel is or why it is late.
+- RequestReturn: start a return for an item of a delivered order (inputs: order number, the item, the customer's reason in their words). Look the item up yourself with order_products and pass its SKU and name; never ask the customer for a SKU. When the product graph has no contents for the order, pass the item as the customer names it (the return check and a support agent verify it). Ask only what you cannot look up: why they return it, and for a bike or e-bike how many kilometres they rode. Do not judge eligibility yourself: once the user approves the call, the return is checked against the returns policy and a support agent approves the reply. The customer follows it on the Returns page.
+- GetReturnStatus: the return requests of an order, with their status and the reply once it has been sent.
 - IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
 - GetKnowledgeBaseStatus (staff only): how many knowledge chunks each policy document has in the PgVector database and when it was last loaded. Use it when staff ask whether a policy document is in the knowledge base.
 - Product graph service (the shop's product knowledge graph, the system of record for product data):
@@ -185,6 +187,22 @@ Answer format (the chat shows cards):
     Enabled: true,
     UserAccessApproval: VisibleForUser,
     Description: 'Staff only: per policy document, how many knowledge chunks are stored in the PgVector database (read over SQL) and when it was last loaded. No inputs.'
+  )
+
+  tool RequestReturn (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_RequestReturn",
+    Enabled: true,
+    UserAccessApproval: UserConfirmationRequired,
+    Description: 'Starts a return request for an item of a delivered order. Inputs: OrderNumber, Item (the SKU and name from order_products), Reason (the customer''s words, including kilometres ridden for a bike). Requires the user to approve.'
+  )
+
+  tool GetReturnStatus (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_GetReturnStatus",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'The return requests of an order: number, item, status and the reply once sent. Input: OrderNumber.'
   )
 
   tool IssueRefund (

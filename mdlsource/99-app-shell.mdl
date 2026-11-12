@@ -55,6 +55,7 @@ create or modify navigation Responsive
   menu item 'My tasks' ( OnClick: show page "ServiceDesk"."WF_TaskInbox", Icon: Atlas_Core.Atlas."checkmark-circle" )
   menu item 'Tickets' ( OnClick: show page "ServiceDesk"."Ticket_Overview", Icon: Atlas_Core.Atlas.tag )
   menu item 'Orders' ( OnClick: show page "ServiceDesk"."Order_Overview", Icon: Atlas_Core.Atlas."shopping-cart" )
+  menu item 'Returns' ( OnClick: show page "ServiceDesk"."Return_Overview", Icon: Atlas_Core.Atlas."arrow-circle-left" )
   menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
   menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
   menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )

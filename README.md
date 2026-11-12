@@ -213,3 +213,17 @@ Ask the assistant "On average, how long did my orders take to deliver?" or "Wher
 - **Demo history**: `python3 tools/demo-data/generate_deliveries.py` writes the carrier's `parcels.json` and the matching seed of 48 historical delivered orders (`mdlsource/15-order-history-seed.mdl`, generated; SO-10101 and up). DHL's Venlo hub is slow on purpose.
 - **Clickable references**: any card field, item, chart label or outline node with a `ref` (a SKU, supplier, issue id or order number) is a link. Clicking it loads that node's details from the product graph, through `GET rest/productgraph/v1/nodes/{ref}` (`mdlsource/17-graph-node-api.mdl`). The endpoint uses the signed-in user's session, and a customer never sees another customer's orders in it.
 - The outline card comes ready-made from the product graph MCP server's `product_outline` tool.
+
+## Return requests: a workflow with agent steps
+
+A customer asks the assistant to return something ("I'd like to return the child seat from order SO-10001, it doesn't fit"). The assistant looks the item up and starts the return once the customer confirms. Then the **WF_ReturnRequest** workflow (`mdlsource/18-return-requests.mdl`) runs:
+
+1. **AI: check eligibility.** The ReturnEligibilityAgent reads the returns policy and the order's delivery facts (delivered on, days since delivery), and decides **Eligible**, **Not eligible** or **Needs review**. Its decision picks the workflow's path. When it cannot answer, the return goes to a person.
+2. **Review the return** (support agent, only for Needs review): accept or decline, and write the reason the reply is based on.
+3. **AI: draft the reply.** The ReturnReplyAgent writes the message, with a return label code for an accepted return.
+4. **Approve the reply** (support agent): edit and send it, or **Ask AI to rewrite** with instructions, which loops back to step 3.
+5. For an accepted return: **Confirm the parcel is back**, with a weekly reminder to the customer (at most 3). Then the refund is requested for a support agent to approve, and the return closes.
+
+Customers follow their returns on the **Returns** page and can ask the assistant about them (tool GetReturnStatus). Support agents find the tasks under **My tasks**.
+
+Start the helper servers (carrier, product graph, product graph MCP) with `sh tools/start-helpers.sh`; a recycled container stops them.

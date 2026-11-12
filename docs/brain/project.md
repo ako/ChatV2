@@ -32,3 +32,7 @@ Anchors: none · id `ac79df` · 2026-11-12
 ## Card references are product graph node ids (SKU, supplier, issue id, order number), resolved by rest/productgraph/v1/nodes/{ref} with the user's session; customers never see other customers' orders through it
 
 Anchors: none · id `813667` · 2026-11-12
+
+## Return requests run as WF_ReturnRequest: AI agent tasks decide eligibility (enum outcome drives the path, NeedsReview on any failure) and draft the reply; people review unclear cases and approve every reply. The eligibility agent gets the policy text in its prompt, not the knowledge base tool
+
+Anchors: none · id `2af278` · 2026-11-12

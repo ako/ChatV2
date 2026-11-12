@@ -1,0 +1,594 @@
+mdl 1;
+
+-- Return requests: a workflow in which agents do the judgement work and people
+-- keep the decisions that matter.
+--
+--   1. AI: check eligibility   (ReturnEligibilityAgent, against the returns
+--                               policy document and the order's
+--                               delivery facts) -> Eligible / NotEligible / NeedsReview
+--   2. Review the return       (support agent; only when the AI is unsure)
+--   3. AI: draft the reply     (ReturnReplyAgent, in the customer's terms)
+--   4. Approve the reply       (support agent edits or sends; "Rewrite" sends
+--                               it back to step 3 with instructions)
+--   5. Send the reply, then for an accepted return: wait for the parcel, with
+--      a weekly reminder to the customer, and request the refund when it is in.
+--
+-- Customers start it from the chat (SupportAgent tool RequestReturn, after
+-- they approve the tool call) and follow it on the Returns page. Agents are
+-- called through Agent Commons by name (SUB_GetAgent), like ticket triage.
+
+create or modify enumeration "ServiceDesk"."ENUM_ReturnStatus" (
+  "Requested" 'Requested',
+  "InReview" 'Under review',
+  "ReplyDrafted" 'Reply being prepared',
+  "AwaitingParcel" 'Waiting for the parcel',
+  "Rejected" 'Not accepted',
+  "Received" 'Parcel received',
+  "Closed" 'Closed'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_ReturnDecision" (
+  "Eligible" 'Eligible',
+  "NotEligible" 'Not eligible',
+  "NeedsReview" 'Needs review'
+);
+
+/** A customer's request to return an item. The AI fields record what the agents decided and wrote, and why. */
+create or modify persistent entity "ServiceDesk"."ReturnRequest" (
+  "ReturnNumber": AutoNumber default 5001,
+  "Item": String(200),
+  "Reason": String(2000),
+  "RequestedOn": DateTime,
+  "Status": Enumeration("ServiceDesk"."ENUM_ReturnStatus") default "Requested",
+  "Facts": String(2000),
+  "Policy": String(unlimited),
+  "Decision": Enumeration("ServiceDesk"."ENUM_ReturnDecision"),
+  "DecisionReason": String(2000),
+  "PolicyBasis": String(2000),
+  "DecidedBy": String(100),
+  "ReviewerNote": String(2000),
+  "DraftReply": String(unlimited),
+  "FinalReply": String(unlimited),
+  "RepliedOn": DateTime,
+  "ReturnLabel": String(50),
+  "RemindersSent": Integer default 0,
+  "ReceivedOn": DateTime
+);
+
+create or modify association "ServiceDesk"."ReturnRequest_Order"
+  from "ServiceDesk"."ReturnRequest" to "ServiceDesk"."Order"
+  type Reference;
+
+create or modify association "ServiceDesk"."ReturnRequest_Customer"
+  from "ServiceDesk"."ReturnRequest" to "ServiceDesk"."Customer"
+  type Reference;
+
+grant read * on entity "ServiceDesk"."ReturnRequest" to "ServiceDesk"."Customer"
+  where [ServiceDesk.ReturnRequest_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read *, write ("DecisionReason", "ReviewerNote", "DraftReply") on entity "ServiceDesk"."ReturnRequest" to "ServiceDesk"."SupportAgent";
+grant read *, write * on entity "ServiceDesk"."ReturnRequest" to "ServiceDesk"."Admin";
+-- Returns are created only through the chat tool and closed by the workflow.
+revoke create, delete on entity "ServiceDesk"."ReturnRequest" from "ServiceDesk"."Admin";
+
+/** The eligibility agent's answer, parsed from its JSON reply. */
+create or modify non-persistent entity "ServiceDesk"."ReturnDecisionResult" (
+  "Decision": String(50),
+  "Reason": String(2000),
+  "Policy": String(2000)
+);
+
+create or modify json structure "ServiceDesk"."JSON_ReturnDecision" folder 'Returns'
+  sample '{"decision": "Eligible", "reason": "Delivered 12 days ago and unused, within the 45-day window.", "policy": "You can return any item within 45 days of delivery, unused and in its original packaging."}';
+
+create or modify import mapping "ServiceDesk"."IMM_ReturnDecision" folder 'Returns'
+  with json structure "ServiceDesk"."JSON_ReturnDecision"
+{
+  create "ServiceDesk"."ReturnDecisionResult" {
+    "Decision" = decision,
+    "Reason" = reason,
+    "Policy" = policy
+  }
+};
+
+/** Decides whether a return request meets the returns policy. */
+create or modify agent "ServiceDesk"."ReturnEligibilityAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  SelectedModel: 'eu.anthropic.claude-sonnet-5-5',
+  EnableBackendStreaming: false,
+  EnableUIStreaming: false,
+  Description: 'Checks a return request against the returns policy and decides Eligible, NotEligible or NeedsReview, with its reason and the policy text it applied.',
+  Entity: "ServiceDesk"."ReturnRequest",
+  Variables: ("Item": EntityAttribute, "Reason": EntityAttribute, "Facts": EntityAttribute, "Policy": EntityAttribute),
+  SystemPrompt: $$You check return requests for a web shop that sells bikes, e-bikes, parts and accessories.
+
+Decide using only the shop's returns policy, which you are given, and the facts you are given. The facts come from the shop's systems and are correct; the customer's reason is their own statement.
+
+Decide one of:
+- Eligible: the policy clearly allows the return.
+- NotEligible: the policy clearly does not allow it (for example: outside the return window, or a bike ridden too far).
+- NeedsReview: anything you cannot decide from the policy and the facts: a missing fact the policy depends on (such as kilometres ridden for a bike), a damage claim, or anything unusual. A person will decide.
+
+Return only a JSON object, with no other text:
+{"decision": "Eligible|NotEligible|NeedsReview", "reason": "one or two sentences, with the numbers you used", "policy": "the policy sentence(s) you applied, quoted"}$$,
+  UserPrompt: $$Item to return: {{Item}}
+Customer's reason: {{Reason}}
+Facts from the shop's systems:
+{{Facts}}
+
+The shop's returns policy:
+{{Policy}}$$
+);
+
+/** Writes the reply to the customer about their return request. */
+create or modify agent "ServiceDesk"."ReturnReplyAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  SelectedModel: 'eu.anthropic.claude-haiku-5-5',
+  EnableBackendStreaming: false,
+  EnableUIStreaming: false,
+  Description: 'Drafts the message to the customer about the outcome of their return request. A support agent approves it before it is sent.',
+  Entity: "ServiceDesk"."ReturnRequest",
+  Variables: ("Item": EntityAttribute, "DecisionReason": EntityAttribute, "ReturnLabel": EntityAttribute, "ReviewerNote": EntityAttribute, "Facts": EntityAttribute),
+  SystemPrompt: $$You write short, friendly messages from a web shop's service desk to a customer about their return request.
+
+If a return label code is given, the return is accepted: thank them, give the label code, say the prepaid PostNL label arrives by email within one working day, ask them to send the item unused in its original packaging, and say the refund follows within 7 working days after the item is back.
+If no label code is given, the return is not accepted: explain why in plain words, from the decision reason, and offer to help further (for example a warranty claim or a ticket).
+
+Never mention internal checks, systems, tools or AI, and never quote internal notes; explain the outcome in terms of the returns policy. Follow the support agent's instructions when there are any. Use the customer's language if their reason is written in another language than English. No subject line, no placeholders, at most 120 words. Sign as "The service desk".$$,
+  UserPrompt: $$Item: {{Item}}
+Decision reason: {{DecisionReason}}
+Return label code: {{ReturnLabel}}
+Instructions from the support agent: {{ReviewerNote}}
+Order facts:
+{{Facts}}$$
+);
+
+/** The facts the eligibility check needs, from the shop's own systems: order, delivery date and days since delivery. */
+create or modify microflow "ServiceDesk"."SUB_ReturnRequest_Facts" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+returns String as $Facts
+folder 'Returns'
+begin
+  declare $NL String = urlDecode('%0A');
+  retrieve $Order from $ReturnRequest/"ServiceDesk"."ReturnRequest_Order";
+  if $Order = empty then
+    return 'No order is linked to this request.';
+  end if;
+  retrieve $Shipment from "ServiceDesk"."Shipment" where [ServiceDesk.Shipment_Order = $Order] first;
+  declare $Delivery String = 'Delivery: no delivery recorded by the carrier.';
+  if $Shipment != empty and $Shipment/DeliveredOn != empty then
+    set $Delivery = 'Delivered on: ' + formatDateTime($Shipment/DeliveredOn, 'yyyy-MM-dd') + ' by ' + $Shipment/Carrier
+      + ' (' + formatDecimal(daysBetween($Shipment/DeliveredOn, [%CurrentDateTime%]), '0') + ' days ago)';
+  end if;
+  return 'Order: ' + $Order/OrderNumber + ', status ' + getCaption($Order/Status) + ', ordered on ' + formatDateTime($Order/OrderDate, 'yyyy-MM-dd')
+    + ', total EUR ' + formatDecimal($Order/TotalAmount, '0.00') + $NL
+    + $Delivery + $NL
+    + 'Request date: ' + formatDateTime($ReturnRequest/RequestedOn, 'yyyy-MM-dd') + $NL
+    + 'Shipping country: Netherlands';
+end;
+
+/** The returns policy text, from the same policy document the knowledge base is loaded from (Policy documents page). A task agent here gets it in its prompt instead of searching the knowledge base: Agent_Call_WithoutHistory returned an empty answer when the agent had to call the knowledge base tool first (FINDINGS.md). */
+create or modify microflow "ServiceDesk"."SUB_ReturnPolicy_Text" ()
+returns String as $Policy
+folder 'Returns'
+begin
+  retrieve $Doc from "ServiceDesk"."PolicyDocument" where [contains(Title, 'eturn')] first;
+  if $Doc = empty then
+    return 'No returns policy document is loaded.';
+  end if;
+  $Text = call java action CommunityCommons.StringFromFile(source = $Doc, encoding = CommunityCommons.StandardEncodings.UTF_8) on error without rollback begin
+    return 'The returns policy document cannot be read.';
+  end error;
+  return $Text;
+end;
+
+/** Workflow AI agent task: the eligibility agent decides; its decision picks the workflow's path. Falls back to NeedsReview when the agent cannot answer. */
+create or modify microflow "ServiceDesk"."WFA_Return_CheckEligibility" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+returns enum "ServiceDesk"."ENUM_ReturnDecision" as $Decision
+folder 'Returns'
+begin
+  $Facts = call microflow "ServiceDesk"."SUB_ReturnRequest_Facts" (ReturnRequest = $ReturnRequest);
+  $Policy = call microflow "ServiceDesk"."SUB_ReturnPolicy_Text" ();
+  change $ReturnRequest ("Facts" = $Facts, "Policy" = $Policy) commit;
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.ReturnEligibilityAgent');
+  if $Agent = empty then
+    change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NeedsReview, "DecisionReason" = 'The eligibility check is not available; please review.', "DecidedBy" = 'System', "Status" = ServiceDesk.ENUM_ReturnStatus.InReview) commit;
+    return ServiceDesk.ENUM_ReturnDecision.NeedsReview;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = $ReturnRequest, OptionalRequest = empty, OptionalFileCollection = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Eligibility agent failed for return {1}: {2}' with ({1} = toString($ReturnRequest/ReturnNumber), {2} = $latestError/Message);
+    change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NeedsReview, "DecisionReason" = 'The eligibility check failed; please review.', "DecidedBy" = 'System', "Status" = ServiceDesk.ENUM_ReturnStatus.InReview) commit;
+    return ServiceDesk.ENUM_ReturnDecision.NeedsReview;
+  end error;
+  declare $Text String = (if $Response = empty or $Response/ResponseText = empty then '' else $Response/ResponseText);
+  declare $Start Integer = find($Text, '{');
+  declare $End Integer = findLast($Text, '}');
+  if $Start < 0 or $End <= $Start then
+    log warning node 'ServiceDesk' 'Eligibility answer for return {1} has no JSON: {2}' with ({1} = toString($ReturnRequest/ReturnNumber), {2} = $Text);
+    change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NeedsReview, "DecisionReason" = 'The eligibility check gave no usable answer; please review.', "DecidedBy" = 'System', "Status" = ServiceDesk.ENUM_ReturnStatus.InReview) commit;
+    return ServiceDesk.ENUM_ReturnDecision.NeedsReview;
+  end if;
+  declare $Json String = substring($Text, $Start, $End - $Start + 1);
+  $Result = import from mapping "ServiceDesk"."IMM_ReturnDecision"($Json) on error without rollback begin
+    log warning node 'ServiceDesk' 'Eligibility answer for return {1} is not valid JSON: {2}' with ({1} = toString($ReturnRequest/ReturnNumber), {2} = $Json);
+    change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NeedsReview, "DecisionReason" = 'The eligibility check gave no usable answer; please review.', "DecidedBy" = 'System', "Status" = ServiceDesk.ENUM_ReturnStatus.InReview) commit;
+    return ServiceDesk.ENUM_ReturnDecision.NeedsReview;
+  end error;
+  declare $Outcome Enumeration("ServiceDesk"."ENUM_ReturnDecision") = (if $Result/Decision = 'Eligible' then ServiceDesk.ENUM_ReturnDecision.Eligible
+    else if $Result/Decision = 'NotEligible' then ServiceDesk.ENUM_ReturnDecision.NotEligible
+    else ServiceDesk.ENUM_ReturnDecision.NeedsReview);
+  change $ReturnRequest (
+    "Decision" = $Outcome,
+    "DecisionReason" = $Result/Reason,
+    "PolicyBasis" = $Result/Policy,
+    "DecidedBy" = 'AI',
+    "Status" = (if $Outcome = ServiceDesk.ENUM_ReturnDecision.NeedsReview then ServiceDesk.ENUM_ReturnStatus.InReview else ServiceDesk.ENUM_ReturnStatus.ReplyDrafted)
+  ) commit;
+  return $Outcome;
+end;
+
+/** Workflow: a support agent accepted the return after review. */
+create or modify microflow "ServiceDesk"."WFA_Return_Accept" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.Eligible, "DecidedBy" = 'Support agent', "Status" = ServiceDesk.ENUM_ReturnStatus.ReplyDrafted) commit;
+end;
+
+/** Workflow: a support agent declined the return after review. */
+create or modify microflow "ServiceDesk"."WFA_Return_Decline" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NotEligible, "DecidedBy" = 'Support agent', "Status" = ServiceDesk.ENUM_ReturnStatus.ReplyDrafted) commit;
+end;
+
+/** Workflow AI agent task: the reply agent drafts the message to the customer. An accepted return gets its label code first. Falls back to a plain template when the agent cannot answer, so a person always has a draft to approve. */
+create or modify microflow "ServiceDesk"."WFA_Return_DraftReply" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+returns Boolean as $Drafted
+folder 'Returns'
+begin
+  declare $Accepted Boolean = $ReturnRequest/Decision = ServiceDesk.ENUM_ReturnDecision.Eligible;
+  change $ReturnRequest ("ReturnLabel" = (if $Accepted then 'RL-' + toString($ReturnRequest/ReturnNumber) else empty)) commit;
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.ReturnReplyAgent');
+  if $Agent != empty then
+    $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = $ReturnRequest, OptionalRequest = empty, OptionalFileCollection = empty) on error without rollback begin
+      log error node 'ServiceDesk' 'Reply agent failed for return {1}: {2}' with ({1} = toString($ReturnRequest/ReturnNumber), {2} = $latestError/Message);
+    end error;
+    if $Response != empty and $Response/ResponseText != empty then
+      change $ReturnRequest ("DraftReply" = trim($Response/ResponseText), "ReviewerNote" = empty) commit;
+      return true;
+    end if;
+  end if;
+  change $ReturnRequest ("DraftReply" = (if $Accepted
+      then 'Thank you for your return request. Your return is accepted; your return label code is ' + $ReturnRequest/ReturnLabel + '. The refund follows within 7 working days after we receive the item. The service desk'
+      else 'Thank you for your return request. Unfortunately we cannot accept this return: ' + $ReturnRequest/DecisionReason + ' The service desk')) commit;
+  return false;
+end;
+
+/** Workflow: the approved reply goes to the customer (shown on their Returns page). */
+create or modify microflow "ServiceDesk"."WFA_Return_SendReply" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest (
+    "FinalReply" = $ReturnRequest/DraftReply,
+    "RepliedOn" = [%CurrentDateTime%],
+    "Status" = (if $ReturnRequest/Decision = ServiceDesk.ENUM_ReturnDecision.Eligible then ServiceDesk.ENUM_ReturnStatus.AwaitingParcel else ServiceDesk.ENUM_ReturnStatus.Rejected)
+  ) commit;
+end;
+
+/** Workflow timer: the parcel is not back yet; remind the customer. */
+create or modify microflow "ServiceDesk"."WFA_Return_Remind" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest ("RemindersSent" = $ReturnRequest/RemindersSent + 1) commit;
+  log info node 'ServiceDesk' 'Reminder {1} sent for return {2}.' with ({1} = toString($ReturnRequest/RemindersSent), {2} = toString($ReturnRequest/ReturnNumber));
+end;
+
+/** Workflow: the parcel is back; request the refund (a support agent reviews it, as for every refund). */
+create or modify microflow "ServiceDesk"."WFA_Return_MarkReceived" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest ("ReceivedOn" = [%CurrentDateTime%], "Status" = ServiceDesk.ENUM_ReturnStatus.Received) commit;
+  retrieve $Order from $ReturnRequest/"ServiceDesk"."ReturnRequest_Order";
+  if $Order = empty then
+    return;
+  end if;
+  retrieve $Existing from "ServiceDesk"."RefundRequest" where [ServiceDesk.RefundRequest_Order = $Order] first;
+  if $Existing = empty then
+    $Refund = create "ServiceDesk"."RefundRequest" ("Amount" = $Order/TotalAmount, "Reason" = 'Return ' + toString($ReturnRequest/ReturnNumber) + ' received: ' + $ReturnRequest/Item, "ServiceDesk"."RefundRequest_Order" = $Order) commit;
+  end if;
+end;
+
+/** Workflow: the return request is finished. */
+create or modify microflow "ServiceDesk"."WFA_Return_Close" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  change $ReturnRequest ("Status" = (if $ReturnRequest/Status = ServiceDesk.ENUM_ReturnStatus.Received then ServiceDesk.ENUM_ReturnStatus.Closed else $ReturnRequest/Status)) commit;
+end;
+
+/** Claims a review task, saves the reviewer's edits and completes it as Accept or Decline. */
+create or modify microflow "ServiceDesk"."SUB_ReturnReview_Complete" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest", $Accept: Boolean)
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_Task_Assign" (WorkflowUserTask = $WorkflowUserTask);
+  commit $ReturnRequest;
+  if $Accept then
+    set task outcome $WorkflowUserTask 'Accept';
+  else
+    set task outcome $WorkflowUserTask 'Decline';
+  end if;
+end;
+
+/** Claims a reply task, saves the edited reply or instructions and completes it as Send or Rewrite. */
+create or modify microflow "ServiceDesk"."SUB_ReturnReply_Complete" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest", $Send: Boolean)
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_Task_Assign" (WorkflowUserTask = $WorkflowUserTask);
+  commit $ReturnRequest;
+  if $Send then
+    set task outcome $WorkflowUserTask 'Send';
+  else
+    set task outcome $WorkflowUserTask 'Rewrite';
+  end if;
+end;
+
+/** Accepts the return after review. */
+create or modify microflow "ServiceDesk"."ACT_ReturnReview_Accept" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_ReturnReview_Complete" (WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest, Accept = true);
+  close page;
+end;
+
+/** Declines the return after review. */
+create or modify microflow "ServiceDesk"."ACT_ReturnReview_Decline" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_ReturnReview_Complete" (WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest, Accept = false);
+  close page;
+end;
+
+/** Sends the (edited) reply. */
+create or modify microflow "ServiceDesk"."ACT_ReturnReply_Send" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_ReturnReply_Complete" (WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest, Send = true);
+  close page;
+end;
+
+/** Sends the reply back to the AI to rewrite, with the instructions. */
+create or modify microflow "ServiceDesk"."ACT_ReturnReply_Rewrite" ($WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  call microflow "ServiceDesk"."SUB_ReturnReply_Complete" (WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest, Send = false);
+  close page;
+end;
+
+/** Task page: the AI could not decide; a support agent accepts or declines the return. */
+create or modify page "ServiceDesk"."WF_ReviewReturn" folder 'Returns'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest" ),
+  title: 'Review return',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvReturn (datasource: $ReturnRequest) {
+          dynamictext txtHeading (content: 'Return {1}: {2}', contentparams: ({1} = ReturnNumber, {2} = Item), rendermode: H3)
+          textarea txtReason (label: 'Customer''s reason', attribute: "Reason", Editable: Never)
+          textarea txtFacts (label: 'Facts', attribute: "Facts", Editable: Never)
+          textarea txtDecisionReason (label: 'Reason for the decision (the reply to the customer is based on this; edit it before you accept or decline)', attribute: "DecisionReason")
+          textarea txtPolicy (label: 'Policy it applied', attribute: "PolicyBasis", Editable: Never)
+          footer {
+            actionbutton btnAccept (caption: 'Accept return', action: call microflow "ServiceDesk"."ACT_ReturnReview_Accept"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest), buttonstyle: success)
+            actionbutton btnDecline (caption: 'Decline return', action: call microflow "ServiceDesk"."ACT_ReturnReview_Decline"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest), buttonstyle: danger)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Task page: approve the AI's reply to the customer, edit it, or have it rewritten with instructions. */
+create or modify page "ServiceDesk"."WF_ApproveReturnReply" folder 'Returns'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest" ),
+  title: 'Approve reply',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvReturn (datasource: $ReturnRequest) {
+          dynamictext txtHeading (content: 'Return {1}: {2}', contentparams: ({1} = ReturnNumber, {2} = Item), rendermode: H3)
+          dynamictext txtDecision (content: 'Decision: {1} (by {2}). {3}', contentparams: ({1} = Decision, {2} = DecidedBy, {3} = DecisionReason))
+          textarea txtDraft (label: 'Reply to the customer (drafted by AI; edit as needed)', attribute: "DraftReply")
+          textarea txtNote (label: 'Instructions for a rewrite', attribute: "ReviewerNote")
+          footer {
+            actionbutton btnSend (caption: 'Send reply', action: call microflow "ServiceDesk"."ACT_ReturnReply_Send"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest), buttonstyle: success)
+            actionbutton btnRewrite (caption: 'Ask AI to rewrite', action: call microflow "ServiceDesk"."ACT_ReturnReply_Rewrite"(WorkflowUserTask = $WorkflowUserTask, ReturnRequest = $ReturnRequest))
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Task page: confirm the returned parcel has arrived. */
+create or modify page "ServiceDesk"."WF_ReceiveReturn" folder 'Returns'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $ReturnRequest: "ServiceDesk"."ReturnRequest" ),
+  title: 'Receive return',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvReturn (datasource: $ReturnRequest) {
+          dynamictext txtHeading (content: 'Return {1}: {2}', contentparams: ({1} = ReturnNumber, {2} = Item), rendermode: H3)
+          dynamictext txtLabel (content: 'Label {1}, reminders sent: {2}', contentparams: ({1} = ReturnLabel, {2} = RemindersSent))
+        }
+        dataview dvTask (datasource: $WorkflowUserTask) {
+          actionbutton btnAssign (caption: 'Assign to me', action: call microflow "ServiceDesk"."ACT_Task_AssignToMe"(WorkflowUserTask = $WorkflowUserTask))
+          actionbutton btnReceived (caption: 'Parcel received', action: complete task 'Received', buttonstyle: success)
+        }
+      }
+    }
+  }
+};
+
+/** Return requests: AI checks eligibility and drafts the reply; people review the unclear cases and approve every reply. */
+create or modify workflow "ServiceDesk"."WF_ReturnRequest" folder 'Returns'
+  parameter $Context: "ServiceDesk"."ReturnRequest"
+  display 'Return {1}' with ({1} = toString($WorkflowContext/ReturnNumber))
+  description '{1}' with ({1} = $WorkflowContext/Item)
+begin
+  call agent microflow "ServiceDesk"."WFA_Return_CheckEligibility"(ReturnRequest = $WorkflowContext) as checkEligibility
+    caption 'AI: check eligibility'
+    outcomes
+      'ServiceDesk.ENUM_ReturnDecision.Eligible' -> { }
+      'ServiceDesk.ENUM_ReturnDecision.NotEligible' -> { }
+      'ServiceDesk.ENUM_ReturnDecision.NeedsReview' -> {
+        user task ReviewReturn 'Review the return'
+          page "ServiceDesk"."WF_ReviewReturn"
+          targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+          outcomes
+            'Accept' { call microflow "ServiceDesk"."WFA_Return_Accept"(ReturnRequest = $WorkflowContext) as acceptReturn caption 'Accept the return'; }
+            'Decline' { call microflow "ServiceDesk"."WFA_Return_Decline"(ReturnRequest = $WorkflowContext) as declineReturn caption 'Decline the return'; };
+      }
+      '' -> { };
+
+  call agent microflow "ServiceDesk"."WFA_Return_DraftReply"(ReturnRequest = $WorkflowContext) as draftReply
+    caption 'AI: draft the reply'
+    outcomes
+      true -> { }
+      false -> { };
+
+  user task ApproveReply 'Approve the reply'
+    page "ServiceDesk"."WF_ApproveReturnReply"
+    targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+    outcomes
+      'Send' { }
+      'Rewrite' { jump to draftReply caption 'Rewrite the reply'; };
+
+  call microflow "ServiceDesk"."WFA_Return_SendReply"(ReturnRequest = $WorkflowContext) as sendReply
+    caption 'Send the reply';
+
+  decision isAccepted $WorkflowContext/Decision = ServiceDesk.ENUM_ReturnDecision.Eligible caption 'Accepted?'
+    outcomes
+      true -> {
+        user task ReceiveParcel 'Confirm the parcel is back'
+          page "ServiceDesk"."WF_ReceiveReturn"
+          targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+          outcomes
+            'Received' { }
+          boundary event non interrupting timer addDays([%CurrentDateTime%], 7) repeat every 7 days at most 3 times caption 'Remind the customer' {
+            call microflow "ServiceDesk"."WFA_Return_Remind"(ReturnRequest = $WorkflowContext) as remindCustomer caption 'Remind the customer';
+          };
+        call microflow "ServiceDesk"."WFA_Return_MarkReceived"(ReturnRequest = $WorkflowContext) as markReceived caption 'Request the refund';
+      }
+      false -> { };
+
+  call microflow "ServiceDesk"."WFA_Return_Close"(ReturnRequest = $WorkflowContext) as closeReturn
+    caption 'Close the return';
+end workflow;
+
+/** Starts the return workflow for a new request. */
+create or modify microflow "ServiceDesk"."SUB_ReturnRequest_Start" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
+folder 'Returns'
+begin
+  $Workflow = call workflow "ServiceDesk"."WF_ReturnRequest" ($ReturnRequest);
+end;
+
+/** Agent tool: start a return for an item of a delivered order. A customer can only return items from their own orders. Requires the user to approve the tool call. */
+create or modify microflow "ServiceDesk"."Tool_RequestReturn" ($OrderNumber: String, $Item: String, $Reason: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'Return not started: no order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  if $Order/Status != ServiceDesk.ENUM_OrderStatus.Delivered then
+    return 'Return not started: order ' + $Order/OrderNumber + ' has status ' + getCaption($Order/Status) + '; only delivered orders can be returned.';
+  end if;
+  retrieve $Open from "ServiceDesk"."ReturnRequest" where [ServiceDesk.ReturnRequest_Order = $Order][Status != 'Closed'][Status != 'Rejected'] first;
+  if $Open != empty then
+    return 'Return not started: order ' + $Order/OrderNumber + ' already has return request ' + toString($Open/ReturnNumber) + ' with status ' + getCaption($Open/Status) + '.';
+  end if;
+  retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
+  $Return = create "ServiceDesk"."ReturnRequest" ("Item" = trim($Item), "Reason" = trim($Reason), "RequestedOn" = [%CurrentDateTime%], "ServiceDesk"."ReturnRequest_Order" = $Order, "ServiceDesk"."ReturnRequest_Customer" = $Customer) commit;
+  call microflow "ServiceDesk"."SUB_ReturnRequest_Start" (ReturnRequest = $Return);
+  return 'Started return request ' + toString($Return/ReturnNumber) + ' for ' + $Return/Item + ' from order ' + $Order/OrderNumber
+    + '. The eligibility is checked against the returns policy, and a support agent approves the reply. The customer can follow it on the Returns page.';
+end;
+
+/** Agent tool: the return requests of an order, with their status and, once sent, the reply. */
+create or modify microflow "ServiceDesk"."Tool_GetReturnStatus" ($OrderNumber: String)
+returns String as $Answer
+folder 'Agent tools'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'No order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  retrieve $Returns from "ServiceDesk"."ReturnRequest" where [ServiceDesk.ReturnRequest_Order = $Order] sort by "ReturnNumber" desc;
+  $ReturnCount = count $Returns;
+  if $ReturnCount = 0 then
+    return 'Order ' + $Order/OrderNumber + ' has no return requests.';
+  end if;
+  declare $Lines String = '';
+  retrieve $Refund from "ServiceDesk"."RefundRequest" where [ServiceDesk.RefundRequest_Order = $Order] first;
+  loop $R in $Returns begin
+    set $Lines = $Lines + 'Return ' + toString($R/ReturnNumber) + ' (' + $R/Item + '): ' + getCaption($R/Status)
+      + (if $R/ReceivedOn = empty then '' else ', parcel received on ' + formatDateTime($R/ReceivedOn, 'yyyy-MM-dd')
+          + (if $Refund = empty then '' else ', refund of EUR ' + formatDecimal($Refund/Amount, '0.00') + ' ' + getCaption($Refund/Status)))
+      + (if $R/ReturnLabel = empty or $R/FinalReply = empty then '' else ', label ' + $R/ReturnLabel)
+      + (if $R/FinalReply = empty then '' else '. The reply sent on ' + formatDateTime($R/RepliedOn, 'yyyy-MM-dd') + ' said: ' + $R/FinalReply)
+      + urlDecode('%0A');
+  end loop;
+  return $Lines;
+end;
+
+/** Returns: a customer's own return requests, or all of them for staff, with status and the reply. */
+create or modify page "ServiceDesk"."Return_Overview" folder 'Returns'
+(
+  title: 'Returns',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgReturns {
+    row {
+      column (desktopwidth: autofill) {
+        dynamictext txtHeading (content: 'Returns', rendermode: H2)
+        dynamictext txtIntro (content: 'Ask the assistant to start a return. Each request is checked against the returns policy by AI, and a support agent approves every reply.', rendermode: Paragraph)
+        listview lvReturns (datasource: database "ServiceDesk"."ReturnRequest" sort by "ReturnNumber" desc) {
+          container ctReturn (Class: 'card') {
+            dynamictext txtTitle (content: 'Return {1}: {2}', contentparams: ({1} = ReturnNumber, {2} = Item), rendermode: H4)
+            container ctStatus {
+              dynamictext txtStatus (content: 'Order {1} · {2} · requested {3}', contentparams: ({1} = ReturnRequest_Order/OrderNumber, {2} = Status, {3} = RequestedOn))
+            }
+            container ctReply (Visible: $currentObject/FinalReply != empty) {
+              dynamictext txtReply (content: '{1}', contentparams: ({1} = FinalReply))
+            }
+            container ctReminder (Visible: $currentObject/RemindersSent > 0) {
+              dynamictext txtReminder (content: 'Reminders sent: {1}', contentparams: ({1} = RemindersSent))
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+grant execute on microflow "ServiceDesk"."ACT_ReturnReview_Accept" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ReturnReview_Decline" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ReturnReply_Send" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ReturnReply_Rewrite" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ReviewReturn" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ApproveReturnReply" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ReceiveReturn" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Return_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

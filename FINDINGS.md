@@ -1213,3 +1213,57 @@ Gates:
 - `test`: 20/20 pass, including 4 new ones (history seed, leg computation from a hand-made shipment, leg line,
   empty leg).
 - Widget unit tests: 12/12 pass.
+
+## Return requests workflow with agent steps (2026-11-12)
+
+WF_ReturnRequest has two AI agent tasks (`call agent microflow`), two user tasks for people, a jump back to the AI
+on "rewrite", a decision, and a repeating non-interrupting timer. The eligibility agent's enumeration answer drives
+the workflow's outcomes.
+
+Found on the way:
+- **An agent description over 200 characters makes its import fail at startup, and nothing else notices.** Agent
+  Commons' `Agent.Description` is String(200). Agent Editor Commons logged "tried setting a value of length 203"
+  at startup and kept the *previous* version of the agent. `mxcli check`, `exec` and `docker check` were all
+  clean. The symptom was the eligibility agent returning an empty answer every time. Three hypotheses
+  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Check the startup log
+  for "Agent Editor Commons" errors after changing an agent.
+- **The knowledge base as a tool of a task agent was not confirmed to work** with `Agent_Call_WithoutHistory`:
+  its runs were all on the stale agent. The eligibility agent now gets the policy text in its prompt
+  (`SUB_ReturnPolicy_Text`, read from the same policy document the knowledge base is loaded from). That is
+  simpler and deterministic.
+- `grant` on entity access only adds rights. Removing create/delete took an explicit `revoke create, delete …`.
+- `check` caught three workflow and microflow mistakes before the build:
+  - a single-outcome user task with nested activities (MDL-WF02, else CE1876);
+  - `count()` in an expression (MDL044);
+  - microflows referenced by a page before their create statement.
+- The chat prompt needed two corrections, both found live:
+  - The assistant asked the customer for a SKU instead of looking the item up. The prompt now says to use
+    order_products, and when the graph doesn't know the order's contents, to pass the item as the customer
+    names it.
+  - It also pre-judged eligibility. That is now the workflow's job only.
+- The reply agent passed an internal note ("the eligibility check gave no usable answer") to a customer. Its
+  prompt now forbids mentioning internal checks or AI, and the review page asks the reviewer to write the
+  reason the reply is based on.
+- Container recycles stop the helper servers. The app then answers without the product graph tools ("I can't
+  open the product lookup"). `tools/start-helpers.sh` restarts whatever is down.
+
+Verified live:
+- **Customer starts returns from the chat** (with confirmation):
+  - SO-10132's tyre is Not eligible: 97 days after delivery, the policy sentence quoted, and a refusal drafted.
+  - SO-10001's child seat went to review.
+- **Staff:**
+  - Accept → the AI drafts with label RL-5001 → Send → Parcel received → a refund request of EUR 249.95 is
+    created → the return is Closed and the workflow Completed.
+  - Decline → Ask AI to rewrite ("under 50 words, offer a warranty ticket") → a 42-word draft that follows the
+    instruction, and a new approval task.
+- **Customer:** the Returns page shows the sent replies, and the assistant reports a closed return correctly.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings. The two new ones are ARCH003, a business key on ReturnRequest (Ticket has the
+  same), and DESIGN001, 18 attributes, because the AI's decision fields stay with the request they judge.
+- `report`: 67/100.
+- `docker check`: 0 errors.
+- `test`: 27/27 pass, 7 of them new. The tests cover the facts, the fallback to review when the agent can't
+  answer, accept and decline, the label and the sent reply, the refund on receipt, and the tool refusing an
+  order that hasn't been delivered.
