@@ -231,3 +231,40 @@
 .crt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .crt-compare table, .crt-compare th, .crt-compare td { border-left: 0; border-right: 0; border-top: 0; }
 .crt-compare th, .crt-compare td { border-bottom: 1px solid var(--crt-line); }
+
+/* Card actions: buttons that open a small form in the card. */
+.crt-actions { margin-top: 12px; }
+.crt-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.crt-action-btn, .crt-action-submit {
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 34px; padding: 6px 14px; border-radius: 10px;
+    color: #070b16; background: linear-gradient(135deg, var(--crt-accent), #8fb8ff); border: 0;
+}
+.crt-action-btn-on { box-shadow: 0 0 0 2px color-mix(in srgb, var(--crt-accent) 45%, transparent); }
+.crt-action-submit:disabled { opacity: 0.6; cursor: default; }
+.crt-action-cancel { font: inherit; font-size: 13px; cursor: pointer; min-height: 34px; padding: 6px 12px; border-radius: 10px; color: var(--crt-ink); background: transparent; border: 1px solid var(--crt-line); }
+.crt-action-form { display: grid; gap: 6px; margin-top: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--crt-line); background: var(--crt-surface-alt); }
+.crt-action-form label { font-size: 12px; color: var(--crt-muted); margin: 4px 0 0; }
+.crt-action-form label span { opacity: 0.8; }
+.crt-action-form input, .crt-action-form select, .crt-action-form textarea {
+    font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 10px; color: var(--crt-ink);
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--crt-line);
+}
+.crt-action-form select option { color: #111; }
+.crt-action-for { margin: 0 0 2px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--crt-muted); }
+.crt-action-row { display: flex; gap: 8px; margin-top: 8px; }
+.crt-action-note { margin: 0; font-size: 13px; color: var(--crt-muted); }
+.crt-action-result { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 13px; }
+.crt-action-ok { background: var(--mxt-tint-ok, rgba(79, 209, 197, 0.14)); color: var(--mxt-tone-ok, var(--crt-ink)); }
+.crt-action-err { background: var(--mxt-tint-warn, rgba(245, 180, 84, 0.14)); color: var(--mxt-tone-warn, var(--crt-ink)); }
+
+/* Citations from the policy documents. */
+.crt-cites { margin-top: 12px; }
+.crt-cites-label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--crt-muted); margin-bottom: 4px; }
+.crt-cites ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.crt-cite details { border-left: 3px solid var(--crt-accent); padding: 4px 10px; background: var(--crt-surface-alt); border-radius: 0 8px 8px 0; }
+.crt-cite summary { cursor: pointer; font-size: 13px; }
+.crt-cite-source { font-weight: 600; margin-right: 4px; }
+.crt-cite blockquote { margin: 8px 0 4px; padding: 0; border: 0; font-size: 13px; color: var(--crt-ink); line-height: 1.5; }
+.crt-cite mark { background: color-mix(in srgb, var(--crt-accent) 30%, transparent); color: inherit; padding: 0 2px; border-radius: 3px; }
+.crt-cite-missing { font-size: 13px; color: var(--mxt-tone-warn, var(--crt-muted)); }
+.crt-cite-missing span, .crt-cite-loading { color: var(--crt-muted); font-size: 13px; }

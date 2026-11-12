@@ -135,3 +135,17 @@ test("a compare card names two or three products", () => {
   assert.deepEqual(toCard({ type: "compare", title: "EB-200 vs EB-500", refs: ["EB-200", "EB-500"] }).compare.refs, ["EB-200", "EB-500"]);
   assert.equal(toCard({ type: "compare", refs: ["EB-200"] }), undefined);
 });
+
+test("card actions are limited to the known kinds and need a ref", () => {
+  const c = toCard({ title: "SO-10016", actions: [
+    { label: "Start a return", action: "return", ref: "SO-10016", values: { item: "LGT-USB USB light set", reason: "Never used" } },
+    { label: "Delete my account", action: "delete", ref: "SO-10016" },
+    { label: "No ref", action: "ticket" } ] });
+  assert.equal(c.actions.length, 1);
+  assert.equal(c.actions[0].values.item, "LGT-USB USB light set");
+});
+test("citations need a quote of some length", () => {
+  const c = toCard({ type: "policy", title: "Returns", citations: [{ doc: "Returns and refunds", quote: "within 30 days of delivery" }, { doc: "x", quote: "short" }] });
+  assert.equal(c.citations.length, 1);
+  assert.equal(c.citations[0].doc, "Returns and refunds");
+});

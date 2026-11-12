@@ -7,6 +7,8 @@ import { GraphView } from "../shared/graph/GraphView";
 import { MapView } from "./MapView";
 import { ModelView } from "../shared/model/ModelView";
 import { CompareView } from "./CompareView";
+import { ActionButtons } from "./ActionForm";
+import { CitationList } from "./CitationList";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
@@ -78,6 +80,8 @@ export function CardView({ card }: { card: Card }): ReactElement {
                 </ol>
             )}
             {card.note && <p className="crt-note">{card.note}</p>}
+            {card.citations.length > 0 && <CitationList citations={card.citations} />}
+            {card.actions.length > 0 && <ActionButtons actions={card.actions} />}
         </article>
     );
 }

@@ -48,6 +48,13 @@ export interface ModelSpec { ref: string; highlight: string[] }
 // The card names them; their facts come from the graph.
 export interface CompareSpec { refs: string[] }
 
+// A button on a card that opens a small form; the app runs the action when the
+// user submits it. Only these actions exist; `values` pre-fill the form.
+export type ActionKind = "return" | "ticket" | "appointment";
+export interface CardAction { label: string; action: ActionKind; ref: string; values: Record<string, string> }
+// A quote from a policy document; the app looks the passage up and shows it.
+export interface Citation { doc: string; quote: string }
+
 export interface Card {
     type: string;
     title: string;
@@ -64,6 +71,8 @@ export interface Card {
     map?: MapSpec;
     model?: ModelSpec;
     compare?: CompareSpec;
+    actions: CardAction[];
+    citations: Citation[];
     note?: string;
 }
 
@@ -205,9 +214,30 @@ export function toCard(raw: unknown): Card | undefined {
         compare: (str(o.type) ?? "").toLowerCase() === "compare"
             ? (() => { const refs = list(o.refs, r => cleanRef(r)).slice(0, 3); return refs.length >= 2 ? { refs } : undefined; })()
             : undefined,
+        actions: list(o.actions, a => {
+            if (!a || typeof a !== "object") return undefined;
+            const r = a as Record<string, unknown>;
+            const action = (str(r.action) ?? "").toLowerCase();
+            const label = str(r.label), ref = cleanRef(r.ref);
+            if (!label || !ref || !["return", "ticket", "appointment"].includes(action)) return undefined;
+            const values: Record<string, string> = {};
+            if (r.values && typeof r.values === "object" && !Array.isArray(r.values)) {
+                for (const [k, v] of Object.entries(r.values as Record<string, unknown>)) {
+                    const s = str(v);
+                    if (s && /^[a-z]{1,20}$/i.test(k)) values[k.toLowerCase()] = s.slice(0, 500);
+                }
+            }
+            return { label: label.slice(0, 60), action: action as ActionKind, ref, values };
+        }).slice(0, 3),
+        citations: list(o.citations, c => {
+            if (!c || typeof c !== "object") return undefined;
+            const r = c as Record<string, unknown>;
+            const quote = str(r.quote)?.trim();
+            return quote && quote.length >= 12 ? { doc: (str(r.doc) ?? "").slice(0, 200), quote: quote.slice(0, 400) } : undefined;
+        }).slice(0, 3),
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.model && !card.compare && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.model && !card.compare && !card.citations.length && !card.note;
     return empty ? undefined : card;
 }
 
