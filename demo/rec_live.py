@@ -1,5 +1,6 @@
 """Records a narrated walkthrough of the LIVE app from a beat spec, with the
-narration WAVs made by make_voiceover_<name>.py (Chatterbox Turbo, on the Mac).
+narration WAVs made by make_voiceover_<name>.py (Chatterbox Turbo, on the Mac)
+or by make_voiceover_kokoro.py (Kokoro, in the container).
 
     python3 demo/rec_live.py demo/servicedesk-copilot.json            # the film
     python3 demo/rec_live.py demo/servicedesk-copilot.json --silent   # timing test only
@@ -51,11 +52,12 @@ if (!window.__recReady) { window.__recReady = true;
   document.head.append(kst); st.append(ka);
   let n = 0;
   window.__sel = el => { if (!el) return '#__none__'; if (!el.dataset.rec) el.dataset.rec = 'r' + (++n); return '[data-rec="' + el.dataset.rec + '"]'; };
-  window.__last = () => { const a = document.querySelectorAll('.crt-root'); return a[a.length - 1]; };
+  // the newest answer in the conversation (the details panel has cards of its own)
+  window.__last = () => { const a = document.querySelectorAll('.sd-conversation .crt-root'); return a[a.length - 1]; };
   window.__spot = el => { window.__unspot(); if (!el) return; const r = el.getBoundingClientRect(), k = st.getBoundingClientRect().width / 1600;
     const s = document.createElement('div'); s.id = '__spot';
     Object.assign(s.style, {position: 'absolute', left: (r.left / k - 6) + 'px', top: (r.top / k - 6) + 'px', width: (r.width / k + 12) + 'px', height: (Math.min(r.height, 900 * k - r.top) / k + 12) + 'px',
-      border: '2px solid #1660d8', borderRadius: '8px', opacity: '0', transition: 'opacity .35s ease'});
+      border: '2px solid #4FD1C5', boxShadow: '0 0 0 4px rgba(79,209,197,.18)', borderRadius: '10px', opacity: '0', transition: 'opacity .35s ease'});
     st.append(s); requestAnimationFrame(() => { s.style.opacity = '1'; }); };
   window.__unspot = () => { const s = document.getElementById('__spot'); if (s) s.remove(); };
   window.__typeTo = (sel, text) => { const el = document.querySelector(sel); if (!el) return;
@@ -77,7 +79,7 @@ window.__click = (sel, also) => {
   const k = st.getBoundingClientRect().width / 1600, sr = st.getBoundingClientRect(), r = el.getBoundingClientRect();
   __cur.style.left = ((r.left + r.width/2 - sr.left)/k - 4) + 'px'; __cur.style.top = ((r.top + r.height/2 - sr.top)/k - 2) + 'px';
   setTimeout(() => {
-    const rp = document.createElement('div'); Object.assign(rp.style,{position:'absolute',left:(parseFloat(__cur.style.left)-12)+'px',top:(parseFloat(__cur.style.top)-12)+'px',width:'30px',height:'30px',borderRadius:'50%',background:'rgba(22,96,216,.35)',zIndex:9998,pointerEvents:'none',transition:'transform .45s ease-out, opacity .45s ease-out'});
+    const rp = document.createElement('div'); Object.assign(rp.style,{position:'absolute',left:(parseFloat(__cur.style.left)-12)+'px',top:(parseFloat(__cur.style.top)-12)+'px',width:'30px',height:'30px',borderRadius:'50%',background:'rgba(79,209,197,.4)',zIndex:9998,pointerEvents:'none',transition:'transform .45s ease-out, opacity .45s ease-out'});
     st.append(rp); requestAnimationFrame(()=>{ rp.style.transform='scale(2.2)'; rp.style.opacity='0'; }); setTimeout(()=>rp.remove(),600);
     el.click(); if (also) also();
   }, 700);
@@ -143,7 +145,7 @@ def main(spec_path, silent=False):
             pg.evaluate(STAGE + HELP + ";0")
 
         def answers():
-            return pg.evaluate("document.querySelectorAll('.crt-root').length")
+            return pg.evaluate("document.querySelectorAll('.sd-conversation .crt-root').length")
 
         state = {"answers": 0}
 

@@ -84,7 +84,7 @@
     ]
    ],
    "type": {
-    "sel": "textarea",
+    "sel": "textarea[placeholder]",
     "text": "Where is my order SO-10002?",
     "at": 1.2,
     "secs": 2.2
@@ -113,6 +113,29 @@
    ]
   },
   {
+   "prep": [
+    {
+     "wait_js": "document.querySelectorAll('.sd-details .crt-timeline li').length >= 2",
+     "timeout": 40
+    }
+   ],
+   "check": {
+    "js": "/SO-10002/.test(document.querySelector('.sd-details').innerText) && document.querySelectorAll('.sd-details .crt-timeline li').length >= 2",
+    "why": "the details panel shows the order with its tracking scans"
+   },
+   "say": "Beside the conversation, a details panel keeps the order she asked about at hand.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.8,
+     "__spot(document.querySelector('.sd-details'))"
+    ]
+   ]
+  },
+  {
    "say": "Next, she asks how long her deliveries usually take.",
    "do": [
     [
@@ -121,7 +144,7 @@
     ]
    ],
    "type": {
-    "sel": "textarea",
+    "sel": "textarea[placeholder]",
     "text": "On average, how long did my orders take to deliver?",
     "at": 0.6,
     "secs": 2.4
@@ -158,7 +181,7 @@
     ]
    ],
    "type": {
-    "sel": "textarea",
+    "sel": "textarea[placeholder]",
     "text": "Where is most time spent delivering my parcels?",
     "at": 0.4,
     "secs": 1.6
@@ -195,7 +218,7 @@
     ]
    ],
    "type": {
-    "sel": "textarea",
+    "sel": "textarea[placeholder]",
     "text": "Give me an overview of the EB-200",
     "at": 0.5,
     "secs": 1.6
@@ -262,7 +285,7 @@
   {
    "say": "Then Ada wants to return a light set she never used.",
    "type": {
-    "sel": "textarea",
+    "sel": "textarea[placeholder]",
     "text": "I'd like to return the USB light set from order SO-10016. I never used it, it's still in the box.",
     "at": 0.3,
     "secs": 3.0
@@ -382,6 +405,79 @@
   {
    "prep": [
     {
+     "click_text": "Assistant"
+    },
+    {
+     "wait_ms": 6000
+    },
+    {
+     "wait_js": "!!document.querySelector('.sd-tabs') && !!document.querySelector('.sd-details .crt-card')",
+     "timeout": 40
+    }
+   ],
+   "check": {
+    "js": "/tokens/i.test(document.querySelector('.sd-details').innerText) && /Model calls/.test(document.querySelector('.sd-details').innerText)",
+    "why": "the Metrics tab shows tokens and model calls"
+   },
+   "say": "Staff see more in the details panel: what each answer cost, in tokens, model calls, tool calls and time.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.8,
+     "__spot(document.querySelector('.sd-details .crt-card'))"
+    ]
+   ]
+  },
+  {
+   "say": "And every tool call the assistant made, with its exact input and result.",
+   "do": [
+    [
+     0.2,
+     "__unspot(); __click(__sel([...document.querySelectorAll('.sd-tabs a')].find(a => a.innerText.trim() === 'Tool calls')))"
+    ],
+    [
+     1.9,
+     "__click(__sel([...document.querySelectorAll('.sd-details summary')].find(s => s.offsetParent !== null)))"
+    ],
+    [
+     3.4,
+     "__spot([...document.querySelectorAll('.sd-details details')].find(d => d.open))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "prep": [
+    {
+     "click_text": "Product explorer"
+    },
+    {
+     "wait_ms": 6000
+    },
+    {
+     "wait_js": "(() => { const c = document.querySelector('.gx-canvas'); return !!c && !!c.__cy && c.__cy.nodes().length > 3; })()",
+     "timeout": 40
+    }
+   ],
+   "say": "The product explorer walks the same product graph. Click a part, and it unfolds what that part connects to.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     2.4,
+     "(() => { const cy = document.querySelector('.gx-canvas').__cy; const n = cy.nodes('.collapsed').filter(x => x.style('display') !== 'none')[0]; if (n) n.emit('tap'); })()"
+    ]
+   ],
+   "settle": 3.0
+  },
+  {
+   "prep": [
+    {
      "logout": true
     },
     {
@@ -410,7 +506,7 @@
    ]
   },
   {
-   "say": "Cards, charts, outlines, and agents inside workflows. All grounded in the shop's own data.",
+   "say": "Cards, charts, a details panel, and agents inside workflows. All grounded in the shop's own data.",
    "do": [
     [
      0.2,
@@ -418,7 +514,7 @@
     ],
     [
      0.5,
-     "__card('ServiceDesk Copilot', 'Cards, charts, outlines and agent steps in workflows')"
+     "__card('ServiceDesk Copilot', 'Cards, charts, a details panel and agent steps in workflows')"
     ]
    ],
    "min": 6
