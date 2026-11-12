@@ -1545,3 +1545,13 @@ Gates:
 - `report`: 50/100 (47 before these fixes, 62 before the four batches). Security scores 0: its warnings are staff reading every row of ratings, handoffs and appointments, which is what those staff pages are for.
 - `docker check`: 0 errors.
 - `test`: 49/49 pass, 4 new (recognising a request for a person, and a delay notice's card and chips).
+
+## Re-recording the demo: two chat defects it found (2026-11-12)
+
+**A new chat was not stored until its first question.** `ChatContext_Create_ForAgentDocument` returns an uncommitted chat. So a delay notice posted while the customer had a fresh chat open went into their previous chat. Of 41 stored chats, one had no topic. `SUB_SupportChat_Create` now commits the chat and its provider configs at once. The history still lists a chat without a topic only while it is open.
+
+**A chat that opens with a message from the app could not be answered.** For an assistant message with no user message before it, Conversational UI adds an empty user message to keep the roles alternating (`Request_AddEmptyUserMessage`). Bedrock then refuses the request: "ContentBlock object at messages.0.content.0 must set one of the following keys". Found by logging the request's messages: user (empty), assistant (the notice), user (the question). Restating the notice as a user message did not help: the empty one was still first. `SUB_Request_StartWithUser`, called from the action microflow after preprocessing, now fills an empty user message with a line of text. It does so only when the chat opens with an assistant message. Verified live: the same chat, which had answered "Error" twice, then answered with a route-map card.
+
+**`mxcli check` passes a `show message` whose text is an expression**, and mxbuild then fails with CE0117. Filed as ako/mxcli#2199. The workaround is one literal message per branch.
+
+**A manual sync can collide with the scheduled one.** `SUB_Shipments_Sync` deletes and re-imports every shipment. "Check parcels now", run just as the 15-minute event fired, failed one of the two on the TrackingCode unique constraint. The other completed, so no data was lost. Left as is: the window is small, and the scheduled event already skips its own overlaps.

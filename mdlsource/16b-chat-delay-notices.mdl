@@ -119,3 +119,64 @@ create or modify scheduled event "ServiceDesk"."SE_ShipmentsSync" folder 'Delive
   Enabled: true,
   OnOverlap: SkipNext
 );
+
+/** Syncs the carrier's parcels now and posts notices for new problem scans; returns how many were posted (-1 when the carrier cannot be reached). */
+create or modify microflow "ServiceDesk"."SUB_DelayNotices_CheckNow" ()
+returns Integer as $Posted
+folder 'Delivery'
+begin
+  $Synced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
+  if not($Synced) then
+    return -1;
+  end if;
+  $Count = call microflow "ServiceDesk"."SUB_DelayNotices_Post" ();
+  return $Count;
+end;
+
+/** "Check parcels now" on the Delivery notices page. */
+create or modify microflow "ServiceDesk"."ACT_DelayNotices_CheckNow" ()
+folder 'Delivery'
+begin
+  $Posted = call microflow "ServiceDesk"."SUB_DelayNotices_CheckNow" ();
+  if $Posted < 0 then
+    show message 'The carrier cannot be reached; nothing was checked.' type Warning;
+  else
+    if $Posted = 0 then
+      show message 'No new problems with parcels on their way.' type Information;
+    else
+      show message 'Posted new delay notices into customer chats.' type Information;
+    end if;
+  end if;
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_DelayNotices_CheckNow" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Staff: the delay notices the assistant posted into customer chats, newest first, and a button to check the carrier now. */
+create or modify page "ServiceDesk"."ChatNotice_Overview" folder 'Delivery'
+(
+  title: 'Delivery notices',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'delivery-notices'
+)
+{
+  layoutgrid lgNotices {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtNoticesHeading (content: 'Delivery notices', rendermode: H2)
+        dynamictext txtNoticesHelp (content: 'When the carrier reports a problem with a parcel still on its way, the assistant tells the customer in their chat, unasked. The carrier is checked every 15 minutes.', rendermode: Paragraph)
+        actionbutton btnCheckNow (caption: 'Check parcels now', action: call microflow "ServiceDesk"."ACT_DelayNotices_CheckNow", buttonstyle: primary, icon: Atlas_Core.Atlas.refresh)
+        datagrid dgNotices (
+          datasource: database from "ServiceDesk"."ChatNotice" sort by "PostedAt" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "OrderNumber", caption: 'Order') { textfilter tfNoticeOrder }
+          column (attribute: "Text", caption: 'What the carrier reported')
+          column (attribute: "PostedAt", caption: 'Posted')
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ChatNotice_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

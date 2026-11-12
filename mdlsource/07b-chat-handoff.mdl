@@ -154,6 +154,21 @@ begin
   return isMatch(toLowerCase($Text), '.*\b(talk|speak|chat|connect me)\b.*\b(person|human|someone|somebody|real|employee|staff|support agent|agent|colleague)\b.*');
 end;
 
+/** A chat can open with a message from the app (a delay notice, 16b-chat-delay-notices.mdl) before the customer has said anything. Conversational UI then puts an empty user message before it in the request, to keep the roles alternating, and the model API rejects a message with no text. That placeholder gets a line of text; the chat itself is unchanged. */
+create or modify microflow "ServiceDesk"."SUB_Request_StartWithUser" ($ChatContext: ConversationalUI.ChatContext, $Request: GenAICommons.Request)
+folder 'Chat handoff'
+begin
+  retrieve $First from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext][Status != 'Error'] sort by createdDate asc first;
+  if $First = empty or $First/Role != GenAICommons.ENUM_MessageRole.assistant then
+    return;
+  end if;
+  retrieve $RequestMessages from $Request/GenAICommons.Request_Message;
+  $Empty = filter $RequestMessages where Role = GenAICommons.ENUM_MessageRole.user and (Content = empty or trim(Content) = '');
+  loop $Placeholder in $Empty begin
+    change $Placeholder ("Content" = '(I opened the chat. The app had a message for me.)');
+  end loop;
+end;
+
 /** Called first by the support agent's action microflow. Returns true when the message is handled without the model: the customer asked for a person (the request is queued), or a person is handling the chat (the message waits for them). */
 create or modify microflow "ServiceDesk"."SUB_Handoff_Intercept" ($ChatContext: ConversationalUI.ChatContext)
 returns Boolean as $Handled
