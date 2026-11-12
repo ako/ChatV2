@@ -19,8 +19,11 @@ create or modify persistent entity "ServiceDesk"."ChatPhoto" extends System.File
 create or modify association "ServiceDesk"."ChatPhoto_ChatContext" from "ServiceDesk"."ChatPhoto" to ConversationalUI.ChatContext;
 create or modify association "ServiceDesk"."ChatPhoto_Order" from "ServiceDesk"."ChatPhoto" to "ServiceDesk"."Order";
 
-grant create, delete, read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
-grant create, read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
+grant read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create, delete on entity "ServiceDesk"."ChatPhoto" from "ServiceDesk"."Customer";
+revoke create on entity "ServiceDesk"."ChatPhoto" from "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 /** Lets the document agent describe the photo; stores and returns the description (empty when it could not). */
 create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Analyse" ($Photo: "ServiceDesk"."ChatPhoto")
@@ -48,21 +51,31 @@ begin
   return $Response/ResponseText;
 end;
 
-/** Opens the photo popup for a chat. */
-create or modify microflow "ServiceDesk"."ACT_ChatPhoto_New" ($ChatContext: ConversationalUI.ChatContext)
+/** A new photo for a chat, not yet stored. */
+create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Create" ($ChatContext: ConversationalUI.ChatContext)
+returns "ServiceDesk"."ChatPhoto" as $Photo
 folder 'Chat photos'
 begin
   $Photo = create "ServiceDesk"."ChatPhoto" ("ServiceDesk"."ChatPhoto_ChatContext" = $ChatContext);
+  return $Photo;
+end;
+
+/** Camera button in the message box: opens the photo popup for the chat. */
+create or modify microflow "ServiceDesk"."ACT_ChatPhoto_New" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat photos'
+begin
+  $Photo = call microflow "ServiceDesk"."SUB_ChatPhoto_Create" (ChatContext = $ChatContext);
   show page "ServiceDesk"."ChatPhoto_Upload" ("ChatPhoto" = $Photo);
 end;
 
-/** Send button of the photo popup: stores the photo, lets the document agent describe it, and puts both in the chat with a "Report a problem" action that attaches the photo to the ticket. */
-create or modify microflow "ServiceDesk"."ACT_ChatPhoto_Send" ($ChatPhoto: "ServiceDesk"."ChatPhoto")
+/** Stores the photo, lets the document agent describe it, and puts both in the chat with a "Report a problem" action that attaches the photo to the ticket. */
+create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Post" ($ChatPhoto: "ServiceDesk"."ChatPhoto")
+returns ConversationalUI.ChatContext as $Posted
 folder 'Chat photos'
 begin
   if $ChatPhoto/HasContents = false then
     validation feedback $ChatPhoto/Name message 'Choose a photo first.';
-    return;
+    return empty;
   end if;
   commit $ChatPhoto;
   retrieve $Chat from $ChatPhoto/"ServiceDesk"."ChatPhoto_ChatContext";
@@ -97,6 +110,17 @@ begin
     "SubMessageCount" = 0,
     ConversationalUI.Message_ChatContext = $Chat
   ) commit;
+  return $Chat;
+end;
+
+/** Send button of the photo popup: posts the photo and shows the chat. */
+create or modify microflow "ServiceDesk"."ACT_ChatPhoto_Send" ($ChatPhoto: "ServiceDesk"."ChatPhoto")
+folder 'Chat photos'
+begin
+  $Chat = call microflow "ServiceDesk"."SUB_ChatPhoto_Post" (ChatPhoto = $ChatPhoto);
+  if $Chat = empty then
+    return;
+  end if;
   close page;
   show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $Chat);
 end;

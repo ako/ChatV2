@@ -1,0 +1,38 @@
+mdl 1;
+
+-- Talking to a person (07b-chat-handoff.mdl) and proactive delay notices (16b-chat-delay-notices.mdl).
+
+/**
+ * @test Asking for a person is recognised
+ * @expect $Asks = true
+ */
+$Asks = call microflow ServiceDesk.SUB_Handoff_AsksForPerson(Text = 'My order SO-10002 is late again. I want to talk to a person please.');
+/
+
+/**
+ * @test Asking to speak to someone is recognised, in any case
+ * @expect $Asks = true
+ */
+$Asks = call microflow ServiceDesk.SUB_Handoff_AsksForPerson(Text = 'Can I SPEAK to someone?');
+/
+
+/**
+ * @test A question about an order is not a request for a person
+ * @expect $Asks = false
+ */
+$Asks = call microflow ServiceDesk.SUB_Handoff_AsksForPerson(Text = 'Where is my order SO-10002?');
+/
+
+/**
+ * @test A delay notice shows the order card as delayed, with the scans and follow-up questions
+ * @expect $Ok = true
+ */
+$Shipment = create ServiceDesk.Shipment (TrackingCode = 'TEST-DELAY-1', Carrier = 'DHL', OrderNumber = 'SO-99999', Delivered = false);
+$Scan = create ServiceDesk.TrackingEvent (At = dateTimeUTC(2026, 11, 4, 9, 15), Location = 'Venlo', Stage = 'AT_HUB', Text = 'Arrived at hub', ServiceDesk.TrackingEvent_Shipment = $Shipment);
+$Problem = create ServiceDesk.TrackingEvent (At = dateTimeUTC(2026, 11, 4, 18, 0), Location = 'Venlo', Stage = 'EXCEPTION', Text = 'Delayed: sorting backlog', ServiceDesk.TrackingEvent_Shipment = $Shipment);
+commit $Shipment;
+commit $Scan;
+commit $Problem;
+$Content = call microflow ServiceDesk.SUB_DelayNotice_Content(Shipment = $Shipment, Problem = $Problem);
+declare $Ok Boolean = contains($Content, '"status":"Delayed"') and contains($Content, 'Venlo: Arrived at hub') and contains($Content, '```suggestions') and contains($Content, 'I want to talk to a person');
+/

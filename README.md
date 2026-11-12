@@ -319,3 +319,23 @@ The bike is generated in code (`bike.ts`), not loaded from a model file:
   - other compatible accessories appear faintly under **Show what fits**.
 
 A highlight names parts. Only parts the graph links to that bike can light up, and anything else is listed under the viewer. An **Exploded** slider pulls the parts apart, hovering a part names it, and clicking a part shows its details.
+
+## More in the chat: actions, people and proactive notices
+
+Eleven additions to the chat, most of them in the rich-text widget (`widgets-src/ChatRichText`) and a new companion widget (`widgets-src/ChatCompanion`):
+
+- **Follow-up suggestions.** An answer can end with a `suggestions` block (a JSON array of short questions). It shows as chips; clicking one sends it. Only the latest answer's chips are shown.
+- **Comparison card.** `{"type":"compare","refs":["EB-200","EB-500"]}` fetches both products' specifications from the graph API. It shows them side by side, marks the rows that differ, and links each product to the 3D view.
+- **Rate answers.** Thumbs up and down under every answer store an **AnswerRating** with the question and the answer as they were (`mdlsource/12b-answer-ratings.mdl`). Staff see them under **Answer ratings**, and can filter on "Not helpful".
+- **Read aloud.** A speaker button under each answer reads it with the browser's speech synthesis.
+- **Action buttons with mini forms.** An order card can carry up to two `actions`: start a return, report a problem, or book a service appointment. Each opens a small form, filled in from the card, that the customer checks and sends. The app then does the work through `POST rest/chatactions/v1/actions` (`mdlsource/23-chat-actions.mdl`). The model never acts on its own.
+- **Service appointments.** The appointment form lists free weekday slots for the next two weeks (`GET …/slots`). Booking creates a **ServiceAppointment** for a delivered order. Staff see them under **Service appointments**.
+- **Policy citations.** A policy card quotes the returns, delivery or warranty policy. Each quote is looked up in the policy documents (`GET …/cite`) and shown with its surrounding passage. A quote that is not in the documents is labelled as such.
+- **Photo checks.** The camera button in the message box opens a popup to send a photo about an order (`mdlsource/22b-chat-photos.mdl`). The document agent describes what it shows. The answer shows the photo, the description and a **Report a problem** action, whose ticket gets the photo as an attachment.
+- **Voice input.** The microphone button types what the customer says into the message box, using the browser's speech recognition. The customer still sends it. The button is hidden in browsers without speech recognition.
+- **Talk to a person** (`mdlsource/07b-chat-handoff.mdl`). The headset button, or asking in words ("I want to talk to a person"), puts the chat in the staff queue, **Live chats**:
+  - A support agent opens it, reads the conversation so far and replies. The reply appears in the customer's chat under their name (the demo agent is Sam de Wit).
+  - While a person has the chat, the assistant does not answer: the action microflow (`08-chat.mdl`) stores the customer's message and skips the model.
+  - **Hand back to the assistant** returns the chat to the model.
+  - Both sides see new messages within a few seconds. The ChatCompanion widget runs a refresh microflow every few seconds while the page is visible, and it refreshes only a message that arrived in the last few seconds.
+- **Proactive delay notices** (`mdlsource/16b-chat-delay-notices.mdl`). After every shipment sync (at startup, then every 15 minutes), a problem scan from the carrier is posted into the customer's latest chat, unasked. This covers a delay, or a parcel held at the depot, on a parcel still on its way. The post has an order card with the scans and follow-up questions. Each scan is posted once (`ChatNotice`).

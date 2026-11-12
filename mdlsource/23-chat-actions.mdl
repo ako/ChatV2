@@ -40,7 +40,9 @@ create or modify association "ServiceDesk"."ServiceAppointment_Customer"
 
 grant read * on entity "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."Customer"
   where [ServiceDesk.ServiceAppointment_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
-grant create, read *, write * on entity "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create on entity "ServiceDesk"."ServiceAppointment" from "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 /** One free appointment slot. */
 create or modify non-persistent entity "ServiceDesk"."SlotView" (

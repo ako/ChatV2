@@ -189,8 +189,9 @@
     .sd-compose-btn.btn:hover {
         color: var(--mxt-ink);
     }
-    textarea.form-control {
-        padding-left: 104px;
+    // Conversational UI zeroes the textarea's padding with !important; make room for the tools on the left
+    .chat-input-wrapper .mx-textarea textarea.form-control.mx-textarea-input {
+        padding-left: 150px !important;
     }
 }
 
@@ -393,4 +394,20 @@
             border-color: color-mix(in srgb, var(--mxt-brand) 45%, transparent);
         }
     }
+}
+
+// Live chat (staff): the conversation so far, scrolling, above the reply box
+.sd-live-transcript {
+    max-height: 56vh;
+    overflow-y: auto;
+    padding: 20px 24px;
+    margin: 16px 0;
+}
+.sd-live-reply textarea.form-control {
+    min-height: 96px;
+}
+.sd-live-reply__buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
 }

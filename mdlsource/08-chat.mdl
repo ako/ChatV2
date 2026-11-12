@@ -8,11 +8,16 @@ mdl 1;
 drop microflow if exists "ServiceDesk"."SUB_ApplyAgentRuntimeSettings";
 drop microflow if exists "ServiceDesk"."ACT_ChatContext_SupportAgent_Action";
 
-/** Conversational UI action microflow: sends the conversation to the support agent and stores its answer. */
+/** Conversational UI action microflow: sends the conversation to the support agent and stores its answer. A request for a person, or a chat a person is handling, skips the model. */
 create or modify microflow "ServiceDesk"."ChatContext_SupportAgent_ActionMicroflow" ($ChatContext: ConversationalUI.ChatContext)
 returns Boolean as $Success
 folder 'Chat'
 begin
+  -- a request for a person, or a chat a person is handling: no model call (07b-chat-handoff.mdl)
+  $HandledByPerson = call microflow "ServiceDesk"."SUB_Handoff_Intercept" (ChatContext = $ChatContext);
+  if $HandledByPerson then
+    return true;
+  end if;
   $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext);
   if $Request = empty then
     return false;

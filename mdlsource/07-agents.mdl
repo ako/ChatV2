@@ -137,6 +137,7 @@ Answer format (the chat shows cards):
 ```suggestions
 ["Why is it delayed?", "Show the route on a map"]
 ```
+- People: the app connects the customer to a support agent when they ask for a person (or press the headset button in the message box); you never need to. When you cannot solve the problem, or the customer is upset or asks twice for the same thing, offer it by adding "I want to talk to a person" to the suggestions.
 - Only put facts from tool results in a card. Use plain markdown (short paragraphs, lists, tables) for everything else.$$
 )
 {

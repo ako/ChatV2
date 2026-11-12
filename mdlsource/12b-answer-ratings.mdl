@@ -25,8 +25,10 @@ create or modify persistent entity "ServiceDesk"."AnswerRating" (
 create or modify association "ServiceDesk"."AnswerRating_Message"
   from "ServiceDesk"."AnswerRating" to ConversationalUI.Message;
 
-grant create, read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
-grant create, read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
+grant read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create on entity "ServiceDesk"."AnswerRating" from "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 /** Records the current user's rating of an answer, replacing an earlier one by the same user. */
 create or modify microflow "ServiceDesk"."SUB_Message_Rate" ($Message: ConversationalUI.Message, $Rating: Enumeration("ServiceDesk"."ENUM_AnswerRating"))

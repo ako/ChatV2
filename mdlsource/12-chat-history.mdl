@@ -141,10 +141,12 @@ create or modify page "ServiceDesk"."Chat_WithHistory" folder 'Chat'
         container ctChat (Class: 'chat-container sd-chat-card') {
           snippetcall scChat (snippet: ConversationalUI.Snippet_ChatContext_ConversationalUI)
         }
-        -- tools inside the message box: add a photo (22b-chat-photos.mdl) and speak
+        -- tools inside the message box: add a photo (22b-chat-photos.mdl), talk to a person (07b-chat-handoff.mdl) and speak;
+        -- the companion also refreshes the chat every few seconds, so a support agent's reply or a delay notice shows up
         container ctComposeTools (Class: 'sd-compose-tools') {
           actionbutton btnAddPhoto (Tooltip: 'Add a photo', action: call microflow "ServiceDesk"."ACT_ChatPhoto_New"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas.camera, Class: 'sd-compose-btn')
-          pluggablewidget 'com.servicedesk.widgets.chatcompanion.ChatCompanion' ccVoice ( voiceInput: true )
+          actionbutton btnTalkToPerson (Tooltip: 'Talk to a person', action: call microflow "ServiceDesk"."ACT_Handoff_Request"(ChatContext = $ChatContext), icon: Atlas_Core.Atlas."headphones-mic", Class: 'sd-compose-btn')
+          pluggablewidget 'com.servicedesk.widgets.chatcompanion.ChatCompanion' ccVoice ( voiceInput: true, refreshAction: microflow "ServiceDesk"."ACT_Chat_LiveRefresh" (ChatContext = $ChatContext), refreshSeconds: 5 )
         }
       }
     }

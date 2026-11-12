@@ -34,8 +34,12 @@ folder 'Setup'
 begin
   $AgentsLoaded = call microflow AgentEditorCommons.ASU_AgentEditor ();
   $Seeded = call microflow "ServiceDesk"."SUB_SeedDemoData" ();
+  call microflow "ServiceDesk"."SUB_SeedStaffNames" ();
   call microflow "ServiceDesk"."SUB_SeedOrderHistory" ();
   $ShipmentsSynced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
+  if $ShipmentsSynced then
+    $NoticesPosted = call microflow "ServiceDesk"."SUB_DelayNotices_Post" ();
+  end if;
   $GraphLoaded = call microflow "ServiceDesk"."SUB_ProductGraph_Load" ();
   $McpStarted = call microflow "ServiceDesk"."MCP_Initialize" ();
   $RuntimeAgentReady = call microflow "ServiceDesk"."SUB_SetUpRuntimeAgent" ();
@@ -94,6 +98,7 @@ create or modify navigation Responsive
   menu item 'Product graph' ( OnClick: call microflow "ServiceDesk"."ACT_ProductGraph_Open", Icon: Atlas_Core.Atlas."hierarchy-files" )
   menu item 'Token usage' ( OnClick: call microflow ConversationalUI.NAV_TokenConsumptionMonitor, Icon: Atlas_Core.Atlas.dashboard )
   menu item 'Traces' ( OnClick: show page ConversationalUI.Trace_Overview, Icon: Atlas_Core.Atlas.search )
+  menu item 'Live chats' ( OnClick: show page "ServiceDesk"."LiveChat_Queue", Icon: Atlas_Core.Atlas."headphones-mic" )
   menu item 'Service appointments' ( OnClick: show page "ServiceDesk"."ServiceAppointment_Overview", Icon: Atlas_Core.Atlas.dashboard )
   menu item 'Answer ratings' ( OnClick: show page "ServiceDesk"."AnswerRating_Overview", Icon: Atlas_Core.Atlas."checkmark-circle" )
   menu item 'Model prices' ( OnClick: show page "ServiceDesk"."ModelPrice_Overview", Icon: Atlas_Core.Atlas.euro )

@@ -1514,3 +1514,34 @@ Checked after the fix: on Tickets and Orders the filters are 38px tall and their
 - The refund popup's "Order SO-…" line sat on the Amount label. It is now a paragraph.
 
 The remaining "touching buttons" hits are intended button groups: the grids' pager arrows and the period selectors on Token usage and Traces.
+
+## Eleven chat additions, and talking to a person (2026-11-12)
+
+Verified live (demo_customer and demo_agent in two browsers at once):
+- **Delay notice:** after the startup sync, Ada's latest chat holds "A heads-up about order SO-10002", with an order card (Delayed, DHL, its three scans) and three suggestion chips. The runtime log shows 17 syncs since the first one (restarts plus the scheduled event); 15 posted nothing, because the ChatNotice row was there.
+- **Talk to a person:** the customer asks "I want to talk to a person please". The chat appears in Live chats with its topic. When Sam opens it, the customer sees "Hi, I'm Sam de Wit…" within 7 seconds, without reloading, and Sam's reply arrives the same way. The customer's next message gets no model answer, only "Sent to Sam de Wit", and shows in Sam's transcript. "Hand back" posts "Sam de Wit has left the chat", and the model answers again.
+- **Earlier batches still work** after the access changes below: a photo creates ticket #1024 with the photo attached, and a thumbs down stores an AnswerRating.
+
+**One notice was posted twice, cause not found.** A restart at 22:23 ran 44 DDL commands. Afterwards the 21:58 ChatNotice row was gone, so the notice was posted again; Ada's chats now hold two. Measured since, with direct SQL on `servicedesk$chatnotice`, the row survives each of these:
+- a control restart;
+- removing NoticeKey's `unique` (3 DDL commands);
+- adding it back (3 DDL commands).
+
+The entity's and attributes' ids in `mendixsystem$entity` and `mendixsystem$attribute` equal the model's GUIDs, so no GUID was re-minted. These are mxcli-created elements, though (GUID = $ID), which cannot show a re-mint. What else was in that restart is not reconstructable from the log. If it happens again, record the DDL first.
+
+**A Conversational UI send has a placeholder answer that must be filled, not deleted.** The client shows a "Loading" assistant message while the action microflow runs. When the action microflow skipped the model and deleted that placeholder (`delete … refresh`), the typing dots stayed in the browser. Filling it in instead ("Sent to Sam de Wit") clears them, the same way the model's answer would.
+
+**A list sourced over an association reloads when one object of its entity is refreshed.** The live refresh is `commit $Recent refresh` on the newest message, and the CUI message list (a database source over `ChatContext → Message`) shows the new message. The refresh runs only when a message arrived in the last 8 seconds (the poll is 5), so an idle chat does not re-render.
+
+**CUI zeroes the textarea's padding with `!important`** (`.chat-input-wrapper .form-group .form-control`). Room for the compose buttons therefore needs `!important` as well, on a more specific selector. Without it the placeholder ran under the buttons. Found by listing the matching CSS rules in the browser, not from the screenshot.
+
+**A grant only adds rights.** Removing `create` from a `grant` line left the right in place. It takes a `revoke create on entity …`, which is a no-op ("nothing to revoke") on the next run, so scripts stay idempotent. AnswerRating, ChatHandoff, ChatPhoto and ServiceAppointment are created only in microflows now.
+
+**Splitting an ACT_ microflow into ACT_ + SUB_ is a reshape.** Three of them hit MDL-V1-REBUILD, because their early-return decisions cannot be spliced. They were dropped once in a scratch script and recreated by the project script, which keeps the project script re-runnable.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 31 warnings. The four batches had raised it from 22 to 64; moving logic out of the ACT_ microflows and revoking create rights brought it down. Of the rest, the new ones are no business key on ChatPhoto, ChatHandoff and AnswerRating (they have AutoNumbers), and ChatHandoff's 11 attributes.
+- `report`: 50/100 (47 before these fixes, 62 before the four batches). Security scores 0: its warnings are staff reading every row of ratings, handoffs and appointments, which is what those staff pages are for.
+- `docker check`: 0 errors.
+- `test`: 49/49 pass, 4 new (recognising a request for a person, and a delay notice's card and chips).
