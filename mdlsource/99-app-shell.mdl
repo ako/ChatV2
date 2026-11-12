@@ -94,6 +94,7 @@ create or modify navigation Responsive
   menu item 'Product graph' ( OnClick: call microflow "ServiceDesk"."ACT_ProductGraph_Open", Icon: Atlas_Core.Atlas."hierarchy-files" )
   menu item 'Token usage' ( OnClick: call microflow ConversationalUI.NAV_TokenConsumptionMonitor, Icon: Atlas_Core.Atlas.dashboard )
   menu item 'Traces' ( OnClick: show page ConversationalUI.Trace_Overview, Icon: Atlas_Core.Atlas.search )
+  menu item 'Answer ratings' ( OnClick: show page "ServiceDesk"."AnswerRating_Overview", Icon: Atlas_Core.Atlas."checkmark-circle" )
   menu item 'Model prices' ( OnClick: show page "ServiceDesk"."ModelPrice_Overview", Icon: Atlas_Core.Atlas.euro )
   menu item 'Agents' ( OnClick: show page AgentCommons.Agent_Overview, Icon: Atlas_Core.Atlas.cog )
 };

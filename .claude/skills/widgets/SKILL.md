@@ -56,7 +56,7 @@ this page.
 | `PLUGGABLEWIDGET` | [TOOLTIP](tooltip.md) | `com.mendix.widget.web.tooltip.Tooltip` | Tooltip | 7 |
 | `PLUGGABLEWIDGET` | [TREENODE](treenode.md) | `com.mendix.widget.web.treenode.TreeNode` | Tree node | 14 |
 | `PLUGGABLEWIDGET` | [VIDEOPLAYER](videoplayer.md) | `com.mendix.widget.web.videoplayer.VideoPlayer` | Video Player | 15 |
-| `PLUGGABLEWIDGET` | [CHATRICHTEXT](chatrichtext.md) | `com.servicedesk.widgets.chatrichtext.ChatRichText` | Chat rich text | 1 |
+| `PLUGGABLEWIDGET` | [CHATRICHTEXT](chatrichtext.md) | `com.servicedesk.widgets.chatrichtext.ChatRichText` | Chat rich text | 4 |
 | `PLUGGABLEWIDGET` | [GRAPHEXPLORER](graphexplorer.md) | `com.servicedesk.widgets.graphexplorer.GraphExplorer` | Graph explorer | 2 |
 
 ## Usage in MDL

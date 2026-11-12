@@ -122,3 +122,16 @@ test("a model card accepts one highlight as a string, and drops refs that are no
   assert.deepEqual(toCard({ type: "model", ref: "EB-500", highlight: ["<script>", "BAT-500"] }).model.highlight, ["BAT-500"]);
   assert.equal(toCard({ type: "model", ref: "bad ref!" }), undefined);
 });
+
+test("a suggestions block becomes follow-up chips", () => {
+  const s = splitMessage('Here you go.\n\n```suggestions\n["Why is it delayed?", "Show it on a map"]\n```');
+  assert.deepEqual(s.map(x => x.kind), ["markdown", "suggestions"]);
+  assert.deepEqual(s[1].items, ["Why is it delayed?", "Show it on a map"]);
+});
+test("a suggestions block that is not a list of strings is left out", () => {
+  assert.deepEqual(splitMessage('```suggestions\n{"a":1}\n```').map(x => x.kind), []);
+});
+test("a compare card names two or three products", () => {
+  assert.deepEqual(toCard({ type: "compare", title: "EB-200 vs EB-500", refs: ["EB-200", "EB-500"] }).compare.refs, ["EB-200", "EB-500"]);
+  assert.equal(toCard({ type: "compare", refs: ["EB-200"] }), undefined);
+});

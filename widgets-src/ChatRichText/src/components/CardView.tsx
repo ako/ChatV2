@@ -6,11 +6,12 @@ import { MaybeRef } from "./RefLink";
 import { GraphView } from "../shared/graph/GraphView";
 import { MapView } from "./MapView";
 import { ModelView } from "../shared/model/ModelView";
+import { CompareView } from "./CompareView";
 
 const TYPE_LABEL: Record<string, string> = {
     order: "Order", parcel: "Parcel", product: "Product", part: "Part", recall: "Recall",
     issue: "Known issue", ticket: "Ticket", refund: "Refund", policy: "Policy", info: "Info",
-    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections", map: "Map", model: "3D view"
+    chart: "Chart", outline: "Outline", supplier: "Supplier", delivery: "Delivery", graph: "Connections", map: "Map", model: "3D view", compare: "Comparison"
 };
 
 function label(type: string): string {
@@ -60,6 +61,7 @@ export function CardView({ card }: { card: Card }): ReactElement {
                     </div>
                 </div>
             )}
+            {card.compare && <CompareView refs={card.compare.refs} />}
             {card.model && (
                 <ModelView productRef={card.model.ref} highlight={card.model.highlight} height={320}
                     tone={card.tone === "critical" ? "critical" : card.tone === "warning" ? "warning" : "accent"} />

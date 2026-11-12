@@ -1,0 +1,128 @@
+mdl 1;
+
+-- Answer ratings: thumbs up / thumbs down under every assistant answer
+-- (ChatRichText's onRateUp / onRateDown, wired in 13-chat-rich-text.mdl), and a
+-- staff page listing them, the unhelpful ones first. Each rating keeps the
+-- question and the answer as they were, so a bad answer can be read without
+-- the chat it came from and can become a test case for the next prompt change.
+-- Runs before 13 because the snippet calls these microflows.
+
+create or modify enumeration "ServiceDesk"."ENUM_AnswerRating" (
+  Helpful 'Helpful',
+  NotHelpful 'Not helpful'
+);
+
+/** One user's verdict on one assistant answer, with the question and answer it was about. */
+create or modify persistent entity "ServiceDesk"."AnswerRating" (
+  "Rating": Enumeration("ServiceDesk"."ENUM_AnswerRating"),
+  "Question": String(unlimited),
+  "Answer": String(unlimited),
+  "Agent": String(200),
+  "RatedAt": DateTime,
+  "Owner": AutoOwner
+);
+
+create or modify association "ServiceDesk"."AnswerRating_Message"
+  from "ServiceDesk"."AnswerRating" to ConversationalUI.Message;
+
+grant create, read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
+grant create, read *, write * on entity "ServiceDesk"."AnswerRating" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Records the current user's rating of an answer, replacing an earlier one by the same user. */
+create or modify microflow "ServiceDesk"."SUB_Message_Rate" ($Message: ConversationalUI.Message, $Rating: Enumeration("ServiceDesk"."ENUM_AnswerRating"))
+returns Boolean as $Rated
+folder 'Chat ratings'
+begin
+  if $Message = empty then
+    return false;
+  end if;
+  retrieve $Existing from "ServiceDesk"."AnswerRating" where ["ServiceDesk"."AnswerRating_Message" = $Message][System.owner = '[%CurrentUser%]'] first;
+  if $Existing != empty then
+    change $Existing ("Rating" = $Rating, "RatedAt" = [%CurrentDateTime%]) commit;
+    return true;
+  end if;
+  retrieve $Chat from $Message/ConversationalUI.Message_ChatContext;
+  retrieve $Question from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $Chat][Role = 'user'][createdDate <= $Message/createdDate] sort by createdDate desc first;
+  retrieve $Config from $Chat/ConversationalUI.ChatContext_ProviderConfig_Active;
+  $New = create "ServiceDesk"."AnswerRating" (
+    "Rating" = $Rating,
+    "Question" = (if $Question = empty then '' else $Question/Content),
+    "Answer" = (if $Message/Content = empty then '' else $Message/Content),
+    "Agent" = (if $Config = empty then '' else $Config/DisplayName),
+    "RatedAt" = [%CurrentDateTime%],
+    "ServiceDesk"."AnswerRating_Message" = $Message
+  ) commit;
+  return true;
+end;
+
+/** Thumbs up under an answer. */
+create or modify microflow "ServiceDesk"."ACT_Message_RateHelpful" ($Message: ConversationalUI.Message)
+folder 'Chat ratings'
+begin
+  $Rated = call microflow "ServiceDesk"."SUB_Message_Rate" (Message = $Message, Rating = ServiceDesk.ENUM_AnswerRating.Helpful);
+end;
+
+/** Thumbs down under an answer. */
+create or modify microflow "ServiceDesk"."ACT_Message_RateNotHelpful" ($Message: ConversationalUI.Message)
+folder 'Chat ratings'
+begin
+  $Rated = call microflow "ServiceDesk"."SUB_Message_Rate" (Message = $Message, Rating = ServiceDesk.ENUM_AnswerRating.NotHelpful);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_Message_RateHelpful" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Message_RateNotHelpful" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup: one rating, with the full question and answer. */
+create or modify page "ServiceDesk"."AnswerRating_View" folder 'Chat ratings'
+(
+  params: ( $AnswerRating: "ServiceDesk"."AnswerRating" ),
+  title: 'Answer rating',
+  layout: Atlas_Core.PopupLayout,
+  PopupWidth: 820, PopupHeight: 680, PopupResizable: true
+)
+{
+  dataview dvRating (datasource: $AnswerRating) {
+    dynamictext txtVerdict (content: '{1} · {2} · {3}', contentparams: ({1} = Rating, {2} = Agent, {3} = RatedAt), rendermode: H5)
+    dynamictext txtQuestionLabel (content: 'Question', Class: 'sd-eyebrow')
+    dynamictext txtQuestion (content: '{1}', contentparams: ({1} = Question), rendermode: Paragraph)
+    dynamictext txtAnswerLabel (content: 'Answer', Class: 'sd-eyebrow')
+    pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtAnswer ( stringAttribute: Answer )
+    footer {
+      actionbutton btnClose (caption: 'Close', action: close page)
+    }
+  }
+};
+
+/** Staff: every rated answer, newest first, filterable to the unhelpful ones. */
+create or modify page "ServiceDesk"."AnswerRating_Overview" folder 'Chat ratings'
+(
+  title: 'Answer ratings',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'answer-ratings'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Answer ratings', rendermode: H2)
+        dynamictext txtHelp (content: 'Thumbs up and down that users gave the assistant''s answers. Filter on Not helpful to find answers to improve; each keeps the question and answer as they were.', rendermode: Paragraph)
+        datagrid dgRatings (
+          datasource: database from "ServiceDesk"."AnswerRating" sort by "RatedAt" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Rating", caption: 'Rating') { dropdownfilter ddRating }
+          column (attribute: "Question", caption: 'Question') { textfilter tfQuestion }
+          column (attribute: "Agent", caption: 'Assistant')
+          column (attribute: "RatedAt", caption: 'Rated')
+          column (caption: '') {
+            actionbutton btnView (caption: 'View', action: show page "ServiceDesk"."AnswerRating_View"("AnswerRating" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."AnswerRating_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."AnswerRating_View" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

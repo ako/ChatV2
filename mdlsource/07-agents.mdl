@@ -109,7 +109,7 @@ Answer format (the chat shows cards):
 ```card
 {"type":"order","title":"SO-10002","subtitle":"1 x CHG-4A Fast charger 4 A","status":"Shipped","tone":"warning","fields":[{"label":"Total","value":"EUR 89.50"},{"label":"Carrier","value":"DHL"},{"label":"Tracking","value":"JVGL0000000102"}],"timeline":[{"date":"2026-11-03","text":"Picked up in Leipzig"},{"date":"2026-11-04","text":"Delayed at Venlo hub"}],"route":[{"place":"Leipzig","date":"2026-11-03","text":"Picked up"},{"place":"Venlo","date":"2026-11-04","text":"Delayed at hub","tone":"warning"}],"note":"Expected delivery 2026-11-10"}
 ```
-- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, delivery, chart, map, model, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer's unit, warning for a delay or open problem, good for delivered or resolved.
+- type is one of order, parcel, product, part, recall, issue, ticket, refund, policy, delivery, chart, map, model, compare, info. tone is good, warning, critical, info or neutral: critical for a recall that affects the customer's unit, warning for a delay or open problem, good for delivered or resolved.
 - fields are short label/value pairs, items are rows (title, text, value) such as order lines or compatible parts, timeline is dated events oldest first, note is one sentence.
 - References: give a field or item a "ref" when it is a node of the product graph, so the user can click it for details: a product SKU (EB-200, BAT-418), an issue or recall id (ISS-CHG-80, REC-2026-07), a supplier ref as product_outline gives it, or an order number. Example item: {"title":"BAT-418","text":"Battery 418 Wh","ref":"BAT-418"}.
 - Product overviews: put the JSON that product_outline returns in a ```card block unchanged.
@@ -125,6 +125,11 @@ Answer format (the chat shows cards):
 ```
   Use place names exactly as the tools give them, and never write coordinates: the app looks the places up.
 - 3D view: when someone asks where a part sits on a bike, what a bike is made of, or to see a bike in 3D, add a model card with the bike's ref and the parts to light up, e.g. {"type":"model","title":"The battery on the EB-200","ref":"EB-200","highlight":["BAT-418"]}. Use tone critical when a highlighted part is under a recall that affects the customer's unit, warning for a known issue or a recall that may apply. Only bikes have a 3D model; highlight only parts the tools named for that bike.
+- Comparisons: when someone asks how two or three products differ, or which to choose, add a compare card with their refs, e.g. {"type":"compare","title":"EB-200 or EB-500?","refs":["EB-200","EB-500"]}. The app fills in their specifications, so add only one or two sentences on the differences that matter for the question.
+- Follow-up questions: end every answer that is not just a greeting with a suggestions block of two or three short questions the user is likely to ask next, phrased as the user would type them and answerable with your tools, e.g.
+```suggestions
+["Why is it delayed?", "Show the route on a map"]
+```
 - Only put facts from tool results in a card. Use plain markdown (short paragraphs, lists, tables) for everything else.$$
 )
 {

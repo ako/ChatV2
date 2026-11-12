@@ -44,6 +44,10 @@ export interface MapSpec { route: MapStop[]; points: MapPoint[]; unit?: string; 
 // the product graph; the card only names which ones to light up.
 export interface ModelSpec { ref: string; highlight: string[] }
 
+// A side-by-side comparison of two or three products from the product graph.
+// The card names them; their facts come from the graph.
+export interface CompareSpec { refs: string[] }
+
 export interface Card {
     type: string;
     title: string;
@@ -59,6 +63,7 @@ export interface Card {
     graph?: { ref: string };
     map?: MapSpec;
     model?: ModelSpec;
+    compare?: CompareSpec;
     note?: string;
 }
 
@@ -66,6 +71,7 @@ export type Segment =
     | { kind: "markdown"; text: string }
     | { kind: "details"; summary: string; text: string }
     | { kind: "cards"; cards: Card[] }
+    | { kind: "suggestions"; items: string[] }
     | { kind: "pending" };
 
 const TONES: Tone[] = ["neutral", "good", "warning", "critical", "info"];
@@ -76,6 +82,10 @@ const FENCE = /^(`{3,}|~{3,})[ \t]*(card|cards)[ \t]*$/i;
 // A collapsible section: ~~~details <summary> ... ~~~ (markdown inside; use a
 // tilde fence so the body can hold ``` code blocks).
 const DETAILS = /^(~{3,}|`{3,})[ \t]*details(?:[ \t]+(.*))?$/i;
+// Follow-up questions the user can send with one click: ```suggestions with a
+// JSON array of short strings.
+const SUGGEST = /^(`{3,}|~{3,})[ \t]*suggestions[ \t]*$/i;
+const MAX_SUGGESTIONS = 4;
 
 function str(v: unknown): string | undefined {
     if (v === null || v === undefined) return undefined;
@@ -192,9 +202,12 @@ export function toCard(raw: unknown): Card | undefined {
         model: (str(o.type) ?? "").toLowerCase() === "model" && cleanRef(o.ref)
             ? { ref: cleanRef(o.ref) as string, highlight: (Array.isArray(o.highlight) ? list(o.highlight, h => cleanRef(h)) : [cleanRef(o.highlight)].filter((h): h is string => !!h)).slice(0, 12) }
             : undefined,
+        compare: (str(o.type) ?? "").toLowerCase() === "compare"
+            ? (() => { const refs = list(o.refs, r => cleanRef(r)).slice(0, 3); return refs.length >= 2 ? { refs } : undefined; })()
+            : undefined,
         note: str(o.note)
     };
-    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.model && !card.note;
+    const empty = !card.title && !card.fields.length && !card.timeline.length && !card.items.length && !card.chart && !card.outline.length && !card.graph && !card.map && !card.model && !card.compare && !card.note;
     return empty ? undefined : card;
 }
 
@@ -218,6 +231,21 @@ export function splitMessage(content: string): Segment[] {
             flushMd();
             if (j >= lines.length) { out.push({ kind: "pending" }); return out; }
             out.push({ kind: "details", summary: (det[2] ?? "").trim() || "Details", text: body.join("\n") });
+            i = j;
+            continue;
+        }
+        const sug = SUGGEST.exec(lines[i].trim());
+        if (sug) {
+            let j = i + 1;
+            const body: string[] = [];
+            while (j < lines.length && !lines[j].trim().startsWith(sug[1].slice(0, 3))) { body.push(lines[j]); j++; }
+            flushMd();
+            if (j >= lines.length) return out;   // still streaming: show them once complete
+            try {
+                const parsed: unknown = JSON.parse(body.join("\n"));
+                const items = list(parsed, s => { const v = str(s)?.trim(); return v && v.length <= 120 ? v : undefined; }).slice(0, MAX_SUGGESTIONS);
+                if (items.length) out.push({ kind: "suggestions", items });
+            } catch { /* not a list: leave it out */ }
             i = j;
             continue;
         }

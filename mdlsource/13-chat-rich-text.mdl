@@ -8,7 +8,9 @@ mdl 1;
 -- THIS CUSTOMISES A MARKETPLACE MODULE. Updating Conversational UI overwrites the
 -- snippet and brings the Markdown viewer back: run this script again afterwards.
 -- The widget keeps the original's name, binding, class, spacing and visibility,
--- so the script is repeatable and the rest of the snippet is untouched.
+-- so the script is repeatable and the rest of the snippet is untouched. On the
+-- answer itself it also shows thumbs up / down (12b-answer-ratings.mdl) and a
+-- read-aloud button.
 
 alter snippet ConversationalUI.Snippet_Message_Content {
   replace markdownViewer2 with {
@@ -22,6 +24,9 @@ alter snippet ConversationalUI.Snippet_Message_Content {
   replace markdownViewer1 with {
     pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' markdownViewer1 (
       stringAttribute: $Message."Content",
+      onRateUp: microflow "ServiceDesk"."ACT_Message_RateHelpful" (Message = $Message),
+      onRateDown: microflow "ServiceDesk"."ACT_Message_RateNotHelpful" (Message = $Message),
+      readAloud: true,
       Class: 'chat-listview-stylingless convui-markdown',
       DesignProperties: ('Spacing': ('margin-bottom': 'None')),
       Visible: $Message/Role=GenAICommons.ENUM_MessageRole.assistant
