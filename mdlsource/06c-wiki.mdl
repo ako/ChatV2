@@ -93,14 +93,6 @@ create or modify non-persistent entity "ServiceDesk"."WikiProposal" (
   "Reason": String(1000)
 );
 
-/** A search hit, for ranking. */
-create or modify non-persistent entity "ServiceDesk"."WikiHit" (
-  "Slug": String(100),
-  "Title": String(200),
-  "Summary": String(500),
-  "Score": Integer
-);
-
 /** A page as the wiki page shows it: the body with [[links]] turned into page titles. */
 create or modify non-persistent entity "ServiceDesk"."WikiPageView" (
   "Markdown": String(unlimited)
@@ -208,6 +200,91 @@ begin
   return $Out + substring($Body, $Pos);
 end;
 
+-- ---------------------------------------------------------------- full-text search (PostgreSQL)
+
+-- Search runs in the database with PostgreSQL full-text search, over the External
+-- Database Connector as a read-only role (tools/wiki-search/setup.sh creates the
+-- role and a GIN index on the same weighted expression: title and tags A, summary B,
+-- body C). Words are stemmed ("refunded" finds "refund"), any word of the query may
+-- match and pages matching more and heavier words rank first, and ts_headline marks
+-- the matches in a snippet. Without the role or the database, search falls back to
+-- the word match below. The password is not in the model; pass it per run:
+--   --constant ServiceDesk.WikiSearchDbPassword=@file:.mxcli/wiki-search.password
+
+/** JDBC URL of the app's own database, read for wiki search. */
+create or modify constant "ServiceDesk"."WikiSearchDbUrl" folder 'Wiki' ( Type: String, DefaultValue: 'jdbc:postgresql://127.0.0.1:5432/servicedeskcopilot' );
+/** Read-only database role for wiki search (SELECT on the wiki table only). */
+create or modify constant "ServiceDesk"."WikiSearchDbUser" folder 'Wiki' ( Type: String, DefaultValue: 'wiki_search' );
+/** Password of the wiki search role. No value in the model; pass it per run. */
+create or modify constant "ServiceDesk"."WikiSearchDbPassword" folder 'Wiki' ( Type: String, DefaultValue: '' );
+
+/** One full-text search hit: the page, its rank, and a snippet with the matches in bold. */
+create or modify non-persistent entity "ServiceDesk"."WikiSearchRow" (
+  "Slug": String(100),
+  "Title": String(200),
+  "Summary": String(500),
+  "Rank": Decimal,
+  "Snippet": String(unlimited)
+);
+
+/** The search box on the wiki page. */
+create or modify non-persistent entity "ServiceDesk"."WikiSearch" (
+  "Query": String(200),
+  "Engine": String(100)
+);
+
+grant read *, write * on entity "ServiceDesk"."WikiSearchRow" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant create, read *, write * on entity "ServiceDesk"."WikiSearch" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+create or modify database connection "ServiceDesk"."WikiSearchDatabase" folder 'Wiki' (
+  Type: 'PostgreSQL',
+  ConnectionString: @"ServiceDesk"."WikiSearchDbUrl",
+  Username: @"ServiceDesk"."WikiSearchDbUser",
+  Password: @"ServiceDesk"."WikiSearchDbPassword"
+) {
+  query SearchPages (
+    Sql: $$select p.slug as slug, p.title as title, p.summary as summary, ts_rank_cd(setweight(to_tsvector('english'::regconfig, coalesce(p.title, '') || ' ' || coalesce(p.tags, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(p.summary, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(p.body, '')), 'C'), q.query)::numeric(12,6) as rank, ts_headline('english', regexp_replace(regexp_replace(coalesce(p.body, ''), '\[\[([^]|]*)[^]]*\]\]', '\1', 'g'), '[#*|>`_]+|-{2,}|\s+', ' ', 'g'), q.query, 'StartSel=**, StopSel=**, MaxWords=30, MinWords=12, MaxFragments=2, FragmentDelimiter=" … "') as snippet from "servicedesk$wikipage" p, (select to_tsquery('english', replace(plainto_tsquery('english', {query})::text, ' & ', ' | ')) as query) q where (setweight(to_tsvector('english'::regconfig, coalesce(p.title, '') || ' ' || coalesce(p.tags, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(p.summary, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(p.body, '')), 'C')) @@ q.query order by rank desc, p.title limit 5$$,
+    Parameters: ( query: String ),
+    Returns: "ServiceDesk"."WikiSearchRow",
+    Map: ( "Slug" = slug, "Title" = title, "Summary" = summary, "Rank" = rank, "Snippet" = snippet )
+  )
+};
+
+/** Full-text search in the database: up to five pages, best first. Raises an error when the database cannot be read; callers fall back to the word match. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_SearchFullText" ($Query: String)
+returns List of "ServiceDesk"."WikiSearchRow" as $Rows
+folder 'Wiki'
+begin
+  $Rows = execute database query "ServiceDesk"."WikiSearchDatabase"."SearchPages" (query = (if $Query = empty then '' else $Query));
+  return $Rows;
+end;
+
+/** Search for the page and the tools: full-text search, or the word match when the database cannot be read or finds nothing (a partial word, say). Returns the hits and says which search found them. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_Search" ($Query: String, $WikiSearch: "ServiceDesk"."WikiSearch")
+returns List of "ServiceDesk"."WikiSearchRow" as $Hits
+folder 'Wiki'
+begin
+  $FullText = call microflow "ServiceDesk"."SUB_Wiki_SearchFullText" (Query = $Query) on error without rollback begin
+    log warning node 'ServiceDesk' 'Wiki full-text search is not available, using the word match: {1}' with ({1} = $latestError/Message);
+    $Fallback = call microflow "ServiceDesk"."SUB_Wiki_SearchWords" (Query = $Query);
+    if $WikiSearch != empty then
+      change $WikiSearch ("Engine" = 'word match (full-text search is not available)');
+    end if;
+    return $Fallback;
+  end error;
+  if length($FullText) > 0 then
+    if $WikiSearch != empty then
+      change $WikiSearch ("Engine" = 'full-text search');
+    end if;
+    return $FullText;
+  end if;
+  $Words = call microflow "ServiceDesk"."SUB_Wiki_SearchWords" (Query = $Query);
+  if $WikiSearch != empty then
+    change $WikiSearch ("Engine" = 'word match');
+  end if;
+  return $Words;
+end;
+
 -- ---------------------------------------------------------------- reading (agent tools)
 
 /** Agent tool: every page with its one-line summary, the wiki's table of contents. Read it first. */
@@ -262,15 +339,14 @@ begin
     + 'Linked from: ' + (if $From = '' then 'none' else $From);
 end;
 
-/** Agent tool: pages ranked by how many of the query's words appear in their title, tags, summary or body (title and tags count double). */
-create or modify microflow "ServiceDesk"."Tool_WikiSearch" ($Query: String)
-returns String as $Results
+/** The word match: pages ranked by how many of the query's words (3 letters or more) appear in their title, tags, summary or body, title and tags counting double. Up to five, best first. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_SearchWords" ($Query: String)
+returns List of "ServiceDesk"."WikiSearchRow" as $Rows
 folder 'Wiki'
 begin
-  declare $NL String = urlDecode('%0A');
   declare $Words String = trim(replaceAll(toLowerCase(if $Query = empty then '' else $Query), '[^a-z0-9]+', ' ')) + ' ';
   retrieve $Pages from "ServiceDesk"."WikiPage";
-  $Hits = create list of "ServiceDesk"."WikiHit";
+  $Hits = create list of "ServiceDesk"."WikiSearchRow";
   loop $Page in $Pages begin
     declare $Head String = toLowerCase((if $Page/Title = empty then '' else $Page/Title) + ' ' + (if $Page/Tags = empty then '' else $Page/Tags) + ' ' + $Page/Slug);
     declare $Text String = toLowerCase((if $Page/Summary = empty then '' else $Page/Summary) + ' ' + (if $Page/Body = empty then '' else $Page/Body));
@@ -292,18 +368,30 @@ begin
       set $Space = find($Rest, ' ');
     end while;
     if $Score > 0 then
-      $Hit = create "ServiceDesk"."WikiHit" ("Slug" = $Page/Slug, "Title" = $Page/Title, "Summary" = $Page/Summary, "Score" = $Score);
+      $Hit = create "ServiceDesk"."WikiSearchRow" ("Slug" = $Page/Slug, "Title" = $Page/Title, "Summary" = $Page/Summary, "Rank" = $Score, "Snippet" = '');
       add $Hit to $Hits;
     end if;
   end loop;
+  $Sorted = sort $Hits by Rank desc;
+  $Rows = range $Sorted limit 5;
+  return $Rows;
+end;
+
+/** Agent tool: the best matching pages for a query, with a snippet of where the words occur (full-text search in the database, or the word match). */
+create or modify microflow "ServiceDesk"."Tool_WikiSearch" ($Query: String)
+returns String as $Results
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  $Search = create "ServiceDesk"."WikiSearch" ("Query" = $Query);
+  $Hits = call microflow "ServiceDesk"."SUB_Wiki_Search" (Query = $Query, WikiSearch = $Search);
   if length($Hits) = 0 then
     return 'No wiki page matches "' + (if $Query = empty then '' else $Query) + '". Read the index for the list of pages.';
   end if;
-  $Sorted = sort $Hits by Score desc;
-  $Top = range $Sorted limit 5;
-  declare $Out String = 'Best matching wiki pages (open one by its slug with the read tool):' + $NL;
-  loop $H in $Top begin
-    set $Out = $Out + '- ' + $H/Slug + ': ' + (if $H/Title = empty then '' else $H/Title) + (if $H/Summary = empty then '' else ' — ' + $H/Summary) + $NL;
+  declare $Out String = 'Best matching wiki pages (' + $Search/Engine + '; open one by its slug with the read tool):' + $NL;
+  loop $H in $Hits begin
+    set $Out = $Out + '- ' + $H/Slug + ': ' + (if $H/Title = empty then '' else $H/Title) + (if $H/Summary = empty then '' else ' — ' + $H/Summary) + $NL
+      + (if $H/Snippet = empty or trim($H/Snippet) = '' then '' else '  … ' + trim($H/Snippet) + ' …' + $NL);
   end loop;
   return $Out;
 end;
@@ -739,6 +827,106 @@ begin
   show page "ServiceDesk"."WikiPage_View" ("WikiPage" = $WikiPage);
 end;
 
+/** Data source of the search box on the wiki page. */
+create or modify microflow "ServiceDesk"."DS_WikiSearch_New" ()
+returns "ServiceDesk"."WikiSearch" as $Search
+folder 'Wiki'
+begin
+  $Search = create "ServiceDesk"."WikiSearch" ("Query" = '');
+  return $Search;
+end;
+
+/** Data source of the results page: the hits for the query (the search used is stored on the search object). */
+create or modify microflow "ServiceDesk"."DS_WikiSearch_Rows" ($WikiSearch: "ServiceDesk"."WikiSearch")
+returns List of "ServiceDesk"."WikiSearchRow" as $Rows
+folder 'Wiki'
+begin
+  $Rows = call microflow "ServiceDesk"."SUB_Wiki_Search" (Query = $WikiSearch/Query, WikiSearch = $WikiSearch);
+  return $Rows;
+end;
+
+/** A new search for the trimmed query, or empty (with a message at the field) when there is nothing to search for. */
+create or modify microflow "ServiceDesk"."SUB_WikiSearch_Prepare" ($WikiSearch: "ServiceDesk"."WikiSearch")
+returns "ServiceDesk"."WikiSearch" as $Next
+folder 'Wiki'
+begin
+  if $WikiSearch/Query = empty or trim($WikiSearch/Query) = '' then
+    validation feedback $WikiSearch/Query message 'Type what you are looking for.';
+    return empty;
+  end if;
+  $New = create "ServiceDesk"."WikiSearch" ("Query" = trim($WikiSearch/Query));
+  return $New;
+end;
+
+/** Search button: shows the results page for the query. */
+create or modify microflow "ServiceDesk"."ACT_WikiSearch_Run" ($WikiSearch: "ServiceDesk"."WikiSearch")
+folder 'Wiki'
+begin
+  $Next = call microflow "ServiceDesk"."SUB_WikiSearch_Prepare" (WikiSearch = $WikiSearch);
+  if $Next = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."WikiSearch_Results" ("WikiSearch" = $Next);
+end;
+
+/** The page with this slug, or empty. */
+create or modify microflow "ServiceDesk"."SUB_WikiPage_BySlug" ($Slug: String)
+returns "ServiceDesk"."WikiPage" as $Page
+folder 'Wiki'
+begin
+  retrieve $Page from "ServiceDesk"."WikiPage" where [Slug = $Slug] first;
+  return $Page;
+end;
+
+/** Opens the page a search hit points to. */
+create or modify microflow "ServiceDesk"."ACT_WikiSearchRow_Open" ($WikiSearchRow: "ServiceDesk"."WikiSearchRow")
+folder 'Wiki'
+begin
+  $Page = call microflow "ServiceDesk"."SUB_WikiPage_BySlug" (Slug = $WikiSearchRow/Slug);
+  if $Page = empty then
+    return;
+  end if;
+  show page "ServiceDesk"."WikiPage_View" ("WikiPage" = $Page);
+end;
+
+grant execute on microflow "ServiceDesk"."DS_WikiSearch_New" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_WikiSearch_Rows" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_WikiSearch_Run" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_WikiSearchRow_Open" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Search results: the matching pages, best first, each with a snippet of where the words occur. */
+create or modify page "ServiceDesk"."WikiSearch_Results" folder 'Wiki'
+(
+  params: ( $WikiSearch: "ServiceDesk"."WikiSearch" ),
+  title: 'Wiki search',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgWikiSearch {
+    row {
+      column (desktopwidth: 12) {
+        dataview dvWikiSearch (datasource: $WikiSearch) {
+          dynamictext txtSearchHeading (content: 'Search the wiki', rendermode: H2)
+          container ctSearchBox (Class: 'sd-wiki-search') {
+            textbox tbSearchQuery (attribute: "Query", Placeholder: 'e.g. refund for a late delivery')
+            actionbutton btnSearchAgain (caption: 'Search', action: call microflow "ServiceDesk"."ACT_WikiSearch_Run"(WikiSearch = $currentObject), buttonstyle: primary, icon: Atlas_Core.Atlas.search)
+          }
+          listview lvSearchRows (datasource: microflow "ServiceDesk"."DS_WikiSearch_Rows"(WikiSearch = $currentObject), Class: 'sd-wiki-results') {
+            container ctSearchRow (Class: 'sd-panel sd-wiki-body sd-wiki-hit') {
+              actionbutton btnSearchRowOpen (caption: '{1}', captionparams: ({1} = Title), action: call microflow "ServiceDesk"."ACT_WikiSearchRow_Open"(WikiSearchRow = $currentObject), Class: 'sd-wiki-linkbtn sd-wiki-hit__title')
+              dynamictext txtSearchRowSummary (content: '{1}', contentparams: ({1} = Summary), Class: 'sd-wiki-summary')
+              pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtSearchSnippet ( stringAttribute: Snippet )
+            }
+          }
+          dynamictext txtSearchEngine (content: 'Found with {1}.', contentparams: ({1} = Engine), Class: 'sd-eyebrow')
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."WikiSearch_Results" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
 grant execute on microflow "ServiceDesk"."DS_WikiPage_View" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant execute on microflow "ServiceDesk"."DS_WikiPage_LinksTo" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant execute on microflow "ServiceDesk"."DS_WikiPage_LinkedFrom" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
@@ -847,8 +1035,14 @@ create or modify page "ServiceDesk"."Wiki_Overview" folder 'Wiki'
       column (desktopwidth: 12) {
         dynamictext txtWikiHeading (content: 'Wiki', rendermode: H2)
         dynamictext txtWikiHelp (content: 'The shop''s knowledge as linked pages. An AI curator writes and updates them from the policy documents; a support agent approves every change. The assistant reads these pages to answer policy and how-to questions.', rendermode: Paragraph)
+        dataview dvWikiSearchBox (datasource: microflow "ServiceDesk"."DS_WikiSearch_New"()) {
+          container ctWikiSearchBox (Class: 'sd-wiki-search') {
+            textbox tbWikiQuery (attribute: "Query", Placeholder: 'Search the wiki, e.g. refund for a late delivery')
+            actionbutton btnWikiSearch (caption: 'Search', action: call microflow "ServiceDesk"."ACT_WikiSearch_Run"(WikiSearch = $currentObject), buttonstyle: primary, icon: Atlas_Core.Atlas.search)
+          }
+        }
         container ctWikiActions (Class: 'sd-wiki-actions') {
-          actionbutton btnCompile (caption: 'Compile policy documents', action: call microflow "ServiceDesk"."ACT_Wiki_CompilePolicies", buttonstyle: primary, icon: Atlas_Core.Atlas."document")
+          actionbutton btnCompile (caption: 'Compile policy documents', action: call microflow "ServiceDesk"."ACT_Wiki_CompilePolicies", icon: Atlas_Core.Atlas."document")
           actionbutton btnLint (caption: 'Check the wiki', action: call microflow "ServiceDesk"."ACT_Wiki_Lint", icon: Atlas_Core.Atlas."checkmark-circle")
           actionbutton btnWikiChanges (caption: 'Changes and runs', action: show page "ServiceDesk"."Wiki_Changes", icon: Atlas_Core.Atlas.dashboard)
         }

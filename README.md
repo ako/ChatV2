@@ -64,7 +64,7 @@ Each one is optional: without it, that part is skipped and the app still starts.
 To share a preview, run with `--hub https://hub.mxcli.org` instead of `--local` (with `MXCLI_HUB_KEY` set), and leave out `ApplicationRootUrl`, because the hub sets it. While the hub is on, test locally at `http://127.0.0.1:8080`, not `localhost`. Chat streaming fails on `localhost` then; see `FINDINGS.md`.
 
 ```bash
-./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=@file:.mxcli/pgvector.password --constant ServiceDesk.VectorDbReaderPassword=@file:.mxcli/vectordb-reader.password --constant ServiceDesk.OAuthClientSecret=@file:.mxcli/oauth-client.secret --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
+./mxcli run --local --watch --detach --ensure-db -p ServiceDeskCopilot.mpr --runtime-setting ApplicationRootUrl=http://localhost:8080/ --constant Encryption.EncryptionKey=@file:.mxcli/encryption.key --constant ServiceDesk.MxGenAIKey=@env:GENAI_TEXT_KEY --constant ServiceDesk.MxGenAIKnowledgeBaseKey=@env:MX_KB_KEY --constant ServiceDesk.MxGenAIEmbeddingsKey=@env:MX_EMBEDDINGS_KEY --constant ServiceDesk.PgVectorPassword=@file:.mxcli/pgvector.password --constant ServiceDesk.VectorDbReaderPassword=@file:.mxcli/vectordb-reader.password --constant ServiceDesk.OAuthClientSecret=@file:.mxcli/oauth-client.secret --constant ServiceDesk.WikiSearchDbPassword=@file:.mxcli/wiki-search.password --constant ServiceDesk.OpenRouterApiKey=@env:OPENROUTER_KEY
 ```
 
 The MCP server needs `ApplicationRootUrl`, which `run --local` otherwise leaves unset. Without it the app still starts, without the MCP server.
@@ -350,7 +350,7 @@ Besides the vector knowledge base, the policy knowledge lives in a **wiki**: mar
 - **Every change is reviewed.** The **WF_WikiReview** workflow puts each proposal in **My tasks**. The task page shows the page as it is now next to the proposed version, which the reviewer can correct before publishing. The **Changes and runs** page logs every proposal, decision and curator run.
 - **The assistant reads the wiki** with four tools:
   - **WikiIndex**: every page with its summary;
-  - **WikiSearch**: word match, title and tags weighted;
+  - **WikiSearch**: PostgreSQL full-text search, see below;
   - **WikiRead**: a page, with its links and backlinks;
   - **WikiProposeEdit**: staff only, after approval in the chat.
 
@@ -359,4 +359,18 @@ Besides the vector knowledge base, the policy knowledge lives in a **wiki**: mar
   - Tools: `wiki_index`, `wiki_search`, `wiki_read`, and `wiki_propose_edit`. Proposing is for staff only; customers are refused. A proposal goes through the same review and is logged as coming from "MCP".
   - Prompt: `wiki_answer`, which starts from the index and says how to use the tools.
   - Live test: `python3 tests-live/mcp/wiki_test.py`.
+- **Search is PostgreSQL full-text search.** The app queries its own database over the External Database Connector (`WikiSearchDatabase`), as a read-only role with SELECT on the wiki table only.
+  - **Stemming:** "refunding" finds the refunds page.
+  - **Weighting:** title and tags count most, then the summary, then the body.
+  - **Any word matches:** pages that match more words, and heavier ones, rank first.
+  - **Snippets:** `ts_headline` returns one with the matches in bold. The wiki page has a search box with these results, and the chat and MCP tools get the snippets too.
+  - **Index:** a GIN index on the same expression keeps it fast as the wiki grows.
+  - **Fallback:** without the role or the database, or when full-text search finds nothing (a partial word), search falls back to a word match. Results say which search found them.
+  - **Setup, once per database after the app has created the wiki table:**
+
+    ```bash
+    sh tools/wiki-search/setup.sh
+    ```
+
+    This creates the role `wiki_search` and the index, and writes the role's password to `.mxcli/wiki-search.password`. Pass it with `--constant ServiceDesk.WikiSearchDbPassword=@file:.mxcli/wiki-search.password`.
 - **A new environment starts with an empty wiki:** press **Compile policy documents** once and approve the proposals.

@@ -1621,3 +1621,28 @@ Verified live with `tests-live/mcp/wiki_test.py` against `/servicedesk/mcp` (9 c
 - **Tool output named the chat tool names** ("open a page with WikiRead"). An MCP client knows those tools as `wiki_read`, so the wording is now neutral ("with the read tool").
 - **A proposal over MCP was logged as coming from the chat.** The MCP tool is a thin wrapper (`MCPTool_WikiProposeEdit`) that records "MCP, <user>"; it shares `SUB_Wiki_ProposeAsStaff` with the chat tool.
 - **The live test proposes a page every run.** Each run leaves a review task: approve or reject it in My tasks.
+
+## Wiki search: PostgreSQL full-text search (2026-11-13)
+
+`wiki_search`, the chat's WikiSearch and the wiki page's new search box all run one SQL query. It goes over the External Database Connector (`ServiceDesk.WikiSearchDatabase`) to the app's own database. The query uses:
+- a weighted `tsvector` (title and tags A, summary B, body C);
+- `plainto_tsquery` with its `&` turned into `|`, so any word may match and more matches rank higher;
+- `ts_rank_cd` for ranking;
+- `ts_headline` for a snippet, with `StartSel=**` so the chat widget renders the matches in bold.
+
+A GIN expression index (`wiki_fts_idx`) on the same expression is created by `tools/wiki-search/setup.sh`, with a role (`wiki_search`) that has SELECT on the wiki table only.
+
+Verified live:
+- "refunding", which no page contains, finds the refunds page first, through stemming. The word match would find nothing.
+- "return e-bike kilometres" ranks the returns page first (9.2) ahead of bike sizing (1.8).
+- A query of only stop words returns nothing.
+- The role is refused a delete.
+- `tests-live/mcp/wiki_test.py` passes 13/13, 4 of them new for full-text search.
+- The search page shows ranked results with bold snippets, and opening a hit opens its page.
+- **The fallback works:** the microflow test runtime has no search password. Its log says "Wiki full-text search is not available, using the word match: … the password is an empty string", and the search test passes on the word match.
+
+Notes:
+- **The snippet is built from flattened text.** Markdown headings, `[[links]]` (shown as their slug) and table rules (`|---|`) are stripped first. Otherwise the chat widget rendered the table's `---` as em dashes in the snippet.
+- **The index is not ours.** It sits on a table Mendix manages, and Mendix's own sync leaves unknown indexes alone, as far as this run shows: `wiki_fts_idx` survived several restarts. If an entity change makes Mendix rebuild the table, run `setup.sh` again.
+- **On Mendix Cloud the app's database is not reachable** over the External Database Connector. There, the same query would run against a separate search database that the app keeps up to date when a page is published.
+- **Wrong conclusion on the way:** a screenshot script wrote relative to the working directory, and I compared a stale file for three rounds before noticing. Write test artifacts to an absolute path.

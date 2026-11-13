@@ -1,7 +1,8 @@
 # Live test of the wiki over MCP (/servicedesk/mcp, app-account headers): the wiki
 # tools are listed, a customer can read the wiki but not propose an edit, a support
-# agent's proposal becomes a wiki edit waiting for review, and the wiki_answer prompt
-# carries the index. Needs the app running and a compiled wiki.
+# agent's proposal becomes a wiki edit waiting for review, the wiki_answer prompt
+# carries the index, and search runs as PostgreSQL full-text search (stemming, snippets;
+# tools/wiki-search/setup.sh). Needs the app running and a compiled wiki.
 import json, sys, urllib.request
 URL = 'http://localhost:8080/servicedesk/mcp'
 def post(body, session=None, auth=None):
@@ -37,6 +38,12 @@ index = call(sid, customer, 'wiki_index', {}); print('  ' + index.splitlines()[0
 check('index lists the returns page', '- returns: Returns' in index, index)
 found = call(sid, customer, 'wiki_search', {'Query': 'return e-bike kilometres'})
 check('search finds the returns page first', found.splitlines()[1].startswith('- returns:'), found)
+check('search says it used full-text search', 'full-text search' in found.splitlines()[0], found)
+stem = call(sid, customer, 'wiki_search', {'Query': 'refunding'})
+check('full-text search stems words: "refunding" (in no page) finds the refunds page first', len(stem.splitlines()) > 1 and stem.splitlines()[1].startswith('- refunds:'), stem)
+check('a hit carries a snippet with the match in bold', '**refund' in stem.lower(), stem)
+none = call(sid, customer, 'wiki_search', {'Query': 'xylophone'})
+check('a query that matches nothing says so', none.startswith('No wiki page matches'), none)
 page = call(sid, customer, 'wiki_read', {'Slug': 'returns'})
 check('read returns the page with its links', page.startswith('# Returns') and '14 days' in page and 'Links to:' in page and 'Linked from:' in page, page)
 missing = call(sid, customer, 'wiki_read', {'Slug': 'refund'})
