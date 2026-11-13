@@ -1570,4 +1570,4 @@ Studio Pro keeps such an add-on as a file in the app's `modules/` folder, with n
 
 **Fix:** `modules/AgentEditor.mxmodule` taken from the 2.7.0 package (the version of the installed AgentEditorCommons) and committed. Afterwards `mxcli show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on, `docker check` reports 0 errors, and the app builds and runs.
 
-When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both.
+When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205.
