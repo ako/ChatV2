@@ -1,0 +1,64 @@
+# The catalog: products, suppliers, known issues and the wiki. What the
+# product-graph MCP server (and so the AI) may query. Over views.sql.
+@prefix rr: <http://www.w3.org/ns/r2rml#> .
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+<#Vocab_catalog_Iri> rr:logicalTable [ rr:tableName "vocab_catalog_iri" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:IRI ] ] .
+<#Vocab_catalog_Lit> rr:logicalTable [ rr:tableName "vocab_catalog_lit" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:Literal ] ] .
+<#Supplier> rr:logicalTable [ rr:tableName "supplier" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{code}" ; rr:class shop:Supplier ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "name" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:country ; rr:objectMap [ rr:column "country" ] ] .
+
+<#Product> rr:logicalTable [ rr:tableName "product" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate rdf:type ; rr:objectMap [ rr:template "https://example.org/bikeshop#{kind}" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:sku ; rr:objectMap [ rr:column "sku" ] ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "name" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:price ; rr:objectMap [ rr:column "price" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:warrantyYears ; rr:objectMap [ rr:column "warrantyyears" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:wheelSize ; rr:objectMap [ rr:column "wheelsize" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:seatPostDiameter ; rr:objectMap [ rr:column "seatpostdiameter" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:brakes ; rr:objectMap [ rr:column "brakes" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:rackMount ; rr:objectMap [ rr:column "rackmount" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:suppliedBy ; rr:objectMap [ rr:template "https://example.org/bikeshop#{supplier}" ] ] .
+
+<#Component> rr:logicalTable [ rr:tableName "product_component" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:hasComponent ; rr:objectMap [ rr:template "https://example.org/bikeshop#{component}" ] ] .
+
+<#Compatible> rr:logicalTable [ rr:tableName "product_compatible" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:compatibleWith ; rr:objectMap [ rr:template "https://example.org/bikeshop#{target}" ] ] .
+
+<#KnownIssue> rr:logicalTable [ rr:tableName "known_issue" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{issueid}" ] ;
+  rr:predicateObjectMap [ rr:predicate rdf:type ; rr:objectMap [ rr:template "https://example.org/bikeshop#{cls}" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:issueId ; rr:objectMap [ rr:column "issueid" ] ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "title" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:affects ; rr:objectMap [ rr:template "https://example.org/bikeshop#{affects}" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:affectsBatch ; rr:objectMap [ rr:column "affectsbatch" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:announced ; rr:objectMap [ rr:column "announced" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:advice ; rr:objectMap [ rr:column "advice" ] ] .
+
+<#WikiPage> rr:logicalTable [ rr:tableName "wiki_page" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#wiki-{slug}" ; rr:class shop:WikiPage ] ;
+  rr:predicateObjectMap [ rr:predicate shop:slug ; rr:objectMap [ rr:column "slug" ] ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "title" ] ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:comment ; rr:objectMap [ rr:column "summary" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:tags ; rr:objectMap [ rr:column "tags" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:updated ; rr:objectMap [ rr:column "updated" ] ] .
+
+<#WikiLink> rr:logicalTable [ rr:tableName "wiki_link" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#wiki-{slug}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:linksTo ; rr:objectMap [ rr:template "https://example.org/bikeshop#wiki-{target}" ] ] .
+
+<#WikiMention> rr:logicalTable [ rr:tableName "wiki_mention" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#wiki-{slug}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:mentions ; rr:objectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ] .

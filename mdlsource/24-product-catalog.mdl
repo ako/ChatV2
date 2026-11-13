@@ -1,0 +1,146 @@
+mdl 1;
+
+-- The product catalog, stored in the app database: products, suppliers,
+-- parts and compatibility, known issues and recalls, and what each order
+-- contains. It used to live in a Turtle file served by Apache Jena Fuseki; now
+-- the app owns the data and tools/sparql-duckdb serves it as RDF. DuckDB
+-- attaches this database read-only, and an R2RML mapping turns these tables
+-- into the same triples the Turtle file had (shop:sku, shop:compatibleWith, ...).
+-- The data is maintained by the seed only, for now: no edit pages yet.
+-- So SPARQL reaches every table that is mapped: the catalog, orders, the wiki,
+-- customers and tickets.
+-- The seed (24b-product-catalog-seed.mdl) is generated from
+-- tools/sparql-duckdb/products.ttl by tools/sparql-duckdb/generate_catalog_seed.py.
+
+/** What kind of product: the RDF class it maps to (shop:Bike, shop:EBike, shop:Part, shop:Accessory). */
+create or modify enumeration "ServiceDesk"."ENUM_ProductKind" (
+  "Bike" 'Bike',
+  "EBike" 'E-bike',
+  "Part" 'Part',
+  "Accessory" 'Accessory'
+);
+
+/** A supplier of products. Code is the name in the graph (shop:Voltera). */
+create or modify persistent entity "ServiceDesk"."Supplier" (
+  "Code": String(50) not null error message 'Enter a code.' unique error message 'This supplier code already exists.',
+  "Name": String(200),
+  "Country": String(100)
+);
+
+/** A product the shop sells: a bike, a part or an accessory. Bikes also have wheel size, seat post diameter, brakes and whether a rack fits. */
+create or modify persistent entity "ServiceDesk"."Product" (
+  "Sku": String(30) not null error message 'Enter a SKU.' unique error message 'This SKU already exists.',
+  "Name": String(200),
+  "Kind": Enumeration(ServiceDesk.ENUM_ProductKind),
+  "Price": Decimal,
+  "WarrantyYears": Integer,
+  "WheelSize": String(30),
+  "SeatPostDiameter": String(30),
+  "Brakes": String(50),
+  "RackMount": Boolean default false
+)
+index (Sku);
+
+/** A known issue with a product; a recall when IsRecall is set, then possibly limited to one production batch. */
+create or modify persistent entity "ServiceDesk"."KnownIssue" (
+  "IssueId": String(30) not null error message 'Enter an issue id.' unique error message 'This issue id already exists.',
+  "Title": String(300),
+  "IsRecall": Boolean default false,
+  "AffectsBatch": String(20),
+  "Announced": DateTime not localized,
+  "Advice": String(2000)
+);
+
+/** One line of an order: which product, how many, at what price, and the production batch of the delivered unit. */
+create or modify persistent entity "ServiceDesk"."OrderLine" (
+  "Quantity": Integer default 1,
+  "UnitPrice": Decimal,
+  "Batch": String(20)
+);
+
+/** Who supplies the product. */
+create or modify association "ServiceDesk"."Product_Supplier" from "ServiceDesk"."Product" to "ServiceDesk"."Supplier";
+/** The parts a bike ships with (shop:hasComponent). */
+create or modify association "ServiceDesk"."Product_Component" from "ServiceDesk"."Product" to "ServiceDesk"."Product" type ReferenceSet;
+/** What a part or accessory fits on or works with (shop:compatibleWith). */
+create or modify association "ServiceDesk"."Product_CompatibleWith" from "ServiceDesk"."Product" to "ServiceDesk"."Product" type ReferenceSet;
+/** The product a known issue affects (shop:affects). */
+create or modify association "ServiceDesk"."KnownIssue_Product" from "ServiceDesk"."KnownIssue" to "ServiceDesk"."Product";
+/** The order a line belongs to (shop:hasLine). */
+create or modify association "ServiceDesk"."OrderLine_Order" from "ServiceDesk"."OrderLine" to "ServiceDesk"."Order" on delete cascade;
+/** The product on an order line (shop:product). */
+create or modify association "ServiceDesk"."OrderLine_Product" from "ServiceDesk"."OrderLine" to "ServiceDesk"."Product";
+
+grant read * on entity "ServiceDesk"."Supplier" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."Product" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."KnownIssue" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."OrderLine" to "ServiceDesk"."Customer" where [ServiceDesk.OrderLine_Order/ServiceDesk.Order/ServiceDesk.Order_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read * on entity "ServiceDesk"."OrderLine" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Seed helper: creates a product unless its SKU exists, and links its supplier. */
+create or modify microflow "ServiceDesk"."SUB_Product_SeedOne" ($Sku: String, $Name: String, $Kind: Enumeration(ServiceDesk.ENUM_ProductKind), $Price: Decimal, $WarrantyYears: Integer, $SupplierCode: String, $WheelSize: String, $SeatPostDiameter: String, $Brakes: String, $RackMount: Boolean)
+folder 'Product catalog'
+begin
+  retrieve $Existing from "ServiceDesk"."Product" where [Sku = $Sku] first;
+  if $Existing != empty then
+    return;
+  end if;
+  retrieve $Supplier from "ServiceDesk"."Supplier" where [Code = $SupplierCode] first;
+  $Product = create "ServiceDesk"."Product" ("Sku" = $Sku, "Name" = $Name, "Kind" = $Kind, "Price" = $Price, "WarrantyYears" = $WarrantyYears, "WheelSize" = $WheelSize, "SeatPostDiameter" = $SeatPostDiameter, "Brakes" = $Brakes, "RackMount" = $RackMount, "ServiceDesk"."Product_Supplier" = $Supplier) commit;
+end;
+
+/** Seed helper: links two products by SKU, as a component (IsComponent) or as compatible. */
+create or modify microflow "ServiceDesk"."SUB_Product_SeedLink" ($FromSku: String, $ToSku: String, $IsComponent: Boolean)
+folder 'Product catalog'
+begin
+  retrieve $From from "ServiceDesk"."Product" where [Sku = $FromSku] first;
+  retrieve $To from "ServiceDesk"."Product" where [Sku = $ToSku] first;
+  if $From = empty or $To = empty then
+    log warning node 'ServiceDesk' 'Catalog seed: no product {1} or {2}.' with ({1} = $FromSku, {2} = $ToSku);
+    return;
+  end if;
+  if $IsComponent then
+    add $To to $From/"ServiceDesk"."Product_Component";
+  else
+    add $To to $From/"ServiceDesk"."Product_CompatibleWith";
+  end if;
+  commit $From;
+end;
+
+/** Seed helper: adds a line to an existing order, unless the order already has a line for that product. */
+create or modify microflow "ServiceDesk"."SUB_OrderLine_SeedOne" ($OrderNumber: String, $Sku: String, $Quantity: Integer, $UnitPrice: Decimal, $Batch: String)
+folder 'Product catalog'
+begin
+  retrieve $Order from "ServiceDesk"."Order" where [OrderNumber = $OrderNumber] first;
+  retrieve $Product from "ServiceDesk"."Product" where [Sku = $Sku] first;
+  if $Order = empty or $Product = empty then
+    return;
+  end if;
+  retrieve $Existing from "ServiceDesk"."OrderLine" where ["ServiceDesk"."OrderLine_Order" = $Order]["ServiceDesk"."OrderLine_Product" = $Product] first;
+  if $Existing != empty then
+    return;
+  end if;
+  $Line = create "ServiceDesk"."OrderLine" ("Quantity" = $Quantity, "UnitPrice" = $UnitPrice, "Batch" = $Batch, "ServiceDesk"."OrderLine_Order" = $Order, "ServiceDesk"."OrderLine_Product" = $Product) commit;
+end;
+
+/** Seed helper: creates a supplier unless its code exists. */
+create or modify microflow "ServiceDesk"."SUB_Supplier_SeedOne" ($Code: String, $Name: String, $Country: String)
+folder 'Product catalog'
+begin
+  retrieve $Existing from "ServiceDesk"."Supplier" where [Code = $Code] first;
+  if $Existing = empty then
+    $Supplier = create "ServiceDesk"."Supplier" ("Code" = $Code, "Name" = $Name, "Country" = $Country) commit;
+  end if;
+end;
+
+/** Seed helper: creates a known issue (a recall when IsRecall) unless its id exists, linked to the product it affects. */
+create or modify microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" ($IssueId: String, $Title: String, $IsRecall: Boolean, $AffectsBatch: String, $Announced: DateTime, $Advice: String, $Sku: String)
+folder 'Product catalog'
+begin
+  retrieve $Existing from "ServiceDesk"."KnownIssue" where [IssueId = $IssueId] first;
+  if $Existing != empty then
+    return;
+  end if;
+  retrieve $Product from "ServiceDesk"."Product" where [Sku = $Sku] first;
+  $Issue = create "ServiceDesk"."KnownIssue" ("IssueId" = $IssueId, "Title" = $Title, "IsRecall" = $IsRecall, "AffectsBatch" = $AffectsBatch, "Announced" = $Announced, "Advice" = $Advice, "ServiceDesk"."KnownIssue_Product" = $Product) commit;
+end;

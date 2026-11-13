@@ -1,16 +1,17 @@
 mdl 1;
 
 -- Product graph outline: a page for service-desk staff that shows the product
--- knowledge graph (Apache Jena Fuseki, see tools/fuseki) as an outline tree:
--- class -> product, supplier, issue or order -> its facts and links, both ways.
+-- knowledge graph as an outline tree: class -> product, supplier, issue, order
+-- or wiki page -> its facts and links, both ways. The graph is the app's own
+-- data: tools/sparql-duckdb answers SPARQL over this database (R2RML mapping).
 --
 -- Straight SPARQL over HTTP, no MCP server in between: the app POSTs one
--- SELECT query (tools/fuseki/queries/outline.rq, kept in step by hand), a JSLT
+-- SELECT query (tools/sparql-duckdb/queries/outline.rq, kept in step by hand), a JSLT
 -- data transformer flattens the SPARQL JSON results, and an import mapping turns
 -- the rows into GraphNode objects. Every row carries its parent's key, so the
 -- tree needs no associations. "Reload from graph" replaces the snapshot.
 
-/** SPARQL query endpoint of the product graph (Fuseki, read-only dataset). */
+/** SPARQL query endpoint of the product graph (tools/sparql-duckdb over the app database, read-only). */
 create or modify constant "ServiceDesk"."ProductGraphSparqlEndpoint" folder 'Product graph' ( Type: String, DefaultValue: 'http://localhost:3030/products/sparql' );
 
 /** One node of the product graph outline, loaded from the graph with SPARQL. Kind is class, resource, value, link, inlink or line. */

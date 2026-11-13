@@ -1,0 +1,37 @@
+# The vocabulary of the shop graph: classes and property labels. Not data:
+# the instances come from the app database through the R2RML mappings.
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+shop:Product       a rdfs:Class ; rdfs:label "Product" .
+shop:Bike          rdfs:subClassOf shop:Product ; rdfs:label "Bike" .
+shop:EBike         rdfs:subClassOf shop:Bike ; rdfs:label "E-bike" .
+shop:Part          rdfs:subClassOf shop:Product ; rdfs:label "Part" .
+shop:Accessory     rdfs:subClassOf shop:Product ; rdfs:label "Accessory" .
+shop:Supplier      a rdfs:Class ; rdfs:label "Supplier" .
+shop:KnownIssue    a rdfs:Class ; rdfs:label "Known issue" .
+shop:Recall        rdfs:subClassOf shop:KnownIssue ; rdfs:label "Recall" .
+shop:WikiPage      a rdfs:Class ; rdfs:label "Wiki page" .
+
+shop:sku           rdfs:label "SKU" .
+shop:price         rdfs:label "price in EUR" .
+shop:warrantyYears rdfs:label "warranty in years" .
+shop:suppliedBy    rdfs:label "supplied by" .
+shop:hasComponent  rdfs:label "has component (ships with)" .
+shop:compatibleWith rdfs:label "compatible with (fits on / works with)" .
+shop:affects       rdfs:label "known issue affects product" .
+shop:affectsBatch  rdfs:label "recall affects production batch" .
+shop:slug          rdfs:label "wiki slug" .
+shop:linksTo       rdfs:label "wiki page links to" .
+shop:mentions      rdfs:label "wiki page mentions product" .
+shop:country       rdfs:label "country" .
+shop:issueId       rdfs:label "issue id" .
+shop:announced     rdfs:label "announced" .
+shop:advice        rdfs:label "advice" .
+shop:wheelSize     rdfs:label "wheel size" .
+shop:seatPostDiameter rdfs:label "seat post diameter" .
+shop:brakes        rdfs:label "brakes" .
+shop:rackMount     rdfs:label "rack mount" .
+rdfs:comment       rdfs:label "summary" .
+shop:tags          rdfs:label "tags" .
+shop:updated       rdfs:label "last updated" .

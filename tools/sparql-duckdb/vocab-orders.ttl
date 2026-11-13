@@ -1,0 +1,10 @@
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+shop:Order         a rdfs:Class ; rdfs:label "Order" .
+shop:OrderLine     a rdfs:Class ; rdfs:label "Order line" .
+shop:orderNumber   rdfs:label "order number" .
+shop:hasLine       rdfs:label "order has line" .
+shop:product       rdfs:label "order line product" .
+shop:quantity      rdfs:label "quantity" .
+shop:unitPrice     rdfs:label "unit price in EUR" .
+shop:batch         rdfs:label "production batch of the delivered unit" .

@@ -1,0 +1,27 @@
+# Orders and their lines (blank nodes, as in the Turtle file the graph started from) (the product graph's orders: those with recorded
+# contents). Added to the catalog for the /products dataset, which only the app queries.
+@prefix rr: <http://www.w3.org/ns/r2rml#> .
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+<#Vocab_orders_Iri> rr:logicalTable [ rr:tableName "vocab_orders_iri" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:IRI ] ] .
+<#Vocab_orders_Lit> rr:logicalTable [ rr:tableName "vocab_orders_lit" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:Literal ] ] .
+<#Order> rr:logicalTable [ rr:tableName "order_with_lines" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{ordernumber}" ; rr:class shop:Order ] ;
+  rr:predicateObjectMap [ rr:predicate shop:orderNumber ; rr:objectMap [ rr:column "ordernumber" ] ] .
+
+<#OrderLine> rr:logicalTable [ rr:tableName "order_line" ] ;
+  rr:subjectMap [ rr:template "line{id}" ; rr:termType rr:BlankNode ; rr:class shop:OrderLine ] ;
+  rr:predicateObjectMap [ rr:predicate shop:product ; rr:objectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:quantity ; rr:objectMap [ rr:column "quantity" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:unitPrice ; rr:objectMap [ rr:column "unitprice" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:batch ; rr:objectMap [ rr:column "batch" ] ] .
+
+<#OrderHasLine> rr:logicalTable [ rr:tableName "order_line" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{ordernumber}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:hasLine ; rr:objectMap [ rr:template "line{id}" ; rr:termType rr:BlankNode ] ] .

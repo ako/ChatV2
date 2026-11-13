@@ -3,7 +3,7 @@ mdl 1;
 -- What an order contains, for the AI - scoped to the signed-in user.
 --
 -- The product-graph MCP server only reaches the order-free catalog dataset
--- (tools/fuseki/start.sh), so no prompt or query can make it reveal an order.
+-- (tools/sparql-duckdb: its mapping has no orders), so no prompt or query can make it reveal an order.
 -- Order contents come from here instead: the agent tool GetOrderProducts first
 -- finds the order the way GetOrderStatus does (a customer only finds their own),
 -- then asks the full graph (ServiceDesk.ProductGraphSparqlEndpoint, /products)

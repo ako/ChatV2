@@ -1690,3 +1690,27 @@ Seen in the tour video: the AI-drafted return reply started with "Subject: none 
 - **The prompt now says what to write:** only the message, beginning with the greeting and ending with the signature, with nothing before or after it.
 - **The microflow drops such lines anyway** (`SUB_Return_CleanReply`): any leading line that starts like a subject, title or remark ("Subject:", "Re:", "Here is the reply:"). If nothing is left, it uses the fallback text.
 - Two new microflow tests: the stray lines are dropped, and a reply that starts with the greeting is kept unchanged. The tour's approval beat now also checks that the draft starts with "Dear".
+
+## Fuseki replaced by DuckDB's rdf extension: SPARQL over the app database (2026-11-13)
+
+The product graph was a Turtle file served by Apache Jena Fuseki: a second copy of data the app partly had already (orders), and a Java server to run. Now the catalog is app data (`Product`, `Supplier`, `KnownIssue`, `OrderLine`, seeded once from the same Turtle file), and `tools/sparql-duckdb` answers SPARQL over the app's PostgreSQL database. DuckDB attaches it read-only, and the `rdf` community extension (v2.9.0 on DuckDB 2.0.0) translates each query into SQL through an R2RML mapping (`execute_sparql(query, mapping)`). The endpoint keeps Fuseki's URLs and JSON, so the app's two SPARQL queries and the MCP server are unchanged.
+
+Measured:
+- **Same answers.** The Product explorer's outline query (nested sub-select with COUNT, seven UNION branches, OPTIONAL, BIND, COALESCE, `isIRI`, `?s ?p ?o`) runs unchanged in 0.9 s. Compared with the Turtle file, it gives the same classes, resources, facts and order lines, plus the new Wiki page class. The GetOrderProducts query (recall reached through a bike's component, batch scoping) gives the same rows for SO-10003, SO-10005 and SO-10009. `tests-live/mcp/product_graph_test.py` passes in full, including "the catalog holds no orders, even over every triple". The customer scoping of the reference API is unchanged: Ada finds only her own orders.
+- **Live data.** A query on `/app` lists tickets the app created minutes before, with their customer and order. Nothing is copied, so there is no reload step.
+- **Least privilege.** The endpoint attaches as `servicedesk_graph`, which can SELECT only the 11 mapped tables. `app.public."servicedesk$account"` is "does not exist" to it. Writes are refused twice: the extension parses only SELECT, ASK, CONSTRUCT and DESCRIBE, and the attach is READ_ONLY.
+
+Things to know about the extension:
+- **One mapping file per call.** A list or a comma-separated string is refused. The server concatenates the mapping parts per dataset (Turtle allows repeated prefixes).
+- **Results have no term types.** Columns come back as `v_<var>`, plus `d_<var>` ('I' for an IRI) only when the mapping does not decide the kind. The server marks a value as an IRI from `d_`, else when it looks like one. Literal datatypes are not returned, but comparisons are typed (`FILTER(?price > 1000)` works on a decimal column).
+- **Stricter scoping than Fuseki.** `{ ?p shop:sku ?s . FILTER(?p = ?part) }` inside a UNION branch, with `?part` bound outside it, is refused ("out-of-scope variable"). By the spec, that FILTER cannot see `?part`: Fuseki returned nothing, silently. Write the join into the pattern instead.
+- **Blank nodes work** (`rr:termType rr:BlankNode`). Order lines are blank nodes as in the Turtle file, so the outline's `isIRI` filter keeps them out of the "links here" lists.
+- **Natural datatypes come from the view.** Prices are cast to `decimal(10,2)` in `views.sql`, otherwise Mendix's `numeric(28,8)` prints as `1299.00000000`.
+
+The wiki is now in the graph: pages, `linksTo` (only to pages that exist) and `mentions` (a page that names a SKU as a word). The current pages are policies that name no SKU, so `mentions` is empty until a page does.
+
+Caveat: `views.sql` names Mendix's tables and columns, as the wiki search does. Renaming an entity, attribute or association breaks the view, and nothing checks that at build time. A broken view shows up as a 400 from the endpoint.
+
+mxcli side: removing a role from a `grant` line in a re-run script does not revoke it, and changing a grant's role list left an overlapping duplicate rule. `revoke all on entity … from …` followed by re-running the script gave a clean state. Exec is additive for access rules; that is worth remembering, not a defect.
+
+Caught only by a live chat: the endpoint answered curl but gave the app **400 "No query"**. The Mendix runtime's REST call sends its body with `Transfer-Encoding: chunked` and no `Content-Length`, and the first server read `Content-Length` only. It now reads chunked bodies. After the fix, the same chat question ("is the e-bike in SO-10003 affected by a recall, which seat post fits?") answers from the graph: batch B2605 is not affected by the B2603 recall, and SSP-27 fits. The startup outline load logs no error. curl-only tests would have passed against the broken server; test an endpoint with the client that will call it.

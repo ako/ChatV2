@@ -40,3 +40,7 @@ Anchors: none · id `2af278` · 2026-11-12
 ## The product-graph MCP server only reaches the order-free /catalog dataset; order contents reach the AI only through app tools that check the user (GetOrderProducts, GetOrderStatus). Never give an MCP or SPARQL tool the full /products dataset.
 
 Anchors: none · id `d3f527` · 2026-11-12
+
+## The product graph is SPARQL over the app database (tools/sparql-duckdb: DuckDB rdf extension + R2RML mapping), not a separate triple store; catalog data lives in Product/Supplier/KnownIssue/OrderLine
+
+Anchors: none · id `e316af` · 2026-11-13
