@@ -418,3 +418,81 @@
     gap: 10px;
     margin-top: 8px;
 }
+
+// Wiki: a page's body in a glass panel, its links beside it
+.sd-wiki-body.sd-panel {
+    height: auto;
+    padding: 20px 24px;
+    margin: 12px 0 20px;
+}
+// the two versions on the review page scroll on their own
+.sd-wiki-compare.sd-panel {
+    max-height: 52vh;
+    overflow-y: auto;
+}
+.sd-wiki-summary {
+    color: var(--mxt-ink-muted);
+}
+.sd-wiki-links {
+    padding: 16px 18px;
+    .sd-eyebrow {
+        margin-top: 8px;
+    }
+}
+.sd-wiki-linklist.mx-listview > ul > li,
+.sd-wiki-linklist .mx-listview-item {
+    border: 0;
+    padding: 0;
+    background: transparent;
+}
+.btn.sd-wiki-linkbtn {
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    color: var(--mxt-accent, #4fd1c5);
+    text-align: left;
+    white-space: normal;
+}
+.btn.sd-wiki-linkbtn:hover {
+    text-decoration: underline;
+}
+.sd-wiki-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+// Wiki search: the box beside its button, results as panels
+.sd-wiki-search {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 4px 0 16px;
+    max-width: 760px;
+    .form-group {
+        flex: 1 1 auto;
+        margin: 0;
+    }
+}
+.sd-wiki-results.mx-listview > ul > li,
+.sd-wiki-results .mx-listview-item {
+    border: 0;
+    padding: 0;
+    background: transparent;
+}
+.sd-wiki-hit.sd-panel {
+    margin: 0 0 12px;
+    padding: 14px 20px;
+}
+.btn.sd-wiki-hit__title {
+    display: block;
+    font-size: 17px;
+    font-weight: 600;
+}
+.sd-wiki-hit .sd-wiki-summary {
+    display: block;
+    margin: 2px 0 8px;
+}
+.sd-wiki-search input.form-control {
+    min-height: 38px;
+}

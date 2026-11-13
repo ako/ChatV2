@@ -1168,7 +1168,8 @@ scoped agent tool (GetDeliveryStatistics), chart and outline card types in ChatR
 REST endpoint that serves product graph node details for clickable references.
 
 Found on the way:
-- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.**
+- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.** Filed as
+  [ako/mxcli#2208](https://github.com/ako/mxcli/issues/2208), fix in [ako/mxcli#2216](https://github.com/ako/mxcli/pull/2216).
   - `e.Leg != empty` in a view entity: OQL has no `empty`, it needs `is not null`.
   - An unquoted `ServiceDesk.Order` in a join path: `Order` is an OQL reserved word, so write `ServiceDesk."Order"`.
   - Separately, division in OQL is `:`, not `/`, which is the path separator.
@@ -1225,7 +1226,8 @@ Found on the way:
   Commons' `Agent.Description` is String(200). Agent Editor Commons logged "tried setting a value of length 203"
   at startup and kept the *previous* version of the agent. `mxcli check`, `exec` and `docker check` were all
   clean. The symptom was the eligibility agent returning an empty answer every time. Three hypotheses
-  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Check the startup log
+  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Filed as
+  [ako/mxcli#2211](https://github.com/ako/mxcli/issues/2211), check warning MDL-AGENT04 in [ako/mxcli#2220](https://github.com/ako/mxcli/pull/2220). Check the startup log
   for "Agent Editor Commons" errors after changing an agent.
 - **The knowledge base as a tool of a task agent was not confirmed to work** with `Agent_Call_WithoutHistory`:
   its runs were all on the stale agent. The eligibility agent now gets the policy text in its prompt
@@ -1387,7 +1389,7 @@ How it was verified:
 
 **Theme from a design.** `mxcli theme create glass --from design/glass-tokens.css --base console` took the 37 `--mxt-*` tokens straight from a small tokens file read off the canvas. Two things it did not do:
 - It took the glass look itself (blur, glows, translucent panels) only as far as the palette goes. That went into the theme's skin mixin.
-- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy.
+- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy. Filed as [ako/mxcli#2210](https://github.com/ako/mxcli/issues/2210), fix in [ako/mxcli#2218](https://github.com/ako/mxcli/pull/2218).
 
 `theme apply glass` removed the signal theme's partial and fonts from `theme/web/`.
 
@@ -1465,7 +1467,7 @@ Verified live as demo_customer:
 
 **A route stop per place, not per scan.** Three scans at two places (Leipzig picked up; Venlo arrived, then delayed) are two stops. The stop shows the latest scan at that place, so the Venlo stop carries the delay. Taking the first scan made the panel's Venlo stop teal while the chat's was amber.
 
-**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run.
+**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run. Filed as [ako/mxcli#2209](https://github.com/ako/mxcli/issues/2209), fix in [ako/mxcli#2219](https://github.com/ako/mxcli/pull/2219).
 
 The 404 in the browser console is Conversational UI's own `llm-streaming` endpoint, present before this change.
 
@@ -1570,4 +1572,121 @@ Studio Pro keeps such an add-on as a file in the app's `modules/` folder, with n
 
 **Fix:** `modules/AgentEditor.mxmodule` taken from the 2.7.0 package (the version of the installed AgentEditorCommons) and committed. Afterwards `mxcli show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on, `docker check` reports 0 errors, and the app builds and runs.
 
-When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205.
+When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205, fix in [ako/mxcli#2217](https://github.com/ako/mxcli/pull/2217).
+
+## Wiki prototype: a curated knowledge base instead of chunks (2026-11-13)
+
+Verified live:
+- **Compile.** The curator turned the two policy documents (185 and 162 words) into 8 linked pages in one 24-second run: returns, refunds, goodwill refund for late delivery, damaged items, delivery and carriers, changing the delivery address, warranty, password reset. Each came with a reason. All 8 went through review tasks into the wiki.
+- **Check.** The lint run proposed 3 fixes, all real:
+  - "Any item: 45 days" read as covering bikes too, which have 14 days. The source has the same ambiguity, and the vector knowledge base passes it on unchanged.
+  - A rule on the password page was stated twice.
+  - A summary list repeated the paragraphs above it.
+- **Chat.** Four customer questions were answered from the wiki: e-bike returns, changing the address, a late order, workshop hours plus a helmet return.
+  - For staff, the Tool calls tab shows WikiIndex, then WikiRead on the pages the answer used.
+  - Every policy-card quote was found word for word on the cited page ("Wiki: Returns", "Wiki: Goodwill refund for late delivery", and so on).
+- **Edit from the chat.** A staff request to add an "Opening hours" page became a proposal after the approval prompt. Once approved, it answered the next customer question.
+
+Not compared: answer quality and cost against the vector knowledge base on the same questions. With two short documents both give the same facts; the differences are elsewhere:
+- **Traceable answers:** every answer comes from a page a person approved.
+- **Contradictions surface:** the lint pass found one in the sources.
+- **People can edit the knowledge directly.**
+- **Cost:** reading pages costs more tokens per question than four retrieved chunks. That was not measured.
+
+Design decisions and what they cost:
+- **The curator gets everything in its prompt and answers with JSON; it uses no tools.** Ingest is then one deterministic call, and the JSON is the proposal. It only works while the whole wiki fits in the prompt: fine for tens of pages, not for thousands. Proposals still waiting for review are included, so a second run builds on them.
+- **Pages are database objects, not `.md` files.** Mendix security, history and search work on them as on any entity. Export to files or git is not built.
+- **Search is a word count, not full-text or embeddings:** title and tags count double. Fine for nine pages. For hundreds, Postgres full-text through the database connector would be the next step.
+- **Mendix `replaceAll` has no back-references**, so `[[slug]]` is turned into titles by a loop in a microflow (`SUB_Wiki_Render`), not by a regex replace.
+
+Found on the way:
+- **The shared `.sd-panel` style sets `height: 100%`,** which suits the chat's columns. On the review page it made both panels run into the form below them. Wiki panels now set their own height.
+- **A page that customers can open must not show an entity they cannot read,** even in a grid only staff would use. mxbuild reported CE2729 for the revisions grid on the wiki page, and `mxcli check` did not catch it. The log moved to a staff-only page.
+- **The assistant echoed `[[returns]]` in a chat answer.** The prompt now says to name pages by title.
+
+## The wiki over MCP (2026-11-13)
+
+Both MCP servers register four wiki tools (`wiki_index`, `wiki_search`, `wiki_read`, `wiki_propose_edit`) and a `wiki_answer` prompt, beside the order and ticket tools. They are the same microflows the chat assistant uses, so the MCP Server module runs them as the signed-in user. Proposing an edit checks that the caller is staff.
+
+Verified live with `tests-live/mcp/wiki_test.py` against `/servicedesk/mcp` (9 checks pass):
+- the wiki tools are listed;
+- the index lists the pages;
+- "return e-bike kilometres" finds the returns page first;
+- reading a page gives its links and backlinks;
+- "refund" suggests "refunds";
+- a customer's edit is refused, and an invalid slug is refused;
+- demo_agent's "Bike sizing" page became a proposal and was then approved in the app;
+- the prompt carries the question and the index.
+
+`basic_auth_test.py` still passes. The OAuth server registers the same tools through the same microflow. It was not tested live this time, because Keycloak was not running.
+
+- **Tool output named the chat tool names** ("open a page with WikiRead"). An MCP client knows those tools as `wiki_read`, so the wording is now neutral ("with the read tool").
+- **A proposal over MCP was logged as coming from the chat.** The MCP tool is a thin wrapper (`MCPTool_WikiProposeEdit`) that records "MCP, <user>"; it shares `SUB_Wiki_ProposeAsStaff` with the chat tool.
+- **The live test proposes a page every run.** Each run leaves a review task: approve or reject it in My tasks.
+
+## Wiki search: PostgreSQL full-text search (2026-11-13)
+
+`wiki_search`, the chat's WikiSearch and the wiki page's new search box all run one SQL query. It goes over the External Database Connector (`ServiceDesk.WikiSearchDatabase`) to the app's own database. The query uses:
+- a weighted `tsvector` (title and tags A, summary B, body C);
+- `plainto_tsquery` with its `&` turned into `|`, so any word may match and more matches rank higher;
+- `ts_rank_cd` for ranking;
+- `ts_headline` for a snippet, with `StartSel=**` so the chat widget renders the matches in bold.
+
+A GIN expression index (`wiki_fts_idx`) on the same expression is created by `tools/wiki-search/setup.sh`, with a role (`wiki_search`) that has SELECT on the wiki table only.
+
+Verified live:
+- "refunding", which no page contains, finds the refunds page first, through stemming. The word match would find nothing.
+- "return e-bike kilometres" ranks the returns page first (9.2) ahead of bike sizing (1.8).
+- A query of only stop words returns nothing.
+- The role is refused a delete.
+- `tests-live/mcp/wiki_test.py` passes 13/13, 4 of them new for full-text search.
+- The search page shows ranked results with bold snippets, and opening a hit opens its page.
+- **The fallback works:** the microflow test runtime has no search password. Its log says "Wiki full-text search is not available, using the word match: … the password is an empty string", and the search test passes on the word match.
+
+Notes:
+- **The snippet is built from flattened text.** Markdown headings, `[[links]]` (shown as their slug) and table rules (`|---|`) are stripped first. Otherwise the chat widget rendered the table's `---` as em dashes in the snippet.
+- **The index is not ours.** It sits on a table Mendix manages, and Mendix's own sync leaves unknown indexes alone, as far as this run shows: `wiki_fts_idx` survived several restarts. If an entity change makes Mendix rebuild the table, run `setup.sh` again.
+- **On Mendix Cloud the app's database is not reachable** over the External Database Connector. There, the same query would run against a separate search database that the app keeps up to date when a page is published.
+- **Wrong conclusion on the way:** a screenshot script wrote relative to the working directory, and I compared a stale file for three rounds before noticing. Write test artifacts to an absolute path.
+
+## mxcli gaps from these findings: issues and fix PRs (2026-11-13)
+
+A review of this file against mxcli `main` (f7031349) found that almost every mxcli gap reported here was already filed and fixed. Four were not filed. All four reproduced on a copy of this project and are now filed, with fix PRs. The fix for #2205 is in a PR too.
+
+| Gap | Issue | Fix PR |
+|---|---|---|
+| `check` passed `!= empty` and an unquoted `ServiceDesk.Order` in view OQL (CE0174) | [ako/mxcli#2208](https://github.com/ako/mxcli/issues/2208) | [ako/mxcli#2216](https://github.com/ako/mxcli/pull/2216) |
+| `revoke … from Admin` refused because a shared read rule "also grants" other roles | [ako/mxcli#2209](https://github.com/ako/mxcli/issues/2209) | [ako/mxcli#2219](https://github.com/ako/mxcli/pull/2219) |
+| `theme create --from` dropped JetBrains Mono while `--mxt-font-mono` still named it | [ako/mxcli#2210](https://github.com/ako/mxcli/issues/2210) | [ako/mxcli#2218](https://github.com/ako/mxcli/pull/2218) |
+| An agent description over 200 characters (or a name over 50) passes `check` | [ako/mxcli#2211](https://github.com/ako/mxcli/issues/2211) | [ako/mxcli#2220](https://github.com/ako/mxcli/pull/2220) |
+| `marketplace install` left out `modules/AgentEditor.mxmodule` | [ako/mxcli#2205](https://github.com/ako/mxcli/issues/2205) | [ako/mxcli#2217](https://github.com/ako/mxcli/pull/2217) |
+
+How each was verified:
+- **OQL:** each case was exec'd into its own copy of the project and checked with mxbuild 11.16. `e.Leg != empty` gives CE0174 "Cannot resolve path part 'empty'", and unquoted `Order` gives CE0174 too; the `is not null` / `"Order"` control is clean. A further run measured which names fail unquoted as an entity or attribute: Order, Group, Limit, Offset, End, Key, Count, Sum, Distinct, Select, Like, Asc, Desc, Having, Where, Join, Exists and Cast do; Status, Value, Date, Position, Index, Coalesce and Top don't. The fix reports `empty` as MDL030 and those 18 words as MDL032.
+- **Revoke:** on current `main`, a script with this file's grant + revoke pattern fails on every run, the first included. The refused rule is the read-only rule the `grant` added, which the revoke would not change. With the fix, the first run narrows Admin and the second reports "nothing to revoke".
+- **Theme:** with `design/glass-tokens.css` and `--base console`, the fixed build ships JetBrains Mono's woff2 files and `@font-face`. Space Grotesk is still dropped, correctly: console's heading is `var(--mxt-font)`, which is now Inter.
+- **Agent lengths:** Agent Editor Commons' import (`AgentFromModel_CreateUpdateAgent`) writes the agent name into `AgentCommons.Agent.Title` (String(50)) and the description into `Agent.Description` (String(200)). The new warning MDL-AGENT04 covers those two and the tool name, title and description lengths. It gives no finding on this project's agent scripts.
+- **Add-on module:** `package.xml` in the Agent Editor 2.7.0 package doesn't list `modules/AgentEditor.mxmodule`, which is why the installer skipped it. In a fresh 11.16 app, the fixed `marketplace install 257918 --version 2.7.0` writes the file byte-identical to the one committed here, and `show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on. The unfixed build lists the file under "Left out". It is not yet confirmed in Studio Pro that the agent editor then opens.
+
+### Update: full-text search on the runtime's own connection (2026-11-13)
+
+The External Database Connector version needed a second login to the app's own database: a role, a password constant and a setup script. It also could not run on Mendix Cloud, where the app's database is not reachable that way. The runtime API offers the app's own connection instead: `Core.dataStorage().executeWithConnection(IContext, Function<Connection, R>)` in `com.mendix.public-api.jar`. Two Java actions now use it:
+- `JA_Wiki_SearchFullText` runs the same weighted query as a `PreparedStatement`, with the user's text as its only parameter, and builds `WikiSearchRow` objects.
+- `JA_Wiki_EnsureSearchIndex` runs `create index if not exists wiki_fts_idx …` from `ASU_App`. It logs and returns false on a database that is not PostgreSQL, so startup never fails on it.
+
+The connector, its three constants, the role and `tools/wiki-search/setup.sh` are gone.
+
+Measured:
+- **The startup action creates the index.** It was dropped (`pg_indexes` count 0), the app was restarted, and the count was 1.
+- **PostgreSQL uses it.** `explain` with `enable_seqscan = off` gives "Bitmap Index Scan on wiki_fts_idx" for the app's expression. The index expression and the query's must match exactly; they share one Java constant.
+- **The context overload matters.** With `executeWithConnection(getContext(), …)` the search sees a page the same transaction has just stored. A new microflow test stores a page and searches for it with a stemmed word, and passes. Control: switched to the overload without a context, the same test fails ("expected $Ok = true, actual: false"); switched back, it passes.
+- `tests-live/mcp/wiki_test.py` 13/13, and the search page still shows ranked results with snippets.
+
+Caveat: the SQL names Mendix's own table and columns (`"servicedesk$wikipage"`, `title`, `body`, …). Renaming the entity or an attribute means changing the Java constant too; nothing checks that at build time.
+
+## The return reply began with "Subject: none needed" (2026-11-13)
+
+Seen in the tour video: the AI-drafted return reply started with "Subject: none needed. Writing the message now." The prompt ended with "No subject line", and the model answered that instruction in the message itself. A negative instruction about form invites a remark about it.
+- **The prompt now says what to write:** only the message, beginning with the greeting and ending with the signature, with nothing before or after it.
+- **The microflow drops such lines anyway** (`SUB_Return_CleanReply`): any leading line that starts like a subject, title or remark ("Subject:", "Re:", "Here is the reply:"). If nothing is left, it uses the fallback text.
+- Two new microflow tests: the stray lines are dropped, and a reply that starts with the greeting is kept unchanged. The tour's approval beat now also checks that the draft starts with "Dear".

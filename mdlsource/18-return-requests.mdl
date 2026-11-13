@@ -136,7 +136,7 @@ create or modify agent "ServiceDesk"."ReturnReplyAgent" folder 'Agents' (
 If a return label code is given, the return is accepted: thank them, give the label code, say the prepaid PostNL label arrives by email within one working day, ask them to send the item unused in its original packaging, and say the refund follows within 7 working days after the item is back.
 If no label code is given, the return is not accepted: explain why in plain words, from the decision reason, and offer to help further (for example a warranty claim or a ticket).
 
-Never mention internal checks, systems, tools or AI, and never quote internal notes; explain the outcome in terms of the returns policy. Follow the support agent's instructions when there are any. Use the customer's language if their reason is written in another language than English. Plain text only: no markdown, no asterisks, no bullet symbols. No subject line, no placeholders, at most 120 words. Sign as "The service desk".$$,
+Never mention internal checks, systems, tools or AI, and never quote internal notes; explain the outcome in terms of the returns policy. Follow the support agent's instructions when there are any. Use the customer's language if their reason is written in another language than English. Plain text only: no markdown, no asterisks, no bullet symbols, no placeholders, at most 120 words. Write only the message itself: begin with the greeting ("Dear customer," or the customer's name) and end with the signature "The service desk". Nothing before the greeting and nothing after the signature: no subject, no heading, no remarks about the message.$$,
   UserPrompt: $$Item: {{Item}}
 Decision reason: {{DecisionReason}}
 Return label code: {{ReturnLabel}}
@@ -242,6 +242,22 @@ begin
   change $ReturnRequest ("Decision" = ServiceDesk.ENUM_ReturnDecision.NotEligible, "DecidedBy" = 'Support agent', "Status" = ServiceDesk.ENUM_ReturnStatus.ReplyDrafted) commit;
 end;
 
+/** The reply as the customer should get it: leading lines that are not part of the message (a "Subject:" line, a remark such as "Here is the reply:") are dropped, and the rest is trimmed. */
+create or modify microflow "ServiceDesk"."SUB_Return_CleanReply" ($Text: String)
+returns String as $Clean
+folder 'Returns'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Rest String = trim(replaceAll(if $Text = empty then '' else $Text, '\r', ''));
+  declare $FirstLine String = (if find($Rest, $NL) >= 0 then substring($Rest, 0, find($Rest, $NL)) else $Rest);
+  while $Rest != '' and isMatch(toLowerCase(trim($FirstLine)), '(subject|re|title|draft|reply|message|here is|here''s|note)\b.*')
+  begin
+    set $Rest = (if find($Rest, $NL) >= 0 then trim(substring($Rest, find($Rest, $NL) + 1)) else '');
+    set $FirstLine = (if find($Rest, $NL) >= 0 then substring($Rest, 0, find($Rest, $NL)) else $Rest);
+  end while;
+  return $Rest;
+end;
+
 /** Workflow AI agent task: the reply agent drafts the message to the customer. An accepted return gets its label code first. Falls back to a plain template when the agent cannot answer, so a person always has a draft to approve. */
 create or modify microflow "ServiceDesk"."WFA_Return_DraftReply" ($ReturnRequest: "ServiceDesk"."ReturnRequest")
 returns Boolean as $Drafted
@@ -255,8 +271,11 @@ begin
       log error node 'ServiceDesk' 'Reply agent failed for return {1}: {2}' with ({1} = toString($ReturnRequest/ReturnNumber), {2} = $latestError/Message);
     end error;
     if $Response != empty and $Response/ResponseText != empty then
-      change $ReturnRequest ("DraftReply" = trim($Response/ResponseText), "ReviewerNote" = empty) commit;
-      return true;
+      $Reply = call microflow "ServiceDesk"."SUB_Return_CleanReply" (Text = $Response/ResponseText);
+      if $Reply != '' then
+        change $ReturnRequest ("DraftReply" = $Reply, "ReviewerNote" = empty) commit;
+        return true;
+      end if;
     end if;
   end if;
   change $ReturnRequest ("DraftReply" = (if $Accepted
