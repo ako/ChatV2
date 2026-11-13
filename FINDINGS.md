@@ -1160,3 +1160,398 @@ Found on the way:
 Gates: check clean, and the second exec writes nothing; lint 0 errors, 18 warnings (the new one is ARCH002 on
 the read-only snapshot entity); report 74/100; docker check 0 errors; tests 16/16. Customers do not see the menu
 item (page and microflows are granted to SupportAgent and Admin only).
+
+## Delivery statistics, chart and outline cards, clickable references (2026-11-12)
+
+What was built: shipments synced from the carrier's REST API, legs computed per scan, six OQL view entities, a
+scoped agent tool (GetDeliveryStatistics), chart and outline card types in ChatRichText, and a session-authenticated
+REST endpoint that serves product graph node details for clickable references.
+
+Found on the way:
+- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.**
+  - `e.Leg != empty` in a view entity: OQL has no `empty`, it needs `is not null`.
+  - An unquoted `ServiceDesk.Order` in a join path: `Order` is an OQL reserved word, so write `ServiceDesk."Order"`.
+  - Separately, division in OQL is `:`, not `/`, which is the path separator.
+- **A `run --watch` *reload* does not re-run the after-startup microflow.** So Agent Editor prompts that changed in
+  `07-agents.mdl` were not re-imported into Agent Commons, and the agent kept answering with the old prompt. Only
+  the first edit had landed, from an earlier restart. A full restart (`start-app.sh`) re-imports. Check the in-use
+  prompt with OQL on `AgentCommons.Version` before blaming the model.
+- **`run --watch` does not notice a new widget `.mpk`** ("no change since the boot"). After `widget init`, restart
+  the app.
+- **Session auth on a published REST service needs the CSRF token.** Without `X-Csrf-Token` the answer is 401. The
+  token is `mx.session.getConfig("csrftoken")` in the browser, which is what the widget sends.
+- **Conversational UI's markdown styles beat the widget's list layout.** The widget root also carries the
+  `widget-markdown` class, so the chart legend's grid was sized to its content. The fix was higher specificity
+  (`.crt-root .crt-legend …`) plus an explicit `grid-template-columns`.
+- **Percentages:** the widget computed shares from rounded values (36%) while the tool said 37%. Chart points now
+  carry the tool's `share`, and the widget only computes one when it is missing.
+- **The model "corrected" earlier answers that were right** ("I showed these figures before calling the tool").
+  Two prompt rules stopped it: call the tools before writing any of the answer, and don't comment on earlier
+  answers unless asked.
+- Reshaping an existing microflow (splitting the statistics tool) was refused by `create or modify` with
+  MDL-V1-REBUILD. Dropping it once and letting the script recreate it was the right call for a new, mxcli-authored
+  flow.
+
+Verified live:
+- **As demo_customer:**
+  - "On average, how long did my orders take to deliver?" gives a bars chart per carrier (9 parcels, average 3.9
+    days, fastest 2.5, slowest 6.5).
+  - "Where is most time spent…" gives a stacked chart with the hub at 42% and the warehouse at 37%. The numbers
+    match the view entities queried with OQL.
+  - The order card's product reference opens CHS-MAXI's details.
+  - The reference API returns 404 for another customer's order, and hides "in order SO-10005" (not hers) from
+    BAT-418's facts.
+- **As demo_agent:**
+  - The all-orders statistics show 56 parcels, with the warehouse at 41% and the hub at 39%.
+  - The product outline renders with 6 references, and supplier → part drill-down works.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 19 warnings. The new one is ARCH003 on TrackingEvent: a scan has no natural key.
+- `report`: 71/100.
+- `docker check`: 0 errors.
+- `test`: 20/20 pass, including 4 new ones (history seed, leg computation from a hand-made shipment, leg line,
+  empty leg).
+- Widget unit tests: 12/12 pass.
+
+## Return requests workflow with agent steps (2026-11-12)
+
+WF_ReturnRequest has two AI agent tasks (`call agent microflow`), two user tasks for people, a jump back to the AI
+on "rewrite", a decision, and a repeating non-interrupting timer. The eligibility agent's enumeration answer drives
+the workflow's outcomes.
+
+Found on the way:
+- **An agent description over 200 characters makes its import fail at startup, and nothing else notices.** Agent
+  Commons' `Agent.Description` is String(200). Agent Editor Commons logged "tried setting a value of length 203"
+  at startup and kept the *previous* version of the agent. `mxcli check`, `exec` and `docker check` were all
+  clean. The symptom was the eligibility agent returning an empty answer every time. Three hypotheses
+  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Check the startup log
+  for "Agent Editor Commons" errors after changing an agent.
+- **The knowledge base as a tool of a task agent was not confirmed to work** with `Agent_Call_WithoutHistory`:
+  its runs were all on the stale agent. The eligibility agent now gets the policy text in its prompt
+  (`SUB_ReturnPolicy_Text`, read from the same policy document the knowledge base is loaded from). That is
+  simpler and deterministic.
+- `grant` on entity access only adds rights. Removing create/delete took an explicit `revoke create, delete …`.
+- `check` caught three workflow and microflow mistakes before the build:
+  - a single-outcome user task with nested activities (MDL-WF02, else CE1876);
+  - `count()` in an expression (MDL044);
+  - microflows referenced by a page before their create statement.
+- The chat prompt needed two corrections, both found live:
+  - The assistant asked the customer for a SKU instead of looking the item up. The prompt now says to use
+    order_products, and when the graph doesn't know the order's contents, to pass the item as the customer
+    names it.
+  - It also pre-judged eligibility. That is now the workflow's job only.
+- The reply agent passed an internal note ("the eligibility check gave no usable answer") to a customer. Its
+  prompt now forbids mentioning internal checks or AI, and the review page asks the reviewer to write the
+  reason the reply is based on.
+- Container recycles stop the helper servers. The app then answers without the product graph tools ("I can't
+  open the product lookup"). `tools/start-helpers.sh` restarts whatever is down.
+
+Verified live:
+- **Customer starts returns from the chat** (with confirmation):
+  - SO-10132's tyre is Not eligible: 97 days after delivery, the policy sentence quoted, and a refusal drafted.
+  - SO-10001's child seat went to review.
+- **Staff:**
+  - Accept → the AI drafts with label RL-5001 → Send → Parcel received → a refund request of EUR 249.95 is
+    created → the return is Closed and the workflow Completed.
+  - Decline → Ask AI to rewrite ("under 50 words, offer a warranty ticket") → a 42-word draft that follows the
+    instruction, and a new approval task.
+- **Customer:** the Returns page shows the sent replies, and the assistant reports a closed return correctly.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings. The two new ones are ARCH003, a business key on ReturnRequest (Ticket has the
+  same), and DESIGN001, 18 attributes, because the AI's decision fields stay with the request they judge.
+- `report`: 67/100.
+- `docker check`: 0 errors.
+- `test`: 27/27 pass, 7 of them new. The tests cover the facts, the fallback to review when the agent can't
+  answer, accept and decline, the label and the sent reply, the refund on receipt, and the tool refusing an
+  order that hasn't been delivered.
+
+## Product explorer and graph cards (2026-11-12)
+
+An interactive network view of the product graph, as a page (GraphExplorer widget) and as a chat card
+(ChatRichText `graph` card). Both use one shared Cytoscape.js component.
+
+- **Two widgets share code by copying, not by a package.** pluggable-widgets-tools builds one widget per package
+  and compiles only `src/`. A `prebuild` step copies `widgets-src/shared` into each widget's `src/shared`
+  (gitignored). Each widget bundles Cytoscape: ChatRichText grew from about 110 KB to 344 KB.
+- **The explorer needed little server work.** The chat's reference API already returned a node's links. It now
+  adds each link's relation, direction, and the target's kind and name (so unexpanded nodes get their colour and
+  label), plus a search (`?q=`) in the same response shape. Rebuilding `REST_GetGraphNode`'s loop needed a drop
+  and recreate (MDL-V1-REBUILD), as before.
+- **The graph snapshot is reloaded at startup now.** It used to load only when empty, so new graph data (SO-10016)
+  never reached the explorer's search until someone pressed "Reload from graph".
+- **Testing a canvas.** The nodes are not DOM elements, so the graph view puts its Cytoscape instance on its
+  container (`.gx-canvas.__cy`). A test reads a node's rendered position from there and clicks the real canvas.
+
+Verified live as demo_customer:
+- **Explorer:**
+  - It opens on `?ref=BAT-418`.
+  - Expanding the supplier and switching "compatible with" off leave the supplier, component and recall links.
+  - A canvas click on the recall expands it.
+  - Searching "SO-10" finds only Ada's four orders.
+- **Chat:** "How is the BAT-418 battery connected to other products?" gives a graph card centred on BAT-418, with
+  coloured, dashed neighbours. Its link opens the explorer on BAT-418.
+- No console errors in either.
+
+Gates:
+- `check` is clean, and the second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings (unchanged).
+- `report`: 67/100.
+- `docker check`: 0 errors.
+- `test`: 33/33 pass, 4 new for the link parsing. Widget unit tests: 13/13.
+
+## Tool scoping and tool-call payloads for staff (2026-11-12)
+
+**Scoping.** The product-graph MCP tools were scoped by the prompt only: `order_products` and the free-form
+`sparql_query` could read any order, and the prompt asked the model to call GetOrderStatus first. Now:
+- Fuseki serves `/products` (full) and `/catalog` (the same file without its orders section; `tools/fuseki/start.sh`).
+- The MCP server only reaches `/catalog`. `order_products` was removed.
+- Order contents come from the app's GetOrderProducts tool, which first finds the order through the user's
+  access, then runs one SPARQL query on `/products` for that order.
+
+The live MCP test now asserts that the catalog has no orders, including for a catch-all `?s ?p ?o` query.
+Verified in the chat as demo_customer:
+- SO-10005 (Bram's): "couldn't find an order SO-10005 on your account". Its raw tool results hold only "No order
+  found … for this user".
+- SO-10016 (Ada's): listed.
+- "Which orders contain a BAT-418?": no order data. Its `sparql_query` against the catalog found nothing.
+
+As demo_agent, SO-10005 shows the batch-matched recall.
+
+**Payloads for staff.** Conversational UI shows a tool call as "Tool call was successful". Staff now see each call's
+input and result in one collapsed "Tool call details" block right under the tool calls (a `~~~details` fence in ChatRichText). The list's
+microflow returns nothing for the Customer role, and Conversational UI's own entity access is untouched.
+
+mxcli gaps hit on the way (mxcli `main` nightly-174 and nightly-240):
+- **ALTER SNIPPET cannot reach widgets inside a list view's specialization template** (`template for
+  ConversationalUI.ToolMessage` in Snippet_Message_Content). `insert after container15`, `insert after accordion1`
+  and `insert into accordion1 item@1` were all refused with "widget not found". The alter-page skill says
+  widgets inside a template are ordinary named widgets.
+- **`describe` drops the icon of an image widget of type icon** (it prints `ImageType: icon` only). So replacing
+  that template with its own `describe` output (drop + insert template) left five images without an icon:
+  `docker check` gave 5 × "No icon selected". The snippet unit was restored from git. The payload list went
+  outside the template instead, first under the answer, then (after "the layout seems incorrect") as one
+  compact collapsed block right under the tool calls (`insert after listView1`): per-call full-width sections
+  at the bottom read as part of the answer.
+
+Gates:
+- `check` is clean, and a second `exec` writes nothing.
+- `lint`: 0 errors, 21 warnings.
+- `report`: 66/100.
+- `docker check`: 0 errors.
+- `test`: 37/37 pass, 4 new for GetOrderProducts. Widget unit tests: 14/14.
+- Live MCP test: all pass.
+
+## Conversation metrics in the chat (2026-11-12)
+
+Staff open "Conversation metrics" from the chat page: tokens, estimated cost, time and the steps behind each answer, from the GenAICommons traces (`mdlsource/11b-chat-metrics.mdl`).
+
+**How a chat finds its traces.** `GenAICommons.Trace._ConversationId` equals `ConversationalUI.ChatContext.ConversationID`, measured on the stored data: one trace per question. A tool call's span points at the model call that requested it (`Span_SubSpan`), so the steps nest without sorting by time. An agent run as a tool (TriageTicket, the document agent) writes a trace of its own under a different conversation id. It is found by its start time inside the tool span: on the two stored TriageTicket calls, exactly one trace each.
+
+**Usage is not a per-question total.** `GenAICommons.Usage` for a trace held only the last model call's tokens (14,852 in for a question whose two model calls took 7,272 + 14,852). The panel sums the `ModelSpan`s instead.
+
+**Input tokens grow inside one answer.** Each model call resends the conversation plus the tool results so far. One live order question: 3 model calls with 5,897, then 11,950, then 18,206 tokens in. That is why tool-heavy answers cost far more than their output suggests.
+
+**Prices.** No list prices are seeded for the Mendix Cloud models: they are not in the data, and Mendix Cloud GenAI bills in its own units. Administrators enter them on Model prices. The free OpenRouter models are seeded at 0.
+
+**Scripts that could not run twice.** `alter snippet … insert` and `alter page … insert` refuse a second run ("duplicate widget name"). ALTER has no insert-if-missing (ako/mxcli#1840, open). My earlier repeat-run checks counted changed files and hid exec's error output, so script 13 was reported repeatable when it was not.
+- The metrics button now lives in the chat page's own definition (12). The metrics script runs before it, hence `11b`.
+- The one-time insert into Conversational UI's snippet moved to `13b-tool-payloads-insert.mdl`, marked run-once.
+- Every other script was then executed a second time with errors shown: no errors, 0 files written.
+
+mxcli gaps hit on the way (mxcli `main` nightly-174):
+- `check --references` passed `set $Line = $New` on an object variable, and `exec` then refused it (CE7247 rule) and rolled back the script. Filed as ako/mxcli#2176. Fixed with a sub-microflow that returns the found or new line.
+- `lastIndexOf` is not a Mendix function; `findLast` is (check caught it).
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing (errors shown).
+- `lint`: 0 errors, 22 warnings. The new one is CONV006 on ModelPrice: admins create and delete from the page, like the other admin pages.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 42/42 pass, 5 new for the metrics.
+- Live: a staff chat with two questions showed 7 model calls, 8 tool calls and a bar per question. The customer sees no button.
+
+## Dark glass redesign: three-column chat with a details panel (2026-11-12)
+
+The chat page was redesigned on a Claude Design canvas and built in the app:
+- the **glass** theme;
+- three columns: chats, conversation, details;
+- a details panel that takes over the metrics popup and the in-chat tool call details;
+- a new Context view of the orders a chat is about.
+
+How it was verified:
+- Screenshots as demo_agent and demo_customer at 1440×940.
+- A live customer chat: the panel picked up SO-10002 six seconds after the answer, with no refresh.
+
+**Theme from a design.** `mxcli theme create glass --from design/glass-tokens.css --base console` took the 37 `--mxt-*` tokens straight from a small tokens file read off the canvas. Two things it did not do:
+- It took the glass look itself (blur, glows, translucent panels) only as far as the palette goes. That went into the theme's skin mixin.
+- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy.
+
+`theme apply glass` removed the signal theme's partial and fonts from `theme/web/`.
+
+**Mendix `replaceAll` takes its replacement literally.** `replaceAll(s, '…"([^"]*)"…', '$1')` returned the text `$1`, not the group, measured with a microflow test. A JSON escape written Java-style (`'\\\\'`, `'\\"'`) doubled every backslash. Both now cut or replace with literal text; a test pins the escape.
+
+**A details panel refreshes by itself.** A data view with a microflow data source and the chat as its parameter re-ran a few seconds after Conversational UI finished an answer. The refresh button stays for the other case.
+
+**Context can't be read from the answer text.** The order numbers come from the tool calls' `Input` JSON (`{"OrderNumber": "SO-10002"}`), the one place the model states which order it looked up. Each is then found again for the current user.
+
+Rebuilding the shape of a microflow mxcli authored still needs drop + create (MDL-V1-REBUILD), and that has knock-on effects:
+- Dropping DS_ChatDetails left the page's data view pointing at the old microflow, and the watch build reported CE0115. Re-applying the page script and a clean restart cleared it; `docker check` was clean throughout.
+- A variable named `$Context` in DS_ChatDetails got CE0108 ("defined but not in scope") from the watch build once. It went away after renaming it to `$ContextMarkdown`. It was not reproduced in isolation, so it is not filed.
+
+The one-time snippet insert (13b) is gone: the payload list was dropped from Conversational UI's snippet once, and the snippet is now back to what script 13 alone produces.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing (errors shown).
+- `lint`: 0 errors, 22 warnings.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass, 3 new for the details panel.
+- Widget unit tests: 14/14.
+
+## Glass theme across the other pages (2026-11-12)
+
+Every menu page was screenshotted as demo_administrator (15 pages), demo_customer (5) and demo_agent, plus a ticket popup. All were dark and readable straight away. Five things were fixed:
+
+- **The whole page was 117 px taller than the window**, so clicking a low menu item scrolled everything, top bar included (seen on Model prices and Agents). The cause was 17 menu items at 56 px each in an icon rail that did not scroll. Item rules lost to Atlas's own. A `max-height: calc(100vh - 49px)` on the rail's scroll wrapper fixed it: the document now measures exactly 900 at 900.
+- **Plotly charts** (Conversational UI's Token usage and Traces) painted a white `background` on `.main-svg` inline. They need `!important` overrides, which live in the glass theme's skin.
+- **Data grids** sat directly on the background. Each now gets the glass panel, and placeholders use the faint ink colour so filter boxes read.
+- **Home** was a title and two buttons. It is now a hero plus tiles, and buttons whose target the role cannot open are hidden by Mendix. Checked: Ada sees 4 tiles, the administrator 6.
+- **The teal tab at the right edge** that overlaps grids is Mendix's demo-user switcher. It only exists in development, so it was left alone.
+
+Gates:
+- `lint`: 0 errors, 22 warnings.
+- `report`: 64/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Every script's second `exec` writes nothing.
+
+## Tool call details unreadable in the details panel (2026-11-12)
+
+Reported: "the tool call details are not working". The panel's sections did open, but the input and result inside them were Atlas's dark code colour on the glass background, so they looked empty. The glass skin now colours `pre`/`code` from `--mxt-ink` on a dark tint, app-wide. Verified with a screenshot of the expanded section.
+
+While checking, every sign-in started failing with "Sign in failed". The runtime log said: "Maximum number of sessions exceeded! (You are currently using a trial license)". Browser test scripts that died before `mx.logout()` had used up the trial licence's sessions. A restart cleared them. Test scripts must log out even when they fail.
+
+## Graph animation: smooth instead of stuttery (2026-11-12)
+
+Reported: the graph widget's animation was stuttery (Product explorer and the chat's graph card share `widgets-src/shared/graph/GraphView.tsx`). Two causes:
+- Cytoscape's `cose` layout with `animate: true` redraws its iterations as it computes, with `fit` re-zooming along the way.
+- New nodes appeared at random spots up to 60 px away and jumped from there.
+
+The fix:
+- **One eased move:** `animate: "end"` computes the layout first and plays it as one move (600 ms, ease-in-out-cubic), view included.
+- **Fade-in:** new nodes start on the node that was clicked and fade in.
+- **One layout at a time:** a layout still running is stopped before the next.
+- **Pan and zoom:** `textureOnViewport` draws a cached bitmap while the view moves.
+
+**Measuring it.** Frame rate does not show stutter. Both versions held 60 fps with no frame over 17 ms in headless Chromium, so that metric could not tell them apart. Per-frame node displacement does: sample every node's rendered position each `requestAnimationFrame` while a node expands.
+
+| | Biggest jump in one frame | Spread over |
+|---|---|---|
+| Old widget (control, the committed mpk reinstalled) | 452 px | 18 frames |
+| New | 38 px | 34 frames (≈ 600 ms) |
+
+## Map cards with Leaflet (2026-11-12)
+
+Chat cards can now carry a map: a parcel's `route` (numbered stops) or `points` sized by a value (days at each hub). Places are names, resolved to coordinates by the app (`rest/places/v1/places`). The model never writes coordinates, so it cannot put a made-up position on a map.
+
+Verified live as demo_customer:
+- **"Where is my order SO-10002?"** The order card shows a route map: Leipzig, then Venlo in amber. The details panel shows the same route, with tiles loaded.
+- **"Where is most time spent … show the hubs on a map"** A map card with Venlo 2.9, Utrecht 0.9 and Eindhoven 0.6 days. These match GetDeliveryStatistics' figures, with Venlo emphasised.
+
+**CARTO basemaps need a key now.** `basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png` answers 200 to any request, but every tile is a grey image reading "API KEY REQUIRED", with or without a Referer. So a status check reports it healthy; only looking at a tile shows the problem. The map uses Esri's keyless Gray Canvas tiles (`server.arcgisonline.com/…/Canvas/World_Dark_Gray_Base` plus `_Reference` labels). OpenStreetMap's standard tiles also work keyless (light only; dark needs a CSS invert), but its tile policy asks heavy or production users to use their own tile server.
+
+**A route stop per place, not per scan.** Three scans at two places (Leipzig picked up; Venlo arrived, then delayed) are two stops. The stop shows the latest scan at that place, so the Venlo stop carries the delay. Taking the first scan made the panel's Venlo stop teal while the chat's was amber.
+
+**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run.
+
+The 404 in the browser console is Conversational UI's own `llm-streaming` endpoint, present before this change.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 22 warnings.
+- `report`: 62/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Widget unit tests: 18/18 pass, 4 new for map parsing, including rejecting HTML and coordinates as place names.
+
+## 3D product viewer with a procedural bike (2026-11-12)
+
+Verified live:
+- **Product explorer** (demo_agent, Graph | 3D): the EB-200 is drawn with its battery, rear hub motor and charger, plus the tyres, tubes, disc brakes and seat post the graph lists as compatible. **Show what fits** adds the rack, basket, child seat and lights. The exploded view separates the parts. Clicking the battery highlights it and shows its price and warranty.
+- **Chat** (demo_customer): "Where is the battery on my EB-200 from SO-10003, and is it affected by the battery recall? Show me on the bike." The answer has a model card with BAT-418 lit, next to the recall card. That card says "Not affected" (the unit is batch B2605, the recall is B2603), so the highlight stayed teal rather than red, as the prompt asks.
+
+**The graph decides what the bike has, the code only where things sit.** Mapping SKU prefixes to positions keeps the model generic: the EB-500 gets its mid-drive and its battery from the graph without a model of its own. The bike's `brakes` value picks disc or rim brakes.
+
+**The bundle grows.** three.js makes the ChatRichText package about 716 KB (was 454 KB). It is not loaded lazily: the pluggable-widget build produces a single bundle.
+
+**Headless Chromium renders WebGL** (software), so the viewer can be screenshotted and recorded; it is only slower.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 22 warnings.
+- `report`: 62/100.
+- `docker check`: 0 errors.
+- `test`: 45/45 pass.
+- Widget unit tests: 20/20 pass, 2 new for model cards.
+
+## Glass theme: buttons, grid corners and filters (2026-11-12)
+
+Reported on Tickets: no space around the buttons, square table corners against the panel's rounded ones, and broken filter fields. Measured in the browser:
+
+- **The theme's control height was 30px** (`--mxt-control-height`, inherited from the compact console base). Dropdown filters are 30px tall with 8px padding top and bottom, which left 12px for 20px text, so "Select" was cut off. The text filter box (30px) also sat next to a 38px operator button. The glass palette now uses 38px controls and 40px rows, and the grid filters share that one height with their text centred.
+- **Data Grid 2's table painted its own background** (`.widget-datagrid-grid.table`) inside the glass panel. Its square corners showed against the panel's rounded ones. The table is now transparent, and the header row has a soft tint with rounded ends inside the panel's 10px padding.
+- **Buttons had no margin.** Side-by-side buttons on a page now get a gap and room below. The rule uses `:where()` (zero specificity) so a page's own layout, such as the chat's full-width "New chat" and the Home tiles, still wins.
+- **Home had no page padding** (it has no layout grid). It is now padded.
+
+Checked after the fix: on Tickets and Orders the filters are 38px tall and their text is not clipped. The New chat button keeps margin 0, and the pages are no taller than the window.
+
+**Audit of every page afterwards.** All 17 menu pages and 5 popups (ticket, order, refund request, customer, model price; policy document opens a full page) were checked as demo_administrator. Each got an automated check (form controls too short for their text, side-by-side buttons with no gap, square painted children flush in a rounded panel's corner, horizontal overflow) and a 2x screenshot. Three more fixes came out of it:
+- Traces (Conversational UI) and Agents (Agent Commons) have no layout grid, so their panel ran to the window edge. Both use a `…-page-content-container` class, now padded 24px.
+- The Model prices help text was inline and ran into the "New price" button. It is now a paragraph.
+- The refund popup's "Order SO-…" line sat on the Amount label. It is now a paragraph.
+
+The remaining "touching buttons" hits are intended button groups: the grids' pager arrows and the period selectors on Token usage and Traces.
+
+## Eleven chat additions, and talking to a person (2026-11-12)
+
+Verified live (demo_customer and demo_agent in two browsers at once):
+- **Delay notice:** after the startup sync, Ada's latest chat holds "A heads-up about order SO-10002", with an order card (Delayed, DHL, its three scans) and three suggestion chips. The runtime log shows 17 syncs since the first one (restarts plus the scheduled event); 15 posted nothing, because the ChatNotice row was there.
+- **Talk to a person:** the customer asks "I want to talk to a person please". The chat appears in Live chats with its topic. When Sam opens it, the customer sees "Hi, I'm Sam de Wit…" within 7 seconds, without reloading, and Sam's reply arrives the same way. The customer's next message gets no model answer, only "Sent to Sam de Wit", and shows in Sam's transcript. "Hand back" posts "Sam de Wit has left the chat", and the model answers again.
+- **Earlier batches still work** after the access changes below: a photo creates ticket #1024 with the photo attached, and a thumbs down stores an AnswerRating.
+
+**One notice was posted twice, cause not found.** A restart at 22:23 ran 44 DDL commands. Afterwards the 21:58 ChatNotice row was gone, so the notice was posted again; Ada's chats now hold two. Measured since, with direct SQL on `servicedesk$chatnotice`, the row survives each of these:
+- a control restart;
+- removing NoticeKey's `unique` (3 DDL commands);
+- adding it back (3 DDL commands).
+
+The entity's and attributes' ids in `mendixsystem$entity` and `mendixsystem$attribute` equal the model's GUIDs, so no GUID was re-minted. These are mxcli-created elements, though (GUID = $ID), which cannot show a re-mint. What else was in that restart is not reconstructable from the log. If it happens again, record the DDL first.
+
+**A Conversational UI send has a placeholder answer that must be filled, not deleted.** The client shows a "Loading" assistant message while the action microflow runs. When the action microflow skipped the model and deleted that placeholder (`delete … refresh`), the typing dots stayed in the browser. Filling it in instead ("Sent to Sam de Wit") clears them, the same way the model's answer would.
+
+**A list sourced over an association reloads when one object of its entity is refreshed.** The live refresh is `commit $Recent refresh` on the newest message, and the CUI message list (a database source over `ChatContext → Message`) shows the new message. The refresh runs only when a message arrived in the last 8 seconds (the poll is 5), so an idle chat does not re-render.
+
+**CUI zeroes the textarea's padding with `!important`** (`.chat-input-wrapper .form-group .form-control`). Room for the compose buttons therefore needs `!important` as well, on a more specific selector. Without it the placeholder ran under the buttons. Found by listing the matching CSS rules in the browser, not from the screenshot.
+
+**A grant only adds rights.** Removing `create` from a `grant` line left the right in place. It takes a `revoke create on entity …`, which is a no-op ("nothing to revoke") on the next run, so scripts stay idempotent. AnswerRating, ChatHandoff, ChatPhoto and ServiceAppointment are created only in microflows now.
+
+**Splitting an ACT_ microflow into ACT_ + SUB_ is a reshape.** Three of them hit MDL-V1-REBUILD, because their early-return decisions cannot be spliced. They were dropped once in a scratch script and recreated by the project script, which keeps the project script re-runnable.
+
+Gates:
+- `check` is clean, and every script's second `exec` writes nothing.
+- `lint`: 0 errors, 31 warnings. The four batches had raised it from 22 to 64; moving logic out of the ACT_ microflows and revoking create rights brought it down. Of the rest, the new ones are no business key on ChatPhoto, ChatHandoff and AnswerRating (they have AutoNumbers), and ChatHandoff's 11 attributes.
+- `report`: 50/100 (47 before these fixes, 62 before the four batches). Security scores 0: its warnings are staff reading every row of ratings, handoffs and appointments, which is what those staff pages are for.
+- `docker check`: 0 errors.
+- `test`: 49/49 pass, 4 new (recognising a request for a person, and a delay notice's card and chips).
+
+## Re-recording the demo: two chat defects it found (2026-11-12)
+
+**A new chat was not stored until its first question.** `ChatContext_Create_ForAgentDocument` returns an uncommitted chat. So a delay notice posted while the customer had a fresh chat open went into their previous chat. Of 41 stored chats, one had no topic. `SUB_SupportChat_Create` now commits the chat and its provider configs at once. The history still lists a chat without a topic only while it is open.
+
+**A chat that opens with a message from the app could not be answered.** For an assistant message with no user message before it, Conversational UI adds an empty user message to keep the roles alternating (`Request_AddEmptyUserMessage`). Bedrock then refuses the request: "ContentBlock object at messages.0.content.0 must set one of the following keys". Found by logging the request's messages: user (empty), assistant (the notice), user (the question). Restating the notice as a user message did not help: the empty one was still first. `SUB_Request_StartWithUser`, called from the action microflow after preprocessing, now fills an empty user message with a line of text. It does so only when the chat opens with an assistant message. Verified live: the same chat, which had answered "Error" twice, then answered with a route-map card.
+
+**`mxcli check` passes a `show message` whose text is an expression**, and mxbuild then fails with CE0117. Filed as ako/mxcli#2199. The workaround is one literal message per branch.
+
+**A manual sync can collide with the scheduled one.** `SUB_Shipments_Sync` deletes and re-imports every shipment. "Check parcels now", run just as the 15-minute event fired, failed one of the two on the TrackingCode unique constraint. The other completed, so no data was lost. Left as is: the window is small, and the scheduled event already skips its own overlaps.

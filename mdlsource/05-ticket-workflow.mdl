@@ -447,7 +447,7 @@ create or modify page "ServiceDesk"."WF_TaskInbox" folder 'Workflow'
           designproperties: ('Hover': on, 'Striped': on)
         ) {
           column (attribute: Name, caption: 'Task')
-          column (attribute: WorkflowUserTask_Workflow/Name, caption: 'Ticket')
+          column (attribute: WorkflowUserTask_Workflow/Name, caption: 'Case')
           column (attribute: WorkflowUserTask_Workflow/Description, caption: 'Subject')
           column (attribute: StartTime, caption: 'Started')
           column (caption: '') {

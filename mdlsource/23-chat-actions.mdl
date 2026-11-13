@@ -1,0 +1,372 @@
+mdl 1;
+
+-- Chat actions: buttons on answer cards that open a small form in the card and
+-- do something, instead of only showing information. And citations: the
+-- policy passage an answer relies on, quoted from the policy document itself.
+--
+--   POST rest/chatactions/v1/actions   run a form: return | ticket | appointment
+--   GET  rest/chatactions/v1/slots     free service appointment slots
+--   GET  rest/chatactions/v1/cite      the passage of a policy document that
+--                                      contains a quote (?doc=Title&quote=text)
+--
+-- The AI only proposes an action (a card names it and pre-fills the form); the
+-- user submits the form, and the app runs a fixed microflow per action with the
+-- user's own session and permissions: the same checks as the agent's tools
+-- (SUB_FindOrderForCurrentUser), so a customer can only act on their own orders.
+-- A citation the policy documents do not contain is shown as not found, never
+-- as a quote.
+
+-- ---------------------------------------------------------------- appointments
+
+create or modify enumeration "ServiceDesk"."ENUM_AppointmentStatus" (
+  Booked 'Booked',
+  Cancelled 'Cancelled',
+  Done 'Done'
+);
+
+/** A workshop appointment for a customer's bike, e.g. a recall battery swap or a repair. */
+create or modify persistent entity "ServiceDesk"."ServiceAppointment" (
+  "AppointmentNumber": AutoNumber default 7000,
+  "SlotStart": DateTime,
+  "OrderNumber": String(20),
+  "Product": String(200),
+  "Reason": String(1000),
+  "Status": Enumeration("ServiceDesk"."ENUM_AppointmentStatus") default ServiceDesk.ENUM_AppointmentStatus.Booked,
+  "CreatedDate": AutoCreatedDate
+);
+
+create or modify association "ServiceDesk"."ServiceAppointment_Customer"
+  from "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."Customer";
+
+grant read * on entity "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."Customer"
+  where [ServiceDesk.ServiceAppointment_Customer/ServiceDesk.Customer/ServiceDesk.Customer_User = '[%CurrentUser%]'];
+grant read *, write * on entity "ServiceDesk"."ServiceAppointment" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create on entity "ServiceDesk"."ServiceAppointment" from "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** One free appointment slot. */
+create or modify non-persistent entity "ServiceDesk"."SlotView" (
+  "Start": DateTime,
+  "Label": String(100)
+);
+create or modify non-persistent entity "ServiceDesk"."SlotList" ();
+create or modify association "ServiceDesk"."SlotView_SlotList" from "ServiceDesk"."SlotView" to "ServiceDesk"."SlotList";
+grant read *, write * on entity "ServiceDesk"."SlotView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."SlotList" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The free workshop slots of the next two weeks: weekdays at 9:00, 10:30, 13:00 and 14:30 (server time), not yet booked. */
+create or modify microflow "ServiceDesk"."SUB_ServiceSlots_Free" ()
+returns "ServiceDesk"."SlotList" as $Slots
+folder 'Chat actions'
+begin
+  $Slots = create "ServiceDesk"."SlotList" ();
+  retrieve $Booked from "ServiceDesk"."ServiceAppointment" where [Status = 'Booked'][SlotStart >= '[%BeginOfCurrentDay%]'];
+  declare $Day Integer = 1;
+  while $Day <= 14 begin
+    declare $Date DateTime = addDays([%BeginOfCurrentDay%], $Day);
+    declare $Weekday String = formatDateTime($Date, 'u');
+    if $Weekday != '6' and $Weekday != '7' then
+      declare $Minutes Integer = 0;
+      declare $Slot Integer = 0;
+      while $Slot < 4 begin
+        set $Minutes = (if $Slot = 0 then 540 else if $Slot = 1 then 630 else if $Slot = 2 then 780 else 870);
+        declare $Start DateTime = addMinutes($Date, $Minutes);
+        $Taken = find $Booked where $currentObject/SlotStart = $Start;
+        if $Taken = empty then
+          create "ServiceDesk"."SlotView" ("Start" = $Start, "Label" = formatDateTime($Start, 'EEE d MMM, HH:mm'), "ServiceDesk"."SlotView_SlotList" = $Slots);
+        end if;
+        set $Slot = $Slot + 1;
+      end while;
+    end if;
+    set $Day = $Day + 1;
+  end while;
+  return $Slots;
+end;
+
+-- ---------------------------------------------------------------- the actions
+
+/** The form a user submitted from a chat card. */
+create or modify non-persistent entity "ServiceDesk"."ChatActionRequest" (
+  "Action": String(30),
+  "Ref": String(50),
+  "Item": String(500),
+  "Reason": String(500),
+  "Details": String(4000),
+  "Subject": String(200),
+  "Description": String(4000),
+  "SlotStart": DateTime,
+  "Product": String(200),
+  "Photo": String(20)
+);
+
+/** What happened, for the card to show. */
+create or modify non-persistent entity "ServiceDesk"."ChatActionResult" (
+  "Ok": Boolean default false,
+  "Message": String(2000),
+  "Ref": String(50)
+);
+
+grant read *, write * on entity "ServiceDesk"."ChatActionRequest" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."ChatActionResult" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+create or modify json structure "ServiceDesk"."JSON_ChatActionRequest" folder 'Chat actions'
+  sample '{"action": "return", "ref": "SO-10016", "item": "LGT-USB USB light set", "reason": "Never used", "details": "Still in the box", "subject": "Battery swap", "description": "Text", "slotStart": "2026-11-16T09:00:00.000Z", "product": "EB-200", "photo": "3"}';
+
+create or modify json structure "ServiceDesk"."JSON_ChatActionResult" folder 'Chat actions'
+  sample '{"ok": true, "message": "Started return request 5012.", "ref": "5012"}';
+
+create or modify import mapping "ServiceDesk"."IMM_ChatActionRequest" folder 'Chat actions'
+  with json structure "ServiceDesk"."JSON_ChatActionRequest"
+{
+  create "ServiceDesk"."ChatActionRequest" {
+    "Action" = action,
+    "Ref" = ref,
+    "Item" = item,
+    "Reason" = reason,
+    "Details" = details,
+    "Subject" = subject,
+    "Description" = description,
+    "SlotStart" = slotStart,
+    "Product" = product,
+    "Photo" = photo
+  }
+};
+
+create or modify export mapping "ServiceDesk"."EMM_ChatActionResult" folder 'Chat actions'
+  with json structure "ServiceDesk"."JSON_ChatActionResult"
+{
+  "ServiceDesk"."ChatActionResult" {
+    ok = "Ok",
+    message = "Message",
+    ref = "Ref"
+  }
+};
+
+/** Books a service appointment for an order the user may see, in a slot that is still free. */
+create or modify microflow "ServiceDesk"."SUB_ChatAction_Appointment" ($Request: "ServiceDesk"."ChatActionRequest")
+returns String as $Answer
+folder 'Chat actions'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim(if $Request/Ref = empty then '' else $Request/Ref));
+  if $Order = empty then
+    return 'Not booked: no order found with number ' + (if $Request/Ref = empty then '' else $Request/Ref) + ' for this user.';
+  end if;
+  if $Request/SlotStart = empty then
+    return 'Not booked: choose a time slot.';
+  end if;
+  $Free = call microflow "ServiceDesk"."SUB_ServiceSlots_Free" ();
+  retrieve $FreeSlots from $Free/"ServiceDesk"."SlotView_SlotList";
+  $Match = find $FreeSlots where $currentObject/Start = $Request/SlotStart;
+  if $Match = empty then
+    return 'Not booked: that slot is no longer free. Pick another one.';
+  end if;
+  retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
+  $Appointment = create "ServiceDesk"."ServiceAppointment" (
+    "SlotStart" = $Request/SlotStart,
+    "OrderNumber" = $Order/OrderNumber,
+    "Product" = (if $Request/Product = empty then '' else $Request/Product),
+    "Reason" = (if $Request/Reason = empty then '' else $Request/Reason),
+    "ServiceDesk"."ServiceAppointment_Customer" = $Customer
+  ) commit;
+  return 'Booked service appointment ' + toString($Appointment/AppointmentNumber) + ' on ' + $Match/Label + ' for order ' + $Order/OrderNumber + '. Bring the bike to the workshop; it takes about an hour.';
+end;
+
+/** REST: runs a form submitted from a chat card. Only these actions exist; each checks what the user may do. */
+create or modify microflow "ServiceDesk"."REST_PostChatAction" ($Request: "ServiceDesk"."ChatActionRequest")
+returns "ServiceDesk"."ChatActionResult" as $Result
+folder 'Chat actions'
+begin
+  declare $Action String = toLowerCase(trim(if $Request/Action = empty then '' else $Request/Action));
+  declare $Ref String = trim(if $Request/Ref = empty then '' else $Request/Ref);
+  declare $Message String = '';
+  if $Action = 'return' then
+    if $Request/Item = empty or trim($Request/Item) = '' then
+      set $Message = 'Return not started: say which item you want to return.';
+    else
+      $ReturnAnswer = call microflow "ServiceDesk"."Tool_RequestReturn" (OrderNumber = $Ref, Item = $Request/Item,
+        Reason = (if $Request/Reason = empty then '' else $Request/Reason) + (if $Request/Details = empty or trim($Request/Details) = '' then '' else ': ' + $Request/Details));
+      set $Message = $ReturnAnswer;
+    end if;
+  else
+    if $Action = 'ticket' then
+      if $Request/Subject = empty or trim($Request/Subject) = '' then
+        set $Message = 'Ticket not created: give it a subject.';
+      else
+        $TicketAnswer = call microflow "ServiceDesk"."SUB_ChatAction_Ticket" (OrderNumber = $Ref, Subject = $Request/Subject, Description = (if $Request/Description = empty then '' else $Request/Description), PhotoNumber = (if $Request/Photo = empty then '' else $Request/Photo));
+        set $Message = $TicketAnswer;
+      end if;
+    else
+      if $Action = 'appointment' then
+        $BookingAnswer = call microflow "ServiceDesk"."SUB_ChatAction_Appointment" (Request = $Request);
+        set $Message = $BookingAnswer;
+      else
+        set $Message = 'Unknown action.';
+      end if;
+    end if;
+  end if;
+  declare $Ok Boolean = startsWith($Message, 'Started') or startsWith($Message, 'Created') or startsWith($Message, 'Booked');
+  $Out = create "ServiceDesk"."ChatActionResult" ("Ok" = $Ok, "Message" = $Message, "Ref" = $Ref);
+  return $Out;
+end;
+
+/** REST: the free service appointment slots. */
+create or modify microflow "ServiceDesk"."REST_GetServiceSlots" ()
+returns "ServiceDesk"."SlotList" as $Slots
+folder 'Chat actions'
+begin
+  $Free = call microflow "ServiceDesk"."SUB_ServiceSlots_Free" ();
+  return $Free;
+end;
+
+create or modify json structure "ServiceDesk"."JSON_SlotList" folder 'Chat actions'
+  sample '{"slots": [{"start": "2026-11-16T09:00:00.000Z", "label": "Mon 16 Nov, 09:00"}]}';
+
+create or modify export mapping "ServiceDesk"."EMM_SlotList" folder 'Chat actions'
+  with json structure "ServiceDesk"."JSON_SlotList"
+{
+  "ServiceDesk"."SlotList" {
+    "ServiceDesk"."SlotView_SlotList"/"ServiceDesk"."SlotView" as slots {
+      start = "Start",
+      label = "Label"
+    }
+  }
+};
+
+-- ---------------------------------------------------------------- citations
+
+/** A policy passage that contains a quote, or Found = false. */
+create or modify non-persistent entity "ServiceDesk"."CitationView" (
+  "Found": Boolean default false,
+  "Title": String(200),
+  "Passage": String(4000)
+);
+grant read *, write * on entity "ServiceDesk"."CitationView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+create or modify json structure "ServiceDesk"."JSON_CitationView" folder 'Chat actions'
+  sample '{"found": true, "title": "Returns and refunds", "passage": "You can return an unused item within 30 days."}';
+
+create or modify export mapping "ServiceDesk"."EMM_CitationView" folder 'Chat actions'
+  with json structure "ServiceDesk"."JSON_CitationView"
+{
+  "ServiceDesk"."CitationView" {
+    found = "Found",
+    title = "Title",
+    passage = "Passage"
+  }
+};
+
+/** The paragraph of one policy document that contains the quote (case and spacing ignored), or empty. */
+create or modify microflow "ServiceDesk"."SUB_Policy_FindPassage" ($Document: "ServiceDesk"."PolicyDocument", $Quote: String)
+returns String as $Passage
+folder 'Chat actions'
+begin
+  $Raw = call java action CommunityCommons.StringFromFile(source = $Document, encoding = empty);
+  if $Raw = empty then
+    return '';
+  end if;
+  -- one line per paragraph: single line breaks become spaces, runs of spaces one
+  declare $Text String = replaceAll(replaceAll(replaceAll($Raw, '\r', ''), '(?<!\n)\n(?!\n)', ' '), '[ \t]+', ' ');
+  declare $Needle String = toLowerCase(trim(replaceAll($Quote, '\s+', ' ')));
+  if length($Needle) < 12 then
+    return '';
+  end if;
+  declare $At Integer = find(toLowerCase($Text), $Needle);
+  if $At < 0 then
+    return '';
+  end if;
+  declare $Before String = substring($Text, 0, $At);
+  declare $Start Integer = findLast($Before, urlDecode('%0A'));
+  declare $End Integer = find($Text, urlDecode('%0A'), $At);
+  return trim(substring($Text, $Start + 1, (if $End < 0 then length($Text) else $End) - ($Start + 1)));
+end;
+
+/** REST: the passage of a policy document (by title, or any when none matches) that contains the quote. */
+create or modify microflow "ServiceDesk"."REST_GetCitation" ($doc: String, $quote: String)
+returns "ServiceDesk"."CitationView" as $Citation
+folder 'Chat actions'
+begin
+  $Result = create "ServiceDesk"."CitationView" ("Found" = false, "Title" = (if $doc = empty then '' else $doc), "Passage" = '');
+  if $quote = empty then
+    return $Result;
+  end if;
+  declare $Wanted String = toLowerCase(trim(if $doc = empty then '' else $doc));
+  retrieve $Documents from "ServiceDesk"."PolicyDocument" sort by "Title" asc;
+  -- the document the answer named first, then all of them
+  $Named = filter $Documents where $Wanted != '' and contains(toLowerCase($currentObject/Title), $Wanted);
+  loop $Document in $Named begin
+    $Passage = call microflow "ServiceDesk"."SUB_Policy_FindPassage" (Document = $Document, Quote = $quote);
+    if $Passage != '' then
+      change $Result ("Found" = true, "Title" = $Document/Title, "Passage" = (if length($Passage) > 1500 then substring($Passage, 0, 1500) + '…' else $Passage));
+      break;
+    end if;
+  end loop;
+  if $Result/Found then
+    return $Result;
+  end if;
+  loop $Any in $Documents begin
+    $AnyPassage = call microflow "ServiceDesk"."SUB_Policy_FindPassage" (Document = $Any, Quote = $quote);
+    if $AnyPassage != '' then
+      change $Result ("Found" = true, "Title" = $Any/Title, "Passage" = (if length($AnyPassage) > 1500 then substring($AnyPassage, 0, 1500) + '…' else $AnyPassage));
+      break;
+    end if;
+  end loop;
+  return $Result;
+end;
+
+/** Chat actions and citations for the chat's cards. Signed-in users only (active session). */
+create or modify published rest service "ServiceDesk"."ChatActionsApi" (
+  Path: 'rest/chatactions/v1',
+  Version: '1.0.0',
+  ServiceName: 'Chat actions',
+  Authentication: (session)
+)
+{
+  resource 'actions' {
+    post '' microflow "ServiceDesk"."REST_PostChatAction" import mapping "ServiceDesk"."IMM_ChatActionRequest" export mapping "ServiceDesk"."EMM_ChatActionResult" commit No;
+  }
+  resource 'slots' {
+    get '' microflow "ServiceDesk"."REST_GetServiceSlots" export mapping "ServiceDesk"."EMM_SlotList";
+  }
+  resource 'cite' {
+    get '' microflow "ServiceDesk"."REST_GetCitation" export mapping "ServiceDesk"."EMM_CitationView";
+  }
+};
+
+grant execute on microflow "ServiceDesk"."REST_PostChatAction" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."REST_GetServiceSlots" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."REST_GetCitation" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant access on published rest service "ServiceDesk"."ChatActionsApi" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+-- ---------------------------------------------------------------- staff page
+
+/** Staff: booked workshop appointments, soonest first. */
+create or modify page "ServiceDesk"."ServiceAppointment_Overview" folder 'Chat actions'
+(
+  title: 'Service appointments',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'service-appointments'
+)
+{
+  layoutgrid lgMain {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtHeading (content: 'Service appointments', rendermode: H2)
+        dynamictext txtHelp (content: 'Workshop appointments customers booked from the chat, for example a recall battery swap.', rendermode: Paragraph)
+        datagrid dgAppointments (
+          datasource: database from "ServiceDesk"."ServiceAppointment" sort by "SlotStart" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "AppointmentNumber", caption: '#')
+          column (attribute: "SlotStart", caption: 'When')
+          column (attribute: "OrderNumber", caption: 'Order') { textfilter tfOrder }
+          column (attribute: "Product", caption: 'Product')
+          column (attribute: "Reason", caption: 'Reason')
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddStatus }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ServiceAppointment_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

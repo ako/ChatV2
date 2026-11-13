@@ -1,0 +1,51 @@
+{
+  "name": "glass",
+  "title": "Dark glass",
+  "version": "1",
+  "summary": "Dark glass: translucent panels over a deep navy ground, teal and violet",
+  "description": "Project-local theme, scaffolded from Console by `mxcli theme create`. Edit the palette in files/theme/web/custom-variables.scss and the dark palette in files/theme/web/_mxcli-glass.scss, then re-run `mxcli theme apply glass`.",
+  "colorway": [
+    "#4FD1C5",
+    "#8FB8FF",
+    "#4FD1C5",
+    "#F5B454",
+    "#FF7A7A",
+    "#A9B3CA"
+  ],
+  "defaultVariant": "dark",
+  "files": [
+    {
+      "path": "theme/web/custom-variables.scss",
+      "mode": "block",
+      "purpose": "Layer 1 — the Dark glass palette (dark): brand, surfaces, ink, density"
+    },
+    {
+      "path": "theme/web/_mxcli-atlas-map.scss",
+      "mode": "block",
+      "purpose": "the Atlas wiring — shared by every mxcli theme, identical in each",
+      "shared": true
+    },
+    {
+      "path": "theme/web/_mxcli-glass.scss",
+      "mode": "block",
+      "purpose": "the other palette, the variant blocks, @font-face, and this theme's own skin rules"
+    },
+    {
+      "path": "theme/web/_mxcli-recipes.scss",
+      "mode": "block",
+      "purpose": "the recipe layer — num / pill / stat / focus / density, shared by every theme",
+      "shared": true
+    },
+    {
+      "path": "theme/web/_mxcli-widgets.scss",
+      "mode": "block",
+      "purpose": "the widget-module layer — rules for colours Sass bakes before any token exists",
+      "shared": true
+    },
+    {
+      "path": "theme/web/main.scss",
+      "mode": "block",
+      "purpose": "variant switch + imports — this file compiles last, so the partials win"
+    }
+  ]
+}

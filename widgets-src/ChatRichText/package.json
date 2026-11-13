@@ -12,14 +12,21 @@
   "packagePath": "com.servicedesk.widgets",
   "scripts": {
     "build": "pluggable-widgets-tools release:web",
-    "test": "tsc src/components/segments.ts --outDir build-test --module es2022 --target es2020 --skipLibCheck && mv build-test/segments.js build-test/segments.mjs && node --test test/segments.test.mjs"
+    "test": "tsc src/components/segments.ts --outDir build-test --module es2022 --target es2020 --skipLibCheck && mv build-test/segments.js build-test/segments.mjs && node --test test/segments.test.mjs",
+    "prebuild": "rm -rf src/shared && cp -r ../shared src/shared"
   },
   "devDependencies": {
     "@mendix/pluggable-widgets-tools": "11.16.0",
+    "@types/cytoscape": "^3.21.9",
     "@types/markdown-it": "14.1.2"
   },
   "dependencies": {
-    "markdown-it": "14.1.0"
+    "@types/leaflet": "1.9.12",
+    "@types/three": "0.170.0",
+    "cytoscape": "^3.30.2",
+    "leaflet": "1.9.4",
+    "markdown-it": "14.1.0",
+    "three": "0.170.0"
   },
   "resolutions": {
     "react": "19.3.0",

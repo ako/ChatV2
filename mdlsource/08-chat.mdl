@@ -8,15 +8,21 @@ mdl 1;
 drop microflow if exists "ServiceDesk"."SUB_ApplyAgentRuntimeSettings";
 drop microflow if exists "ServiceDesk"."ACT_ChatContext_SupportAgent_Action";
 
-/** Conversational UI action microflow: sends the conversation to the support agent and stores its answer. */
+/** Conversational UI action microflow: sends the conversation to the support agent and stores its answer. A request for a person, or a chat a person is handling, skips the model. */
 create or modify microflow "ServiceDesk"."ChatContext_SupportAgent_ActionMicroflow" ($ChatContext: ConversationalUI.ChatContext)
 returns Boolean as $Success
 folder 'Chat'
 begin
+  -- a request for a person, or a chat a person is handling: no model call (07b-chat-handoff.mdl)
+  $HandledByPerson = call microflow "ServiceDesk"."SUB_Handoff_Intercept" (ChatContext = $ChatContext);
+  if $HandledByPerson then
+    return true;
+  end if;
   $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext);
   if $Request = empty then
     return false;
   end if;
+  call microflow "ServiceDesk"."SUB_Request_StartWithUser" (ChatContext = $ChatContext, Request = $Request);
   $Response = call java action AgentEditorCommons.Agent_CallDocument_WithHistory(Agent = 'ServiceDesk.SupportAgent', Request = $Request, OptionalContextObject = empty) on error without rollback begin
     log error node 'ServiceDesk' 'Support agent call failed: {1}' with ({1} = $latestError/Message);
     return false;
@@ -32,7 +38,7 @@ begin
   return true;
 end;
 
-/** A new chat session with the support agent. */
+/** A new chat session with the support agent, stored at once. */
 create or modify microflow "ServiceDesk"."SUB_SupportChat_Create" ()
 returns ConversationalUI.ChatContext as $ChatContext
 folder 'Chat'
@@ -41,6 +47,10 @@ begin
     log error node 'ServiceDesk' 'Could not start a chat with the support agent: {1}' with ({1} = $latestError/Message);
     return empty;
   end error;
+  -- stored at once, not at the first question: a delay notice (16b) goes into the chat the customer has open,
+  -- and opening the assistant again returns to it rather than starting another
+  call microflow ConversationalUI.ChatContext_CommitProviderConfigList(ChatContext = $ChatContext);
+  commit $ChatContext;
   return $ChatContext;
 end;
 

@@ -15,6 +15,9 @@ PLUGGABLEWIDGET 'com.servicedesk.widgets.chatrichtext.ChatRichText' widget1
 | Property | Type | Required | Default | Values / notes | Group | Description |
 |----------|------|----------|---------|----------------|-------|-------------|
 | `stringAttribute` | attribute | Yes |  |  | General::Data source | The message text: markdown, with optional ```card JSON blocks. |
+| `onRateUp` | action |  |  |  | General::Answer actions | Shows a thumbs-up button under the message and runs this action when it is pressed. |
+| `onRateDown` | action |  |  |  | General::Answer actions | Shows a thumbs-down button under the message and runs this action when it is pressed. |
+| `readAloud` | boolean | Yes | false |  | General::Answer actions | Shows a button that reads the message's text aloud with the browser's speech synthesis. |
 
 ---
 

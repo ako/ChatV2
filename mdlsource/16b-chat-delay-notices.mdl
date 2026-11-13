@@ -1,0 +1,182 @@
+mdl 1;
+
+-- Proactive messages: when the carrier reports a problem with a parcel that is
+-- still on its way (an EXCEPTION scan: a delay, a parcel held at the depot),
+-- the assistant posts it into the customer's latest chat with an order card,
+-- before the customer asks. Each scan is posted once (ChatNotice). Runs after
+-- every shipment sync: at startup (99-app-shell.mdl) and every 15 minutes.
+
+/** A delay notice already posted, so the same scan is never posted twice. */
+create or modify persistent entity "ServiceDesk"."ChatNotice" (
+  "NoticeKey": String(700) not null unique,
+  "OrderNumber": String(20),
+  "Text": String(500),
+  "PostedAt": DateTime
+);
+create or modify association "ServiceDesk"."ChatNotice_ChatContext" from "ServiceDesk"."ChatNotice" to ConversationalUI.ChatContext;
+
+grant read * on entity "ServiceDesk"."ChatNotice" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The message for one problem scan: what happened, an order card with the latest scans, and follow-up questions. */
+create or modify microflow "ServiceDesk"."SUB_DelayNotice_Content" ($Shipment: "ServiceDesk"."Shipment", $Problem: "ServiceDesk"."TrackingEvent")
+returns String as $Content
+folder 'Delivery'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Timeline String = '';
+  retrieve $Events from "ServiceDesk"."TrackingEvent" where ["ServiceDesk"."TrackingEvent_Shipment" = $Shipment] sort by At asc;
+  loop $Event in $Events begin
+    $EventText = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Event/Location = empty then '' else $Event/Location + ': ') + (if $Event/Text = empty then '' else $Event/Text));
+    set $Timeline = $Timeline + (if $Timeline = '' then '' else ',') + '{"date":"' + formatDateTime($Event/At, 'd MMM HH:mm') + '","text":"' + $EventText + '"}';
+  end loop;
+  $ProblemText = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Problem/Text = empty then 'A problem with the parcel' else $Problem/Text));
+  $Carrier = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Shipment/Carrier = empty then '-' else $Shipment/Carrier));
+  declare $IsDelay Boolean = $Problem/Text != empty and contains(toLowerCase($Problem/Text), 'delay');
+  return 'A heads-up about order **' + $Shipment/OrderNumber + '**: the carrier just reported *' + (if $Problem/Text = empty then 'a problem with the parcel' else $Problem/Text) + '*. '
+    + (if $IsDelay then 'It will arrive later than planned. ' else '')
+    + 'I will keep an eye on it; ask me if you want to change anything.' + $NL + $NL
+    + '```card' + $NL
+    + '{"type":"order","title":"' + $Shipment/OrderNumber + '","subtitle":"' + $Carrier + ' · ' + $Shipment/TrackingCode + '","status":"' + (if $IsDelay then 'Delayed' else 'Needs attention') + '","tone":"warning",'
+    + '"fields":[{"label":"Carrier","value":"' + $Carrier + '"},{"label":"Tracking","value":"' + $Shipment/TrackingCode + '"},{"label":"Reported","value":"' + formatDateTime($Problem/At, 'd MMM HH:mm') + '"},{"label":"What happened","value":"' + $ProblemText + '"}],'
+    + '"timeline":[' + $Timeline + ']}' + $NL
+    + '```' + $NL + $NL
+    + '```suggestions' + $NL
+    + '["When will order ' + $Shipment/OrderNumber + ' arrive now?","Can I cancel order ' + $Shipment/OrderNumber + '?","I want to talk to a person"]' + $NL
+    + '```';
+end;
+
+/** Posts a notice for every problem scan on a parcel still on its way into its customer's latest support chat, once per scan. Returns how many were posted. A customer without a chat gets it after the next sync once they have one. */
+create or modify microflow "ServiceDesk"."SUB_DelayNotices_Post" ()
+returns Integer as $Posted
+folder 'Delivery'
+begin
+  declare $Count Integer = 0;
+  $NewMessages = create list of ConversationalUI.Message;
+  $NewNotices = create list of "ServiceDesk"."ChatNotice";
+  retrieve $Shipments from "ServiceDesk"."Shipment" where [Delivered = false];
+  loop $Shipment in $Shipments begin
+    retrieve $Problem from "ServiceDesk"."TrackingEvent" where ["ServiceDesk"."TrackingEvent_Shipment" = $Shipment][Stage = 'EXCEPTION'] sort by At desc first;
+    if $Problem = empty then
+      continue;
+    end if;
+    declare $Key String = $Shipment/TrackingCode + '|' + formatDateTimeUTC($Problem/At, 'yyyy-MM-dd''T''HH:mm') + '|' + (if $Problem/Text = empty then '' else $Problem/Text);
+    retrieve $Existing from "ServiceDesk"."ChatNotice" where [NoticeKey = $Key] first;
+    if $Existing != empty then
+      continue;
+    end if;
+    retrieve $Order from $Shipment/"ServiceDesk"."Shipment_Order";
+    if $Order = empty then
+      continue;
+    end if;
+    retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
+    if $Customer = empty then
+      continue;
+    end if;
+    retrieve $User from $Customer/"ServiceDesk"."Customer_User";
+    if $User = empty then
+      continue;
+    end if;
+    retrieve $Chat from ConversationalUI.ChatContext where [System.owner = $User][ConversationalUI.ChatContext_ProviderConfig_Active/ConversationalUI.ProviderConfig/ActionMicroflow = 'ServiceDesk.ChatContext_SupportAgent_ActionMicroflow'] sort by changedDate desc first;
+    if $Chat = empty then
+      continue;
+    end if;
+    $Content = call microflow "ServiceDesk"."SUB_DelayNotice_Content" (Shipment = $Shipment, Problem = $Problem);
+    $Message = create ConversationalUI.Message (
+      "Content" = $Content,
+      "Role" = GenAICommons.ENUM_MessageRole.assistant,
+      "Status" = ConversationalUI.ENUM_MessageStatus.Success,
+      "HasSources" = false,
+      "SubMessageCount" = 0,
+      ConversationalUI.Message_ChatContext = $Chat
+    );
+    add $Message to $NewMessages;
+    $Notice = create "ServiceDesk"."ChatNotice" ("NoticeKey" = $Key, "OrderNumber" = $Shipment/OrderNumber, "Text" = $Problem/Text, "PostedAt" = [%CurrentDateTime%], "ServiceDesk"."ChatNotice_ChatContext" = $Chat);
+    add $Notice to $NewNotices;
+    set $Count = $Count + 1;
+  end loop;
+  commit $NewMessages;
+  commit $NewNotices;
+  if $Count > 0 then
+    log info node 'ServiceDesk' 'Posted {1} delivery notices into customer chats.' with ({1} = toString($Count));
+  end if;
+  return $Count;
+end;
+
+/** Scheduled: syncs the carrier's parcels and posts notices for new problem scans. */
+create or modify microflow "ServiceDesk"."SE_Shipments_SyncAndNotify" ()
+folder 'Delivery'
+begin
+  $Synced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
+  if $Synced then
+    $Posted = call microflow "ServiceDesk"."SUB_DelayNotices_Post" ();
+  end if;
+end;
+
+create or modify scheduled event "ServiceDesk"."SE_ShipmentsSync" folder 'Delivery' (
+  Microflow: "ServiceDesk"."SE_Shipments_SyncAndNotify",
+  Repeat: Minutely,
+  Multiplier: 15,
+  Enabled: true,
+  OnOverlap: SkipNext
+);
+
+/** Syncs the carrier's parcels now and posts notices for new problem scans; returns how many were posted (-1 when the carrier cannot be reached). */
+create or modify microflow "ServiceDesk"."SUB_DelayNotices_CheckNow" ()
+returns Integer as $Posted
+folder 'Delivery'
+begin
+  $Synced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
+  if not($Synced) then
+    return -1;
+  end if;
+  $Count = call microflow "ServiceDesk"."SUB_DelayNotices_Post" ();
+  return $Count;
+end;
+
+/** "Check parcels now" on the Delivery notices page. */
+create or modify microflow "ServiceDesk"."ACT_DelayNotices_CheckNow" ()
+folder 'Delivery'
+begin
+  $Posted = call microflow "ServiceDesk"."SUB_DelayNotices_CheckNow" ();
+  if $Posted < 0 then
+    show message 'The carrier cannot be reached; nothing was checked.' type Warning;
+  else
+    if $Posted = 0 then
+      show message 'No new problems with parcels on their way.' type Information;
+    else
+      show message 'Posted new delay notices into customer chats.' type Information;
+    end if;
+  end if;
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_DelayNotices_CheckNow" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Staff: the delay notices the assistant posted into customer chats, newest first, and a button to check the carrier now. */
+create or modify page "ServiceDesk"."ChatNotice_Overview" folder 'Delivery'
+(
+  title: 'Delivery notices',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'delivery-notices'
+)
+{
+  layoutgrid lgNotices {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtNoticesHeading (content: 'Delivery notices', rendermode: H2)
+        dynamictext txtNoticesHelp (content: 'When the carrier reports a problem with a parcel still on its way, the assistant tells the customer in their chat, unasked. The carrier is checked every 15 minutes.', rendermode: Paragraph)
+        actionbutton btnCheckNow (caption: 'Check parcels now', action: call microflow "ServiceDesk"."ACT_DelayNotices_CheckNow", buttonstyle: primary, icon: Atlas_Core.Atlas.refresh)
+        datagrid dgNotices (
+          datasource: database from "ServiceDesk"."ChatNotice" sort by "PostedAt" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "OrderNumber", caption: 'Order') { textfilter tfNoticeOrder }
+          column (attribute: "Text", caption: 'What the carrier reported')
+          column (attribute: "PostedAt", caption: 'Posted')
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ChatNotice_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

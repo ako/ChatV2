@@ -1,0 +1,682 @@
+{
+ "name": "servicedesk-copilot",
+ "url": "http://127.0.0.1:8080/",
+ "setup": [
+  {
+   "login": [
+    "demo_customer",
+    "DemoCustomer1!"
+   ]
+  },
+  {
+   "click_text": "Assistant"
+  },
+  {
+   "wait_ms": 4000
+  },
+  {
+   "click_button": "New chat"
+  },
+  {
+   "wait_ms": 2500
+  },
+  {
+   "logout": true
+  },
+  {
+   "login": [
+    "demo_agent",
+    "DemoAgent1234!"
+   ]
+  },
+  {
+   "goto": "http://127.0.0.1:8080/p/delivery-notices"
+  },
+  {
+   "wait_ms": 3000
+  },
+  {
+   "click_button": "Check parcels now"
+  },
+  {
+   "wait_ms": 5000
+  },
+  {
+   "logout": true
+  },
+  {
+   "login": [
+    "demo_customer",
+    "DemoCustomer1!"
+   ]
+  },
+  {
+   "click_text": "Assistant"
+  },
+  {
+   "wait_ms": 6000
+  },
+  {
+   "check_setup": "!!__last() && /heads-up about order SO-10002/.test(__last().innerText) && document.querySelectorAll('.sd-conversation .crt-root').length === 1"
+  },
+  {
+   "js": "__card('ServiceDesk Copilot', 'What is new in the chat')"
+  }
+ ],
+ "beats": [
+  {
+   "say": "This is Service Desk Copilot, a support assistant for an online bike shop, built with Agent Studio on M X C L I. Here is what is new in the chat.",
+   "do": [],
+   "min": 7
+  },
+  {
+   "say": "Ada opens the assistant. Before she asks anything, it tells her the carrier has reported a delay on her order, with the parcel's scans.",
+   "do": [
+    [
+     0.2,
+     "__card('', '', true)"
+    ],
+    [
+     2.2,
+     "__spot(__last().querySelector('.crt-card'))"
+    ]
+   ]
+  },
+  {
+   "say": "Every answer ends with questions she is likely to ask next. She taps one.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-suggest'))"
+    ],
+    [
+     3.2,
+     "__unspot(); __click(__sel(__last().querySelector('.crt-suggest-chip')))"
+    ]
+   ],
+   "settle": 1.5
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "js": "__last().querySelector('.crt-map-wrap').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-map-wrap .crt-map-stop--warn')",
+    "why": "the answer has a route map with a delayed stop"
+   },
+   "say": "The answer shows the parcel's route on a map, with the delay at the Venlo hub marked in amber.",
+   "do": [
+    [
+     0.8,
+     "__spot(__last().querySelector('.crt-map-wrap'))"
+    ]
+   ]
+  },
+  {
+   "prep": [
+    {
+     "js": "__last().querySelector('.crt-toolbar').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 800
+    }
+   ],
+   "say": "She can rate any answer, or have it read aloud.",
+   "do": [
+    [
+     0.3,
+     "__spot(__last().querySelector('.crt-toolbar'))"
+    ],
+    [
+     1.6,
+     "__click(__sel(__last().querySelector('.crt-toolbar button')))"
+    ]
+   ],
+   "settle": 1.5
+  },
+  {
+   "say": "Next, she compares two e-bikes.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "What's the difference between the EB-200 and the EB-500?",
+    "at": 0.4,
+    "secs": 2.0
+   },
+   "send_at": 2.8
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "js": "__last().querySelector('.crt-type-compare').scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 1200
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-compare .crt-differs')",
+    "why": "the answer has a comparison card with differing rows"
+   },
+   "say": "A comparison card puts them side by side, and marks the rows that differ.",
+   "do": [
+    [
+     0.8,
+     "__spot(__last().querySelector('.crt-type-compare'))"
+    ]
+   ]
+  },
+  {
+   "say": "And where is the battery, on her own bike?",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "Where is the battery on my EB-200 from order SO-10003? Show me on the bike.",
+    "at": 0.4,
+    "secs": 2.4
+   },
+   "send_at": 3.2
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "wait_ms": 2500
+    },
+    {
+     "js": "__last().querySelector('.crt-type-model').scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-type-model canvas') && !!__last().querySelector('.mv-chip--lit')",
+    "why": "the answer has a 3D model with a part lit"
+   },
+   "say": "The assistant shows it on a 3D model of her bike, with the battery lit up. Pulled apart, every part is easy to see.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-type-model'))"
+    ],
+    [
+     3.0,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.12')"
+    ],
+    [
+     3.25,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.24')"
+    ],
+    [
+     3.5,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.36')"
+    ],
+    [
+     3.75,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.48')"
+    ],
+    [
+     4.0,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.60')"
+    ],
+    [
+     4.25,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.72')"
+    ],
+    [
+     4.5,
+     "__typeTo(__sel(__last().querySelector('.mv-explode input')), '0.84')"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "say": "Then a question about the returns policy.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "How long do I have to return something?",
+    "at": 0.4,
+    "secs": 1.6
+   },
+   "send_at": 2.4
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "wait_js": "!!__last() && !!__last().querySelector('.crt-cite details')",
+     "timeout": 30
+    },
+    {
+     "js": "__last().querySelector('.crt-cites').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 1000
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-cite details')",
+    "why": "a citation was found in the policy documents"
+   },
+   "say": "Policy answers quote the policy word for word, and each quote is checked against the document itself.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-cites'))"
+    ],
+    [
+     3.0,
+     "__unspot(); __click(__sel(__last().querySelector('.crt-cite summary')))"
+    ],
+    [
+     4.2,
+     "__spot(__last().querySelector('.crt-cites'))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "say": "Her brakes squeak, so she asks for a service appointment.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "The brakes on my e-bike from order SO-10129 squeak. Can I book a service appointment?",
+    "at": 0.4,
+    "secs": 2.6
+   },
+   "send_at": 3.4
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "js": "__last().querySelector('.crt-actions').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 1000
+    }
+   ],
+   "check": {
+    "js": "[...__last().querySelectorAll('.crt-action-btn')].some(b => /appointment/i.test(b.innerText))",
+    "why": "the card offers a service appointment"
+   },
+   "say": "The answer comes with actions she can take. She picks the appointment.",
+   "do": [
+    [
+     0.4,
+     "__spot(__last().querySelector('.crt-actions'))"
+    ],
+    [
+     3.0,
+     "__unspot(); __click(__sel([...__last().querySelectorAll('.crt-action-btn')].find(b => /appointment/i.test(b.innerText))))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "prep": [
+    {
+     "js": "__last().querySelector('.crt-action-form').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 800
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-action-form select option')",
+    "why": "the appointment form lists free slots"
+   },
+   "say": "A small form, filled in from the card, lists the free slots. Nothing happens until she sends it.",
+   "do": [
+    [
+     0.4,
+     "__spot(__last().querySelector('.crt-action-form'))"
+    ],
+    [
+     4.6,
+     "__unspot(); __click(__sel(__last().querySelector('.crt-action-submit')))"
+    ]
+   ],
+   "settle": 3.0
+  },
+  {
+   "prep": [
+    {
+     "wait_js": "!!__last().querySelector('.crt-action-result')",
+     "timeout": 30
+    }
+   ],
+   "check": {
+    "js": "/Booked|booked/.test(__last().querySelector('.crt-action-result').innerText)",
+    "why": "the appointment was booked"
+   },
+   "say": "And the appointment is booked.",
+   "do": [
+    [
+     0.3,
+     "__spot(__last().querySelector('.crt-action-result'))"
+    ]
+   ]
+  },
+  {
+   "say": "In the message box, she can also add a photo, ask for a person, or simply speak.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__spot(document.querySelector('.sd-compose-tools'))"
+    ],
+    [
+     4.2,
+     "__unspot(); __click('.mx-name-btnAddPhoto')"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "prep": [
+    {
+     "wait_js": "!!document.querySelector('.modal-dialog input[type=file]')",
+     "timeout": 20
+    },
+    {
+     "upload": {
+      "sel": ".modal-dialog input[type=file]",
+      "file": "/tmp/claude-0/-home-user/a986bd8a-36bc-545f-9886-3a81f075f446/scratchpad/bike-photo.jpg"
+     }
+    },
+    {
+     "fill": [
+      ".modal-dialog .mx-name-cbOrder input",
+      "SO-10129"
+     ]
+    },
+    {
+     "press": "Enter"
+    },
+    {
+     "fill": [
+      ".modal-dialog .mx-name-txtNote textarea",
+      "Something looks wrong near the battery."
+     ]
+    },
+    {
+     "wait_ms": 800
+    }
+   ],
+   "check": {
+    "js": "/SO-10129/.test(document.querySelector('.modal-dialog').innerText + [...document.querySelectorAll('.modal-dialog input')].map(i => i.value).join(' ')) && [...document.querySelectorAll('.modal-dialog input')].some(i => /bike-photo/.test(i.value))",
+    "why": "the popup has the photo and the order"
+   },
+   "say": "She adds a photo of her bike, picks the order, and sends it.",
+   "do": [
+    [
+     0.3,
+     "__spot(document.querySelector('.modal-dialog .modal-content'))"
+    ],
+    [
+     3.4,
+     "__unspot(); __click('.mx-name-btnSendPhoto')"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "wait_ms": 1500
+    },
+    {
+     "js": "__last().scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 1200
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('img[alt^=\"Photo\"]') && __last().querySelector('img[alt^=\"Photo\"]').naturalWidth > 0 && /What the photo shows/.test(__last().innerText)",
+    "why": "the answer shows the photo and what it shows"
+   },
+   "say": "The document agent describes what the photo shows, and the assistant offers to report the problem.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last())"
+    ]
+   ]
+  },
+  {
+   "prep": [
+    {
+     "js": "__last().querySelector('.crt-actions').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 800
+    }
+   ],
+   "say": "One click opens a ticket, with the photo attached.",
+   "do": [
+    [
+     0.4,
+     "__click(__sel([...__last().querySelectorAll('.crt-action-btn')].find(b => /problem/i.test(b.innerText))))"
+    ],
+    [
+     2.2,
+     "__click(__sel(__last().querySelector('.crt-action-submit')))"
+    ],
+    [
+     4.6,
+     "__spot(__last().querySelector('.crt-actions'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "prep": [
+    {
+     "wait_js": "!!__last().querySelector('.crt-action-result') && /with the photo attached/.test(__last().querySelector('.crt-action-result').innerText)",
+     "timeout": 30
+    }
+   ],
+   "say": "Finally, she asks for a person.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "This is taking too long. I want to talk to a person.",
+    "at": 0.4,
+    "secs": 2.0
+   },
+   "send_at": 2.8
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    }
+   ],
+   "check": {
+    "js": "/support agent to join/.test(__last().innerText)",
+    "why": "the chat was handed to the support team"
+   },
+   "say": "The chat goes to the support team, and the assistant steps back while a person handles it.",
+   "do": [
+    [
+     0.5,
+     "__spot(__last())"
+    ]
+   ]
+  },
+  {
+   "prep": [
+    {
+     "logout": true
+    },
+    {
+     "login": [
+      "demo_agent",
+      "DemoAgent1234!"
+     ]
+    },
+    {
+     "goto": "http://127.0.0.1:8080/p/live-chats"
+    },
+    {
+     "wait_ms": 3000
+    },
+    {
+     "wait_js": "[...document.querySelectorAll('.mx-name-dgHandoffs [role=row]')].some(r => /Ada Jansen/.test(r.innerText) && /Waiting/.test(r.innerText))",
+     "timeout": 60
+    }
+   ],
+   "say": "Sam, on the support team, sees her chat in the live chats queue.",
+   "do": [
+    [
+     0.8,
+     "__spot([...document.querySelectorAll('.mx-name-dgHandoffs [role=row]')].filter(r => /Waiting/.test(r.innerText)).pop())"
+    ],
+    [
+     3.6,
+     "__unspot(); __click(__sel([...document.querySelectorAll('.mx-name-dgHandoffs [role=row]')].filter(r => /Waiting/.test(r.innerText)).pop().querySelector('.mx-name-btnOpenHandoff')))"
+    ]
+   ],
+   "settle": 3.0
+  },
+  {
+   "prep": [
+    {
+     "wait_js": "!!document.querySelector('.sd-live-transcript') && /talk to a person/.test(document.querySelector('.sd-live-transcript').innerText)",
+     "timeout": 30
+    },
+    {
+     "js": "document.querySelector('.sd-live-transcript').scrollTop = 1e6"
+    }
+   ],
+   "say": "He reads the whole conversation, and replies, right into her chat.",
+   "do": [
+    [
+     0.4,
+     "__spot(document.querySelector('.sd-live-transcript'))"
+    ],
+    [
+     2.6,
+     "__unspot()"
+    ],
+    [
+     6.8,
+     "__click('.mx-name-btnSendReply')"
+    ]
+   ],
+   "type": {
+    "sel": ".mx-name-txtReply textarea",
+    "text": "Hi Ada, Sam here. I have asked DHL to prioritise your parcel, and the workshop will see your bike on the booked date.",
+    "at": 2.8,
+    "secs": 3.4
+   },
+   "settle": 2.5
+  },
+  {
+   "prep": [
+    {
+     "logout": true
+    },
+    {
+     "login": [
+      "demo_customer",
+      "DemoCustomer1!"
+     ]
+    },
+    {
+     "click_text": "Assistant"
+    },
+    {
+     "wait_ms": 5000
+    },
+    {
+     "wait_js": "!!__last() && /prioritise your parcel/.test(__last().innerText)",
+     "timeout": 30
+    },
+    {
+     "js": "__last().scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 800
+    }
+   ],
+   "say": "Ada sees Sam's reply in the same chat.",
+   "do": [
+    [
+     0.4,
+     "__spot(__last())"
+    ]
+   ]
+  },
+  {
+   "say": "Proactive notices, actions, photos, and a person when it matters. All in one chat, grounded in the shop's own data.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__card('ServiceDesk Copilot', 'Notices, actions, photos and people, in one chat')"
+    ]
+   ],
+   "min": 7
+  }
+ ]
+}

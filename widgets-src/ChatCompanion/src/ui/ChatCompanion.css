@@ -1,0 +1,9 @@
+.ccomp { display: inline-flex; }
+.ccomp-hidden { display: none; }
+.ccomp-mic { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 12px;
+    border: 1px solid var(--mxt-line, rgba(255, 255, 255, 0.14)); background: rgba(255, 255, 255, 0.06); color: var(--mxt-ink-muted, #a9b3ca); cursor: pointer; }
+.ccomp-mic svg { width: 18px; height: 18px; fill: currentColor; }
+.ccomp-mic:hover, .ccomp-mic:focus-visible { color: var(--mxt-ink, #e8ecf6); }
+.ccomp-mic-on { color: #070b16; background: linear-gradient(135deg, var(--mxt-brand, #4fd1c5), #8fb8ff); border-color: transparent; animation: ccomp-pulse 1.4s ease-out infinite; }
+@keyframes ccomp-pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 209, 197, 0.6); } 100% { box-shadow: 0 0 0 12px rgba(79, 209, 197, 0); } }
+@media (prefers-reduced-motion: reduce) { .ccomp-mic-on { animation: none; } }

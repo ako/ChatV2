@@ -20,7 +20,10 @@ import urllib.request
 
 from mcp.server.mcpserver import MCPServer
 
-ENDPOINT = os.environ.get("PRODUCT_GRAPH_SPARQL", "http://localhost:3030/products/sparql")
+# The catalog dataset: the product graph WITHOUT orders (see tools/fuseki/start.sh).
+# Whatever the model asks, nothing reachable from here can reveal a customer's order;
+# order contents come from the app's GetOrderProducts tool, which checks the user.
+ENDPOINT = os.environ.get("PRODUCT_GRAPH_SPARQL", "http://localhost:3030/catalog/sparql")
 MAX_ROWS = 50
 PREFIXES = """PREFIX shop: <https://example.org/bikeshop#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -28,17 +31,17 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 """
 SCHEMA = """Prefix shop: <https://example.org/bikeshop#>, labels in rdfs:label.
 Classes: shop:Product with subclasses shop:Bike (shop:EBike), shop:Part, shop:Accessory; shop:Supplier;
-shop:KnownIssue (subclass shop:Recall); shop:Order; shop:OrderLine.
+shop:KnownIssue (subclass shop:Recall).
 Product properties: shop:sku, rdfs:label, shop:price (EUR), shop:warrantyYears, shop:suppliedBy (Supplier),
 shop:hasComponent (parts a bike ships with), shop:compatibleWith (what a part or accessory fits on or works with),
 bikes also shop:wheelSize, shop:seatPostDiameter, shop:brakes, shop:rackMount.
 Known issues: shop:issueId, rdfs:label, shop:affects (Product), shop:affectsBatch (recalls only), shop:announced, shop:advice.
-Orders: shop:orderNumber (e.g. "SO-10003"), shop:hasLine (OrderLine: shop:product, shop:quantity, shop:unitPrice, shop:batch)."""
+Orders are not in this graph: what an order contains comes from the app (GetOrderProducts), for the signed-in user only."""
 
 server = MCPServer(
     name="ProductGraph",
     version="1.0.0",
-    instructions="The bike shop's product knowledge graph: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains. " + SCHEMA,
+    instructions="The bike shop's product catalog graph: products, parts and compatibility, suppliers, known issues and recalls. " + SCHEMA,
 )
 
 
@@ -115,23 +118,52 @@ def known_issues(sku: str) -> str:
     return "\n".join(issues) if issues else f"No known issues or recalls for {s}."
 
 
-@server.tool(name="order_products", description="What an order contains according to the product graph: per line the SKU, name, quantity, unit price and production batch, plus any known issue or recall that applies to that exact unit. Input: an order number such as SO-10003.")
-def order_products(order_number: str) -> str:
-    n = order_number.strip().upper().replace('"', "")
-    rows = _select(f"""SELECT ?sku ?name ?qty ?price ?batch WHERE {{
-        ?o shop:orderNumber "{n}" ; shop:hasLine ?l . ?l shop:product ?p ; shop:quantity ?qty ; shop:unitPrice ?price .
-        ?p shop:sku ?sku ; rdfs:label ?name . OPTIONAL {{ ?l shop:batch ?batch }} }} ORDER BY ?sku""")
-    if not rows:
-        return f"Order {n} is not in the product graph."
-    out = [f"Order {n}:"]
-    for r in rows:
-        batch = r.get("batch")
-        out.append(f"- {r['qty']} x {r['sku']} {r['name']} at EUR {float(r['price']):.2f}" + (f", batch {batch}" if batch else ""))
-        out += ["  " + i for i in _issues_for(r["sku"], batch)]
-    return "\n".join(out)
-
-
 WRITE = re.compile(r"\b(INSERT|DELETE|LOAD|CLEAR|DROP|CREATE|ADD|MOVE|COPY|WITH|SERVICE)\b", re.I)
+
+
+def _local(iri: str) -> str:
+    return iri.rsplit("#", 1)[-1]
+
+
+@server.tool(name="product_outline", description="A product as an outline card for the chat, as JSON: its price, warranty and supplier, what it ships with, what fits it or what it fits on, and its known issues and recalls. Every node carries a ref the user can click for details. Put the JSON in a ```card block unchanged. Input: a SKU such as EB-200.")
+def product_outline(sku: str) -> str:
+    code = _sku(sku)
+    base = _select(f"""SELECT ?p ?name ?type ?price ?warranty ?s ?supplier WHERE {{
+        ?p shop:sku "{code}" ; rdfs:label ?name ; a ?t ; shop:price ?price ; shop:warrantyYears ?warranty ; shop:suppliedBy ?s .
+        ?t rdfs:label ?type . ?s rdfs:label ?supplier }} LIMIT 1""")
+    if not base:
+        return f"No product with SKU {code}."
+    b = base[0]
+
+    def nodes(query: str) -> list[dict]:
+        return [{"label": f"{r['sku']} {r['name']}", "ref": r["sku"]} for r in _select(query)]
+
+    components = nodes(f"""SELECT ?sku ?name WHERE {{ <{b['p']}> shop:hasComponent ?c . ?c shop:sku ?sku ; rdfs:label ?name }} ORDER BY ?sku""")
+    fits = nodes(f"""SELECT DISTINCT ?sku ?name WHERE {{ ?c shop:compatibleWith <{b['p']}> . ?c shop:sku ?sku ; rdfs:label ?name }} ORDER BY ?sku""")
+    fits_on = nodes(f"""SELECT DISTINCT ?sku ?name WHERE {{ <{b['p']}> shop:compatibleWith ?c . ?c shop:sku ?sku ; rdfs:label ?name }} ORDER BY ?sku""")
+    used_in = nodes(f"""SELECT DISTINCT ?sku ?name WHERE {{ ?c shop:hasComponent <{b['p']}> . ?c shop:sku ?sku ; rdfs:label ?name }} ORDER BY ?sku""")
+    issues = [{"label": f"{r['id']}: {r['name']}", "ref": r["id"], "value": "recall" if r["recall"] == "true" else "known issue"}
+              for r in _select(f"""SELECT DISTINCT ?id ?name (EXISTS {{ ?i a shop:Recall }} AS ?recall) WHERE {{
+                  {{ ?i shop:affects <{b['p']}> }} UNION {{ <{b['p']}> shop:hasComponent ?c . ?i shop:affects ?c }}
+                  ?i shop:issueId ?id ; rdfs:label ?name }} ORDER BY ?id""")]
+    outline = [n for n in [
+        {"label": "Ships with", "children": components},
+        {"label": "Compatible parts and accessories", "children": fits},
+        {"label": "Fits on / works with", "children": fits_on},
+        {"label": "Part of", "children": used_in},
+        {"label": "Known issues and recalls", "children": issues or [{"label": "None known"}]},
+    ] if n["children"]]
+    card = {
+        "type": "product", "title": f"{code} · {b['name']}", "subtitle": b["type"],
+        "tone": "warning" if issues else "neutral",
+        "fields": [
+            {"label": "Price", "value": f"EUR {float(b['price']):.2f}"},
+            {"label": "Warranty", "value": f"{b['warranty']} years"},
+            {"label": "Supplier", "value": b["supplier"], "ref": _local(b["s"])},
+        ],
+        "outline": outline,
+    }
+    return json.dumps(card, ensure_ascii=False)
 
 
 @server.tool(name="sparql_query", description="Runs a read-only SPARQL SELECT or ASK query on the product graph, for questions the other tools do not cover. Prefixes shop:, rdfs: and xsd: are predeclared. At most 50 rows. Schema: " + SCHEMA)

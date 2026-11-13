@@ -1,0 +1,49 @@
+mdl 1;
+
+-- Delivery statistics: the order history seed, the leg computation and the
+-- tool's per-leg line. The shipment sync itself needs the carrier server
+-- and is checked live, not here.
+
+/**
+ * @test Startup seeds the 48 historical delivered orders
+ * @expect $HistoryCount = 48
+ */
+retrieve $History from ServiceDesk.Order where [OrderNumber > 'SO-10100'];
+$HistoryCount = count $History;
+/
+
+/**
+ * @test Each scan is labelled with the leg it ends and how long that took
+ * @expect $Summary = 'Warehouse 24.00 | InTransit 12.00 | AtHub 24.00 @ Venlo | LastMile 6.00 @ Venlo | 2.75 days'
+ */
+$Order = create ServiceDesk.Order (OrderNumber = 'SO-TEST-LEGS', OrderDate = parseDateTimeUTC('2026-01-05 08:00', 'yyyy-MM-dd HH:mm'), Status = ServiceDesk.ENUM_OrderStatus.Delivered) commit;
+$Shipment = create ServiceDesk.Shipment (TrackingCode = 'TEST-LEGS-1', Carrier = 'DHL', OrderNumber = 'SO-TEST-LEGS') commit;
+$E1 = create ServiceDesk.TrackingEvent (At = parseDateTimeUTC('2026-01-06 08:00', 'yyyy-MM-dd HH:mm'), Location = 'Leipzig', Stage = 'PICKED_UP', ServiceDesk.TrackingEvent_Shipment = $Shipment) commit;
+$E2 = create ServiceDesk.TrackingEvent (At = parseDateTimeUTC('2026-01-06 20:00', 'yyyy-MM-dd HH:mm'), Location = 'Venlo', Stage = 'AT_HUB', ServiceDesk.TrackingEvent_Shipment = $Shipment) commit;
+$E3 = create ServiceDesk.TrackingEvent (At = parseDateTimeUTC('2026-01-07 20:00', 'yyyy-MM-dd HH:mm'), Location = 'Venlo', Stage = 'OUT_FOR_DELIVERY', ServiceDesk.TrackingEvent_Shipment = $Shipment) commit;
+$E4 = create ServiceDesk.TrackingEvent (At = parseDateTimeUTC('2026-01-08 02:00', 'yyyy-MM-dd HH:mm'), Location = 'Zwolle', Stage = 'DELIVERED', ServiceDesk.TrackingEvent_Shipment = $Shipment) commit;
+call microflow ServiceDesk.SUB_Shipment_ComputeLegs(Shipment = $Shipment);
+retrieve $Events from ServiceDesk.TrackingEvent where [ServiceDesk.TrackingEvent_Shipment = $Shipment] sort by At asc;
+retrieve $Done from ServiceDesk.Shipment where [TrackingCode = 'TEST-LEGS-1'] first;
+declare $Summary String = '';
+loop $E in $Events begin
+  set $Summary = $Summary + (if $Summary = '' then '' else ' | ') + getKey($E/Leg) + ' ' + formatDecimal($E/LegHours, '0.00')
+    + (if $E/Leg = ServiceDesk.ENUM_DeliveryLeg.AtHub or $E/Leg = ServiceDesk.ENUM_DeliveryLeg.LastMile then ' @ ' + $E/LegLocation else '');
+end loop;
+set $Summary = $Summary + ' | ' + formatDecimal($Done/DeliveryDays, '0.00') + ' days';
+/
+
+/**
+ * @test The tool's leg line gives days per parcel and the share of all time
+ * @expect $Line = '- At the hub: 1.0 days per parcel (50% of the time)'
+ */
+$Raw = call microflow ServiceDesk.SUB_DeliveryStats_LegLine(Leg = ServiceDesk.ENUM_DeliveryLeg.AtHub, Parcels = 2, TotalHours = 48, AllHours = 96);
+declare $Line String = trim($Raw);
+/
+
+/**
+ * @test A leg without parcels gives no line
+ * @expect $Empty = ''
+ */
+$Empty = call microflow ServiceDesk.SUB_DeliveryStats_LegLine(Leg = ServiceDesk.ENUM_DeliveryLeg.LastMile, Parcels = 0, TotalHours = 0, AllHours = 0);
+/

@@ -1,0 +1,80 @@
+mdl 1;
+
+-- Conversation metrics: model names, price matching and the cost of one model call (11b-chat-metrics.mdl).
+
+/**
+ * @test A Mendix Cloud model loses its subscription prefix
+ * @expect $Name = 'Claude Sonnet 5.5'
+ */
+$Name = call microflow ServiceDesk.SUB_ChatMetrics_ModelName(Identifier = 'Mendix Cloud Some Subscription - Text Generation - Anthropic Claude Sonnet 5.5');
+/
+
+/**
+ * @test An OpenRouter model keeps its OpenRouter name
+ * @expect $Name = 'OpenRouter nvidia/nemotron-3.5-super-vl:free'
+ */
+$Name = call microflow ServiceDesk.SUB_ChatMetrics_ModelName(Identifier = 'OpenAI OpenRouter nvidia/nemotron-3.5-super-vl:free');
+/
+
+/**
+ * @test The first price whose text appears in the model name applies, ignoring case
+ * @expect $Matched = true
+ */
+$Prices = create list of ServiceDesk.ModelPrice;
+$Free = create ServiceDesk.ModelPrice (ModelMatch = ':free', InputPerMillion = 0, OutputPerMillion = 0, Currency = 'USD');
+$Sonnet = create ServiceDesk.ModelPrice (ModelMatch = 'sonnet 5.5', InputPerMillion = 3, OutputPerMillion = 15, Currency = 'USD');
+add $Free to $Prices;
+add $Sonnet to $Prices;
+$Price = call microflow ServiceDesk.SUB_ChatMetrics_FindPrice(Prices = $Prices, Identifier = 'Mendix Cloud S - Text Generation - Anthropic Claude Sonnet 5.5');
+declare $Matched Boolean = $Price != empty and $Price/ModelMatch = 'sonnet 5.5';
+/
+
+/**
+ * @test A model without a matching price has none
+ * @expect $Missing = true
+ */
+$Prices = create list of ServiceDesk.ModelPrice;
+$Free = create ServiceDesk.ModelPrice (ModelMatch = ':free', InputPerMillion = 0, OutputPerMillion = 0, Currency = 'USD');
+add $Free to $Prices;
+$Price = call microflow ServiceDesk.SUB_ChatMetrics_FindPrice(Prices = $Prices, Identifier = 'Mendix Cloud S - Text Generation - Anthropic Claude Haiku 5.5');
+declare $Missing Boolean = $Price = empty;
+/
+
+/**
+ * @test A model call adds its tokens and cost to the chat, the question and the model line
+ * @expect $Counted = true
+ */
+$Prices = create list of ServiceDesk.ModelPrice;
+$Sonnet = create ServiceDesk.ModelPrice (ModelMatch = 'Sonnet 5.5', InputPerMillion = 3, OutputPerMillion = 15, Currency = 'USD');
+add $Sonnet to $Prices;
+$Lines = create list of ServiceDesk.ChatMetricsModelLine;
+$Chat = create ServiceDesk.ChatMetricsTotals (InputTokens = 0, OutputTokens = 0, ModelCalls = 0, ToolCalls = 0, Cost = 0, Unpriced = 0, Currency = 'USD');
+$Turn = create ServiceDesk.ChatMetricsTotals (InputTokens = 0, OutputTokens = 0, ModelCalls = 0, ToolCalls = 0, Cost = 0, Unpriced = 0, Currency = 'USD');
+$Span = create GenAICommons.ModelSpan (InputTokens = 1000000, OutputTokens = 100000, DurationMilliseconds = 2500, _DeploymentIdentifier = 'Mendix Cloud S - Text Generation - Anthropic Claude Sonnet 5.5');
+$Row = call microflow ServiceDesk.SUB_ChatMetrics_AddModelCall(Span = $Span, Label = 'Model call', Prices = $Prices, Lines = $Lines, Chat = $Chat, Turn = $Turn);
+$LineCount = count $Lines;
+$SonnetLine = find $Lines by Model = 'Claude Sonnet 5.5';
+declare $Counted Boolean = $Chat/Cost = 4.5 and $Turn/InputTokens = 1000000 and $Chat/ModelCalls = 1 and $Chat/Unpriced = 0 and $LineCount = 1 and contains($Row, 'Model call') and $SonnetLine != empty;
+/
+
+/**
+ * @test The details panel escapes quotes, backslashes and line breaks for a card's JSON
+ * @expect $Escaped = 'say \"hi\" a\\b next'
+ */
+$Escaped = call microflow ServiceDesk.SUB_Json_Escape(Text = 'say "hi" a\b' + urlDecode('%0A') + 'next');
+/
+
+/**
+ * @test An order nobody can find gives no card in the details panel
+ * @expect $Card = ''
+ */
+$Card = call microflow ServiceDesk.SUB_ChatDetails_OrderCard(OrderNumber = 'SO-99999');
+/
+
+/**
+ * @test A known order becomes an order card with its tracking scans
+ * @expect $IsCard = true
+ */
+$Card = call microflow ServiceDesk.SUB_ChatDetails_OrderCard(OrderNumber = 'SO-10002');
+declare $IsCard Boolean = startsWith($Card, '```card') and contains($Card, '"title":"SO-10002"') and contains($Card, '"timeline":[{');
+/

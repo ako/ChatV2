@@ -1,0 +1,184 @@
+mdl 1;
+
+-- Photos in the chat: a customer adds a photo of a damaged or broken part from
+-- the chat page ("Add a photo"). The document agent (ServiceDesk.DocumentAgent,
+-- which already reads ticket attachments) describes what it shows; the chat
+-- gets the photo and that description, with a "Report a problem" action whose
+-- ticket carries the photo as an attachment.
+--
+-- Runs before 23-chat-actions.mdl, whose ticket action calls
+-- SUB_ChatAction_Ticket here to attach the photo.
+
+/** A photo a user added to a chat, with the document agent's description of it. */
+create or modify persistent entity "ServiceDesk"."ChatPhoto" extends System.FileDocument (
+  "PhotoNumber": AutoNumber default 1,
+  "Note": String(500),
+  "Analysis": String(unlimited)
+);
+
+create or modify association "ServiceDesk"."ChatPhoto_ChatContext" from "ServiceDesk"."ChatPhoto" to ConversationalUI.ChatContext;
+create or modify association "ServiceDesk"."ChatPhoto_Order" from "ServiceDesk"."ChatPhoto" to "ServiceDesk"."Order";
+
+grant read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
+grant read *, write * on entity "ServiceDesk"."ChatPhoto" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create, delete on entity "ServiceDesk"."ChatPhoto" from "ServiceDesk"."Customer";
+revoke create on entity "ServiceDesk"."ChatPhoto" from "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Lets the document agent describe the photo; stores and returns the description (empty when it could not). */
+create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Analyse" ($Photo: "ServiceDesk"."ChatPhoto")
+returns String as $Analysis
+folder 'Chat photos'
+begin
+  $Files = call microflow GenAICommons.FileCollection_CreateAndAddFile (
+    URL = empty,
+    FileDocument = $Photo,
+    ENUM_FileType = GenAICommons.ENUM_FileType.image,
+    TextContent = empty
+  );
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.DocumentAgent');
+  if $Agent = empty then
+    return '';
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = empty, OptionalRequest = empty, OptionalFileCollection = $Files) on error without rollback begin
+    log warning node 'ServiceDesk' 'Photo check failed for {1}: {2}' with ({1} = $Photo/Name, {2} = $latestError/Message);
+    return '';
+  end error;
+  if $Response = empty or $Response/ResponseText = empty then
+    return '';
+  end if;
+  change $Photo ("Analysis" = $Response/ResponseText) commit;
+  return $Response/ResponseText;
+end;
+
+/** A new photo for a chat, not yet stored. */
+create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Create" ($ChatContext: ConversationalUI.ChatContext)
+returns "ServiceDesk"."ChatPhoto" as $Photo
+folder 'Chat photos'
+begin
+  $Photo = create "ServiceDesk"."ChatPhoto" ("ServiceDesk"."ChatPhoto_ChatContext" = $ChatContext);
+  return $Photo;
+end;
+
+/** Camera button in the message box: opens the photo popup for the chat. */
+create or modify microflow "ServiceDesk"."ACT_ChatPhoto_New" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat photos'
+begin
+  $Photo = call microflow "ServiceDesk"."SUB_ChatPhoto_Create" (ChatContext = $ChatContext);
+  show page "ServiceDesk"."ChatPhoto_Upload" ("ChatPhoto" = $Photo);
+end;
+
+/** Stores the photo, lets the document agent describe it, and puts both in the chat with a "Report a problem" action that attaches the photo to the ticket. */
+create or modify microflow "ServiceDesk"."SUB_ChatPhoto_Post" ($ChatPhoto: "ServiceDesk"."ChatPhoto")
+returns ConversationalUI.ChatContext as $Posted
+folder 'Chat photos'
+begin
+  if $ChatPhoto/HasContents = false then
+    validation feedback $ChatPhoto/Name message 'Choose a photo first.';
+    return empty;
+  end if;
+  commit $ChatPhoto;
+  retrieve $Chat from $ChatPhoto/"ServiceDesk"."ChatPhoto_ChatContext";
+  retrieve $Order from $ChatPhoto/"ServiceDesk"."ChatPhoto_Order";
+  $Analysis = call microflow "ServiceDesk"."SUB_ChatPhoto_Analyse" (Photo = $ChatPhoto);
+  $Guid = call java action CommunityCommons.getGUID(item = $ChatPhoto);
+  declare $NL String = urlDecode('%0A');
+  declare $Note String = trim(if $ChatPhoto/Note = empty then '' else $ChatPhoto/Note);
+  -- the customer's message (Conversational UI shows it as plain text)
+  $UserMessage = create ConversationalUI.Message (
+    "Content" = 'Sent photo ' + toString($ChatPhoto/PhotoNumber) + (if $Order = empty then '' else ' about order ' + $Order/OrderNumber) + (if $Note = '' then '.' else ': ' + $Note),
+    "Role" = GenAICommons.ENUM_MessageRole.user,
+    "Status" = ConversationalUI.ENUM_MessageStatus.Success,
+    "HasSources" = false,
+    "SubMessageCount" = 0,
+    ConversationalUI.Message_ChatContext = $Chat
+  ) commit;
+  -- the answer (rendered as markdown): the photo, what it shows, what to do
+  $Description = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Analysis = '' then 'The photo could not be checked automatically.' else $Analysis));
+  $Subject = call microflow "ServiceDesk"."SUB_Json_Escape" (Text = (if $Note = '' then 'Problem shown in photo ' + toString($ChatPhoto/PhotoNumber) else (if length($Note) > 80 then substring($Note, 0, 80) else $Note)));
+  declare $Card String = '```card' + $NL
+    + '{"type":"issue","title":"Photo check","subtitle":"' + (if $Order = empty then 'Photo ' + toString($ChatPhoto/PhotoNumber) else 'Photo ' + toString($ChatPhoto/PhotoNumber) + ' · order ' + $Order/OrderNumber) + '","tone":"info"'
+    + (if $Order = empty then '' else ',"actions":[{"label":"Report a problem","action":"ticket","ref":"' + $Order/OrderNumber + '","values":{"subject":"' + $Subject + '","description":"' + $Description + '","photo":"' + toString($ChatPhoto/PhotoNumber) + '"}}]')
+    + '}' + $NL + '```';
+  $Answer = create ConversationalUI.Message (
+    "Content" = '![Photo ' + toString($ChatPhoto/PhotoNumber) + '](/file?guid=' + toString($Guid) + '&target=internal)' + $NL + $NL
+      + '**What the photo shows**' + $NL + $NL + (if $Analysis = '' then 'I could not check this photo automatically. A support agent can still look at it.' else $Analysis) + $NL + $NL
+      + (if $Order = empty then 'Tell me which order this is about, and I can open a ticket with the photo attached.' + $NL + $NL else '') + $Card,
+    "Role" = GenAICommons.ENUM_MessageRole.assistant,
+    "Status" = ConversationalUI.ENUM_MessageStatus.Success,
+    "HasSources" = false,
+    "SubMessageCount" = 0,
+    ConversationalUI.Message_ChatContext = $Chat
+  ) commit;
+  return $Chat;
+end;
+
+/** Send button of the photo popup: posts the photo and shows the chat. */
+create or modify microflow "ServiceDesk"."ACT_ChatPhoto_Send" ($ChatPhoto: "ServiceDesk"."ChatPhoto")
+folder 'Chat photos'
+begin
+  $Chat = call microflow "ServiceDesk"."SUB_ChatPhoto_Post" (ChatPhoto = $ChatPhoto);
+  if $Chat = empty then
+    return;
+  end if;
+  close page;
+  show page "ServiceDesk"."Chat_WithHistory" (ChatContext = $Chat);
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_ChatPhoto_New" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_ChatPhoto_Send" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Popup: add a photo to the chat, with the order it is about. */
+create or modify page "ServiceDesk"."ChatPhoto_Upload" folder 'Chat photos'
+(
+  params: ( $ChatPhoto: "ServiceDesk"."ChatPhoto" ),
+  title: 'Add a photo',
+  layout: Atlas_Core.PopupLayout,
+  PopupWidth: 560, PopupHeight: 520
+)
+{
+  layoutgrid lgPhoto {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvPhoto (datasource: $ChatPhoto) {
+          dynamictext txtPhotoHelp (content: 'A photo of a damaged or broken part. The assistant describes what it shows, and you can open a ticket with the photo attached.', rendermode: Paragraph)
+          filemanager fmPhoto (label: 'Photo', Type: Upload, MaxFileSize: 8, AllowedExtensions: '.jpg,.jpeg,.png,.webp')
+          combobox cbOrder (label: 'Order', Association: ChatPhoto_Order, datasource: database "ServiceDesk"."Order", CaptionAttribute: "OrderNumber")
+          textarea txtNote (label: 'What is wrong?', attribute: "Note")
+          footer {
+            actionbutton btnSendPhoto (caption: 'Send photo', action: call microflow "ServiceDesk"."ACT_ChatPhoto_Send"("ChatPhoto" = $currentObject), buttonstyle: primary)
+            actionbutton btnCancelPhoto (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."ChatPhoto_Upload" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The chat's "Report a problem" action: a ticket for an order the user may see, with the chat photo attached when the form names one. */
+create or modify microflow "ServiceDesk"."SUB_ChatAction_Ticket" ($OrderNumber: String, $Subject: String, $Description: String, $PhotoNumber: String)
+returns String as $Answer
+folder 'Chat photos'
+begin
+  $Order = call microflow "ServiceDesk"."SUB_FindOrderForCurrentUser" (OrderNumber = trim($OrderNumber));
+  if $Order = empty then
+    return 'Ticket not created: no order found with number ' + $OrderNumber + ' for this user.';
+  end if;
+  retrieve $Customer from $Order/"ServiceDesk"."Order_Customer";
+  $Ticket = create "ServiceDesk"."Ticket" ("Subject" = $Subject, "Description" = $Description, "ServiceDesk"."Ticket_Order" = $Order, "ServiceDesk"."Ticket_Customer" = $Customer) commit;
+  declare $Attached Boolean = false;
+  if $PhotoNumber != empty and isMatch(trim($PhotoNumber), '[0-9]{1,9}') then
+    declare $Number Long = parseInteger(trim($PhotoNumber));
+    retrieve $Photo from "ServiceDesk"."ChatPhoto" where [PhotoNumber = $Number][System.owner = '[%CurrentUser%]'] first;
+    if $Photo != empty then
+      $Attachment = create "ServiceDesk"."Attachment" ("Name" = $Photo/Name, "ExtractedSummary" = $Photo/Analysis, "ServiceDesk"."Attachment_Ticket" = $Ticket);
+      call java action CommunityCommons.DuplicateFileDocument(fileToClone = $Photo, cloneTarget = $Attachment);
+      commit $Attachment;
+      set $Attached = true;
+    end if;
+  end if;
+  call microflow "ServiceDesk"."SUB_Ticket_StartHandling" (Ticket = $Ticket);
+  return 'Created ticket #' + toString($Ticket/TicketNumber) + ' for order ' + $Order/OrderNumber + (if $Attached then ', with the photo attached.' else '.');
+end;

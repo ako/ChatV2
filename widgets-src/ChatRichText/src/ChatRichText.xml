@@ -16,6 +16,20 @@
                     </attributeTypes>
                 </property>
             </propertyGroup>
+            <propertyGroup caption="Answer actions">
+                <property key="onRateUp" type="action" required="false">
+                    <caption>On thumbs up</caption>
+                    <description>Shows a thumbs-up button under the message and runs this action when it is pressed.</description>
+                </property>
+                <property key="onRateDown" type="action" required="false">
+                    <caption>On thumbs down</caption>
+                    <description>Shows a thumbs-down button under the message and runs this action when it is pressed.</description>
+                </property>
+                <property key="readAloud" type="boolean" defaultValue="false">
+                    <caption>Read aloud</caption>
+                    <description>Shows a button that reads the message's text aloud with the browser's speech synthesis.</description>
+                </property>
+            </propertyGroup>
             <propertyGroup caption="Label">
                 <systemProperty key="Label"/>
             </propertyGroup>

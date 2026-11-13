@@ -1,0 +1,8 @@
+{ "clips": [
+  { "id": "01-ask-order",     "from": { "mark": "intro",        "offset": -0.3 }, "to": { "mark": "q1:sent", "offset": 1.0 } },
+  { "id": "02-parcel-card",   "from": { "mark": "q1:answered",  "offset": -0.5 }, "to": { "mark": "q2:sent", "offset": 1.0 } },
+  { "id": "03-carrier-chart", "from": { "mark": "q2:answered",  "offset": -0.5 }, "to": { "mark": "q3:sent", "offset": 1.0 } },
+  { "id": "04-time-chart",    "from": { "mark": "q3:answered",  "offset": -0.5 }, "to": { "mark": "q4:sent", "offset": 1.0 } },
+  { "id": "05-outline-refs",  "from": { "mark": "q4:answered",  "offset": -0.5 }, "to": { "mark": "switch",  "offset": 0.0 } },
+  { "id": "06-staff-graph",   "from": { "mark": "graph",        "offset": -0.5 }, "to": { "mark": "end",     "offset": 0.0 } }
+] }

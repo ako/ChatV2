@@ -1,0 +1,128 @@
+mdl 1;
+
+-- Places for the chat's map cards: GET rest/places/v1/places?names=Leipzig,Venlo
+-- returns the coordinates of the named places that the app knows.
+--
+-- The AI never writes coordinates. A map card names places ("route" stops or
+-- "points"), and the ChatRichText widget looks their coordinates up here; a
+-- name the app does not know is simply not drawn, so an invented place cannot
+-- appear on a map. The places are the locations the carrier's tracking scans
+-- name (ServiceDesk.TrackingEvent.Location), seeded at startup with the
+-- coordinates of each town's centre.
+
+/** A town or hub that tracking scans name, with the coordinates of its centre, for the chat's map cards. */
+create or modify persistent entity "ServiceDesk"."Place" (
+  "Name": String(100) not null unique,
+  "Latitude": Decimal,
+  "Longitude": Decimal
+);
+
+-- Read-only for everyone: SUB_Place_Seed maintains the places at startup.
+grant read * on entity "ServiceDesk"."Place" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Adds a place, or corrects its coordinates when it exists. Returns whether anything changed. */
+create or modify microflow "ServiceDesk"."SUB_Place_Ensure" ($Name: String, $Latitude: Decimal, $Longitude: Decimal)
+returns Boolean as $Changed
+folder 'Places'
+begin
+  retrieve $Existing from "ServiceDesk"."Place" where [Name = $Name] first;
+  if $Existing = empty then
+    $New = create "ServiceDesk"."Place" ("Name" = $Name, "Latitude" = $Latitude, "Longitude" = $Longitude) commit;
+    return true;
+  end if;
+  if $Existing/Latitude = $Latitude and $Existing/Longitude = $Longitude then
+    return false;
+  end if;
+  change $Existing ("Latitude" = $Latitude, "Longitude" = $Longitude) commit;
+  return true;
+end;
+
+/** Seeds the places the carrier's tracking scans name (town centres, WGS84). Run at startup; repeatable. */
+create or modify microflow "ServiceDesk"."SUB_Place_Seed" ()
+returns Boolean as $Seeded
+folder 'Places'
+begin
+  $p01 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Leipzig', Latitude = 51.3397, Longitude = 12.3731);
+  $p02 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Venlo', Latitude = 51.3704, Longitude = 6.1724);
+  $p03 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Utrecht', Latitude = 52.0907, Longitude = 5.1214);
+  $p04 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Eindhoven', Latitude = 51.4416, Longitude = 5.4697);
+  $p05 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Tilburg', Latitude = 51.5555, Longitude = 5.0913);
+  $p06 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Rotterdam', Latitude = 51.9244, Longitude = 4.4777);
+  $p07 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Zwolle', Latitude = 52.5168, Longitude = 6.0830);
+  $p08 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Delft', Latitude = 52.0116, Longitude = 4.3571);
+  $p09 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Nijmegen', Latitude = 51.8126, Longitude = 5.8372);
+  $p10 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Arnhem', Latitude = 51.9851, Longitude = 5.8987);
+  $p11 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Amsterdam', Latitude = 52.3676, Longitude = 4.9041);
+  $p12 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Haarlem', Latitude = 52.3874, Longitude = 4.6462);
+  $p13 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Groningen', Latitude = 53.2194, Longitude = 6.5665);
+  $p14 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Den Haag', Latitude = 52.0705, Longitude = 4.3007);
+  $p15 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Leiden', Latitude = 52.1601, Longitude = 4.4970);
+  $p16 = call microflow "ServiceDesk"."SUB_Place_Ensure" (Name = 'Breda', Latitude = 51.5719, Longitude = 4.7683);
+  return true;
+end;
+
+/** The places API's response: the known places among the requested names. */
+create or modify non-persistent entity "ServiceDesk"."PlaceList" ();
+
+/** One place in the places API's response. */
+create or modify non-persistent entity "ServiceDesk"."PlaceView" (
+  "Name": String(100),
+  "Latitude": Decimal,
+  "Longitude": Decimal
+);
+
+create or modify association "ServiceDesk"."PlaceView_PlaceList"
+  from "ServiceDesk"."PlaceView" to "ServiceDesk"."PlaceList";
+
+grant read *, write * on entity "ServiceDesk"."PlaceList" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."PlaceView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+create or modify json structure "ServiceDesk"."JSON_PlaceList" folder 'Places'
+  sample '{"places": [{"name": "Venlo", "lat": 51.3704, "lon": 6.1724}]}';
+
+create or modify export mapping "ServiceDesk"."EMM_PlaceList" folder 'Places'
+  with json structure "ServiceDesk"."JSON_PlaceList"
+{
+  "ServiceDesk"."PlaceList" {
+    "ServiceDesk"."PlaceView_PlaceList"/"ServiceDesk"."PlaceView" as places {
+      name = "Name",
+      lat = "Latitude",
+      lon = "Longitude"
+    }
+  }
+};
+
+/** REST: the coordinates of the named places (comma-separated, matched without regard to case). Unknown names are left out. */
+create or modify microflow "ServiceDesk"."REST_GetPlaces" ($names: String)
+returns "ServiceDesk"."PlaceList" as $Result
+folder 'Places'
+begin
+  $List = create "ServiceDesk"."PlaceList" ();
+  if $names = empty or trim($names) = '' then
+    return $List;
+  end if;
+  declare $Wanted String = ',' + toLowerCase(replaceAll($names, '\s*,\s*', ',')) + ',';
+  retrieve $Places from "ServiceDesk"."Place" sort by "Name" asc;
+  loop $Place in $Places begin
+    if contains($Wanted, ',' + toLowerCase($Place/Name) + ',') then
+      create "ServiceDesk"."PlaceView" ("Name" = $Place/Name, "Latitude" = $Place/Latitude, "Longitude" = $Place/Longitude, "ServiceDesk"."PlaceView_PlaceList" = $List);
+    end if;
+  end loop;
+  return $List;
+end;
+
+/** Places for the chat's map cards. Signed-in users only (active session). */
+create or modify published rest service "ServiceDesk"."PlacesApi" (
+  Path: 'rest/places/v1',
+  Version: '1.0.0',
+  ServiceName: 'Places for map cards',
+  Authentication: (session)
+)
+{
+  resource 'places' {
+    get '' microflow "ServiceDesk"."REST_GetPlaces" export mapping "ServiceDesk"."EMM_PlaceList";
+  }
+};
+
+grant execute on microflow "ServiceDesk"."REST_GetPlaces" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant access on published rest service "ServiceDesk"."PlacesApi" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

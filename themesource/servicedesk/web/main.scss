@@ -1,20 +1,413 @@
 @import '../../../theme/web/custom-variables';
 
 
-// Chat with history (ServiceDesk.Chat_WithHistory). Conversational UI's chat
-// card fills 100% of its parent, so the parent needs a real height; without one
-// the message list collapses to zero and only the input box shows.
-.chat-history-page {
-    .chat-history-list {
-        max-height: calc(100vh - 220px);
-        overflow-y: auto;
+// The chat page (ServiceDesk.Chat_WithHistory): three glass columns — the
+// user's chats, the conversation, the details panel — that fill the window.
+// Conversational UI's chat card fills 100% of its parent, so the conversation
+// column needs a real height; without one the message list collapses to zero
+// and only the input box shows. Colours come from the glass theme's --mxt-*
+// tokens; the panel recipe is the theme's own (mxcli-glass-panel).
+.sd-chat-shell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: stretch;
+    height: calc(100vh - 120px);
+    min-height: 560px;
+}
+.sd-panel {
+    background: var(--mxt-surface);
+    border: 1px solid var(--mxt-line);
+    border-radius: var(--mxt-radius-lg);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    min-height: 0;
+    height: 100%;
+    box-sizing: border-box;
+}
+.sd-eyebrow {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mxt-ink-faint);
+    padding: 0 4px;
+}
+
+// Column 1: chats
+.sd-chat-list {
+    flex: 1 1 240px;
+    max-width: 290px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    .sd-new-chat.btn {
+        width: 100%;
+        margin: 0;
+        height: 44px;
+        border-radius: 12px;
     }
-    .chat-history-pane {
-        height: calc(100vh - 140px);
-        min-height: 420px;
-        // the data view around the chat card sizes to its content otherwise
-        > .mx-dataview {
-            height: 100%;
+    .sd-chat-history {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow-y: auto;
+        ul > li {
+            padding: 0;
+            border: 0;
+            background: transparent;
         }
     }
+}
+.sd-chat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    &:hover {
+        background: var(--mxt-surface-hover);
+    }
+    &--active {
+        background: var(--mxt-surface-selected);
+        border-color: color-mix(in srgb, var(--mxt-brand) 45%, transparent);
+        .sd-chat-item__topic {
+            color: var(--mxt-ink);
+            font-weight: 600;
+        }
+    }
+    &__open {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 10px 12px;
+        cursor: pointer;
+    }
+    &__topic {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        color: color-mix(in srgb, var(--mxt-ink) 85%, transparent);
+    }
+    &__delete {
+        opacity: 0;
+        color: var(--mxt-ink-faint);
+        padding: 8px;
+    }
+    &:hover &__delete,
+    &--active &__delete,
+    &__delete:focus-visible {
+        opacity: 1;
+    }
+}
+
+// Column 2: the conversation (Conversational UI)
+.sd-conversation {
+    flex: 999 1 520px;
+    min-width: 0;
+    overflow: hidden;
+    > .mx-dataview,
+    .chat-dataview--display-contents {
+        height: 100%;
+    }
+    .sd-chat-card {
+        height: 100%;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+    }
+    --chat-bubble-user-background: rgba(155, 140, 255, 0.20);
+    --chat-bubble-assistant-background: transparent;
+    --chat-border-color: var(--mxt-line);
+    --chat-bg-light: transparent;
+    .messages-container {
+        padding: 8px 20px;
+    }
+    .chat-input-container,
+    .chat-input-wrapper {
+        background: transparent;
+    }
+    .chat-input-wrapper {
+        border-top: 1px solid var(--mxt-line);
+    }
+    textarea.form-control {
+        background: rgba(0, 0, 0, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        color: var(--mxt-ink);
+    }
+
+    // Conversational UI's tool-call rows: quiet translucent strips, not grey blocks.
+    .accordion-tool-calls .widget-accordion-group {
+        margin-bottom: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--mxt-line);
+        border-radius: 12px;
+        .widget-accordion-group-header-button {
+            padding: 6px 10px;
+            background: transparent;
+            .tool-title {
+                color: var(--mxt-ink-muted);
+                font-size: 13px;
+            }
+        }
+        .widget-accordion-group-content {
+            background: rgba(0, 0, 0, 0.22);
+            color: var(--mxt-ink);
+        }
+    }
+    .scroll-to-bottom-btn {
+        background: rgba(16, 22, 40, 0.9);
+        border: 1px solid var(--mxt-line);
+        color: var(--mxt-ink);
+    }
+}
+
+// Tools inside the message box (add a photo, speak): bottom left of the
+// conversation, with room made for them in the text area.
+.sd-conversation {
+    position: relative;
+    .sd-compose-tools {
+        position: absolute;
+        left: 30px;
+        bottom: 30px;
+        display: flex;
+        gap: 6px;
+        z-index: 2;
+    }
+    .sd-compose-btn.btn {
+        width: 40px;
+        height: 40px;
+        margin: 0;
+        padding: 0;
+        border-radius: 12px;
+        color: var(--mxt-ink-muted);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--mxt-line);
+    }
+    .sd-compose-btn.btn:hover {
+        color: var(--mxt-ink);
+    }
+    // Conversational UI zeroes the textarea's padding with !important; make room for the tools on the left
+    .chat-input-wrapper .mx-textarea textarea.form-control.mx-textarea-input {
+        padding-left: 150px !important;
+    }
+}
+
+// Column 3: details
+.sd-details {
+    flex: 1 1 340px;
+    max-width: 400px;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    > .mx-dataview,
+    .sd-details__view {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+        > .mx-dataview-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 0;
+        }
+    }
+    &__head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 16px 10px;
+    }
+    &__title {
+        flex: 1 1 auto;
+        font-family: var(--mxt-font-heading);
+        font-weight: 600;
+        font-size: 16px;
+    }
+    &__refresh {
+        color: var(--mxt-ink-muted);
+    }
+    &__body {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 4px 16px 16px;
+    }
+    .sd-tabs {
+        flex: 1 1 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        > .mx-tabcontainer-tabs,
+        > ul.nav-tabs {
+            display: flex;
+            gap: 4px;
+            margin: 0 12px;
+            padding: 4px;
+            border: 0;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.22);
+            > li {
+                flex: 1 1 0;
+                margin: 0;
+                > a {
+                    display: block;
+                    text-align: center;
+                    margin: 0;
+                    padding: 7px 8px;
+                    border: 0;
+                    border-radius: 9px;
+                    color: var(--mxt-ink-muted);
+                    background: transparent;
+                    font-size: 13px;
+                }
+                &.active > a,
+                > a:hover {
+                    color: var(--mxt-ink);
+                    background: rgba(255, 255, 255, 0.12);
+                    border: 0;
+                }
+            }
+        }
+        > .mx-tabcontainer-content,
+        > .tab-content {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px 16px 16px;
+        }
+    }
+    // The cards in the panel are narrow: fields two to a row, tables compact.
+    .crt-card {
+        max-width: none;
+    }
+    table {
+        font-size: 12px;
+    }
+    // A card item's text goes under its title and value, not between them.
+    .crt-items li {
+        grid-template-columns: minmax(0, 1fr) auto;
+        row-gap: 2px;
+    }
+    .crt-item-text {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        font-size: 12px;
+    }
+}
+
+// A phone or narrow window: the columns stack, each at a usable height.
+@media (max-width: 900px) {
+    .sd-chat-shell {
+        height: auto;
+    }
+    .sd-chat-list,
+    .sd-details {
+        max-width: none;
+        height: auto;
+        max-height: 60vh;
+    }
+    .sd-conversation {
+        height: 80vh;
+    }
+}
+
+// Return reply approval (ServiceDesk.WF_ApproveReturnReply): the AI's draft is
+// what the support agent is approving, so show all of it. Mendix's text area
+// sizes itself and ignores its number of lines here.
+.reply-draft textarea {
+    min-height: 18em;
+}
+
+// Home (ServiceDesk.Home): a glass hero with the assistant first, then a tile
+// per area. Tiles are buttons, so Mendix hides the ones a role may not open.
+.sd-home {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 1100px;
+    // the page has no layout grid, which is what pads the other pages
+    padding: 24px 32px;
+}
+@media (max-width: 640px) {
+    .sd-home { padding: 16px; }
+}
+.sd-hero {
+    height: auto;
+    padding: 36px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    &__title {
+        margin: 0;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+    }
+    &__intro {
+        display: block;
+        max-width: 620px;
+        color: var(--mxt-ink-muted);
+        font-size: 15px;
+    }
+    &__cta.btn {
+        height: 44px;
+        padding: 0 20px;
+        border-radius: 12px;
+        margin-top: 6px;
+    }
+}
+.sd-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    .sd-tile.btn {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 72px;
+        margin: 0;
+        padding: 0 20px;
+        border-radius: 16px;
+        text-align: left;
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--mxt-ink);
+        background: var(--mxt-surface);
+        border: 1px solid var(--mxt-line);
+        -webkit-backdrop-filter: blur(22px);
+        backdrop-filter: blur(22px);
+        .glyphicon,
+        .mx-icon-lined,
+        .mx-icon-filled,
+        img {
+            color: var(--mxt-brand);
+            font-size: 20px;
+        }
+        &:hover {
+            background: var(--mxt-surface-hover);
+            border-color: color-mix(in srgb, var(--mxt-brand) 45%, transparent);
+        }
+    }
+}
+
+// Live chat (staff): the conversation so far, scrolling, above the reply box
+.sd-live-transcript {
+    max-height: 56vh;
+    overflow-y: auto;
+    padding: 20px 24px;
+    margin: 16px 0;
+}
+.sd-live-reply textarea.form-control {
+    min-height: 96px;
+}
+.sd-live-reply__buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
 }

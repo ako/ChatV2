@@ -21,8 +21,8 @@ def call(name, **args):
     _, r = post({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': name, 'arguments': args}}, sid)
     return r['result']['content'][0]['text']
 checks = [
-    ('order_products SO-10005 flags the recall', call('order_products', order_number='SO-10005'), 'AFFECTED'),
-    ('order_products SO-10003 is not affected', call('order_products', order_number='SO-10003'), 'not affected'),
+    ('the catalog holds no orders: a SPARQL query for order numbers finds nothing', call('sparql_query', query='SELECT ?o WHERE { ?o shop:orderNumber ?n }'), 'No results'),
+    ('nor does a query over every triple', call('sparql_query', query='SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(CONTAINS(STR(?s), "SO-1")) }'), 'No results'),
     ('find_product battery', call('find_product', search='battery'), 'BAT-418'),
     ('compatible_parts EB-500 has SSP-31, not SSP-27', call('compatible_parts', sku='EB-500'), 'SSP-31'),
     ('known_issues CHG-4A', call('known_issues', sku='CHG-4A'), 'ISS-CHG-80'),

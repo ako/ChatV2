@@ -1,0 +1,432 @@
+mdl 1;
+
+-- Hand a chat over to a person. A customer asks for one ("Talk to a person"
+-- button in the message box, or by asking in words); the chat joins the staff
+-- queue (Live chats). While a support agent handles it the assistant is
+-- paused: the action microflow (08-chat.mdl) stores the customer's message and
+-- does not call the model. The agent's replies are written into the customer's
+-- chat as messages, and both sides see new messages within seconds through
+-- ChatCompanion's timed refresh. Closing hands the chat back to the assistant.
+--
+-- Runs before 08 (the action microflow calls SUB_Handoff_Intercept) and 12
+-- (the chat page calls ACT_Handoff_Request and ACT_Chat_LiveRefresh).
+
+create or modify enumeration "ServiceDesk"."ENUM_HandoffStatus" (
+  Waiting 'Waiting for a person',
+  Active 'With a person',
+  Closed 'Back with the assistant'
+);
+
+/** A customer's request to talk to a person in one chat, and who took it. */
+create or modify persistent entity "ServiceDesk"."ChatHandoff" (
+  "HandoffNumber": AutoNumber default 1,
+  "Status": Enumeration("ServiceDesk"."ENUM_HandoffStatus") default 'Waiting',
+  "CustomerName": String(200),
+  "Topic": String(200),
+  "Reason": String(500),
+  "RequestedAt": DateTime,
+  "TakenAt": DateTime,
+  "ClosedAt": DateTime,
+  "LastCustomerMessageAt": DateTime,
+  "AgentName": String(200),
+  "Transcript": String(unlimited),
+  "Owner": AutoOwner,
+  "ChangedDate": AutoChangedDate
+);
+
+create or modify association "ServiceDesk"."ChatHandoff_ChatContext" from "ServiceDesk"."ChatHandoff" to ConversationalUI.ChatContext;
+create or modify association "ServiceDesk"."ChatHandoff_Agent" from "ServiceDesk"."ChatHandoff" to System.User;
+
+/** What a support agent is typing in a live chat; sent as a message into the customer's chat. */
+create or modify non-persistent entity "ServiceDesk"."HandoffDraft" (
+  "Text": String(unlimited)
+);
+create or modify association "ServiceDesk"."HandoffDraft_ChatHandoff" from "ServiceDesk"."HandoffDraft" to "ServiceDesk"."ChatHandoff";
+
+grant read * on entity "ServiceDesk"."ChatHandoff" to "ServiceDesk"."Customer" where [System.owner = '[%CurrentUser%]'];
+grant read *, write * on entity "ServiceDesk"."ChatHandoff" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+-- objects are created only in microflows
+revoke create on entity "ServiceDesk"."ChatHandoff" from "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant create, delete, read *, write * on entity "ServiceDesk"."HandoffDraft" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The open (waiting or active) handoff of a chat, or empty. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_GetOpen" ($ChatContext: ConversationalUI.ChatContext)
+returns "ServiceDesk"."ChatHandoff" as $Handoff
+folder 'Chat handoff'
+begin
+  retrieve $Handoff from "ServiceDesk"."ChatHandoff" where ["ServiceDesk"."ChatHandoff_ChatContext" = $ChatContext][Status != 'Closed'] sort by RequestedAt desc first;
+  return $Handoff;
+end;
+
+/** The current user's display name: the account's full name, else the user name. */
+create or modify microflow "ServiceDesk"."SUB_CurrentUser_DisplayName" ()
+returns String as $Name
+folder 'Chat handoff'
+begin
+  if $currentUser = empty then
+    return 'Support';
+  end if;
+  retrieve $Account from Administration.Account where [id = '[%CurrentUser%]'] first;
+  if $Account != empty and $Account/FullName != empty and trim($Account/FullName) != '' then
+    return $Account/FullName;
+  end if;
+  return $currentUser/Name;
+end;
+
+/** Adds an assistant-side message to a chat (a note from the app or a support agent's reply). */
+create or modify microflow "ServiceDesk"."SUB_Chat_PostMessage" ($ChatContext: ConversationalUI.ChatContext, $Content: String)
+returns ConversationalUI.Message as $Message
+folder 'Chat handoff'
+begin
+  $Message = create ConversationalUI.Message (
+    "Content" = $Content,
+    "Role" = GenAICommons.ENUM_MessageRole.assistant,
+    "Status" = ConversationalUI.ENUM_MessageStatus.Success,
+    "HasSources" = false,
+    "SubMessageCount" = 0,
+    ConversationalUI.Message_ChatContext = $ChatContext
+  ) commit refresh;
+  return $Message;
+end;
+
+/** Puts a chat in the staff queue (unless it already is) and tells the customer. Returns the open handoff. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_Request" ($ChatContext: ConversationalUI.ChatContext, $Reason: String)
+returns "ServiceDesk"."ChatHandoff" as $Handoff
+folder 'Chat handoff'
+begin
+  $Open = call microflow "ServiceDesk"."SUB_Handoff_GetOpen" (ChatContext = $ChatContext);
+  if $Open != empty then
+    return $Open;
+  end if;
+  retrieve $Customer from "ServiceDesk"."Customer" where ["ServiceDesk"."Customer_User" = '[%CurrentUser%]'] first;
+  $UserName = call microflow "ServiceDesk"."SUB_CurrentUser_DisplayName" ();
+  $New = create "ServiceDesk"."ChatHandoff" (
+    "Status" = ServiceDesk.ENUM_HandoffStatus.Waiting,
+    "CustomerName" = (if $Customer = empty then $UserName else $Customer/Name),
+    "Topic" = (if $ChatContext/Topic = empty then 'New chat' else (if length($ChatContext/Topic) > 200 then substring($ChatContext/Topic, 0, 200) else $ChatContext/Topic)),
+    "Reason" = (if length($Reason) > 500 then substring($Reason, 0, 500) else $Reason),
+    "RequestedAt" = [%CurrentDateTime%],
+    "LastCustomerMessageAt" = [%CurrentDateTime%],
+    "ServiceDesk"."ChatHandoff_ChatContext" = $ChatContext
+  ) commit;
+  return $New;
+end;
+
+/** Queues the chat for a person (or says who has it) and tells the customer in the chat. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_RequestByButton" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat handoff'
+begin
+  $Open = call microflow "ServiceDesk"."SUB_Handoff_GetOpen" (ChatContext = $ChatContext);
+  if $Open != empty then
+    $Note = call microflow "ServiceDesk"."SUB_Chat_PostMessage" (ChatContext = $ChatContext, Content = (if $Open/Status = ServiceDesk.ENUM_HandoffStatus.Active then $Open/AgentName + ' from support is in this chat. Just type your message.' else 'You are in the queue for a support agent. They will reply right here; until then I can keep helping.'));
+    return;
+  end if;
+  $Handoff = call microflow "ServiceDesk"."SUB_Handoff_Request" (ChatContext = $ChatContext, Reason = 'Pressed "Talk to a person"');
+  declare $NL String = urlDecode('%0A');
+  $Posted = call microflow "ServiceDesk"."SUB_Chat_PostMessage" (ChatContext = $ChatContext, Content = 'I have asked a support agent to join this chat. They can read our conversation so far, and will reply right here.' + $NL + $NL + 'Until someone joins, I can keep helping.');
+end;
+
+/** "Talk to a person" button in the message box. */
+create or modify microflow "ServiceDesk"."ACT_Handoff_Request" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Handoff_RequestByButton" (ChatContext = $ChatContext);
+end;
+
+/** Gives the demo support agent a display name, so the customer reads a name rather than a login. */
+create or modify microflow "ServiceDesk"."SUB_SeedStaffNames" ()
+folder 'Chat handoff'
+begin
+  retrieve $Agent from Administration.Account where [Name = 'demo_agent'] first;
+  if $Agent != empty and ($Agent/FullName = empty or trim($Agent/FullName) = '') then
+    change $Agent ("FullName" = 'Sam de Wit') commit;
+  end if;
+end;
+
+/** True when a chat message asks to talk to a person ("can I speak to someone", "I want to talk to a person"). */
+create or modify microflow "ServiceDesk"."SUB_Handoff_AsksForPerson" ($Text: String)
+returns Boolean as $Asks
+folder 'Chat handoff'
+begin
+  if $Text = empty then
+    return false;
+  end if;
+  return isMatch(toLowerCase($Text), '.*\b(talk|speak|chat|connect me)\b.*\b(person|human|someone|somebody|real|employee|staff|support agent|agent|colleague)\b.*');
+end;
+
+/** A chat can open with a message from the app (a delay notice, 16b-chat-delay-notices.mdl) before the customer has said anything. Conversational UI then puts an empty user message before it in the request, to keep the roles alternating, and the model API rejects a message with no text. That placeholder gets a line of text; the chat itself is unchanged. */
+create or modify microflow "ServiceDesk"."SUB_Request_StartWithUser" ($ChatContext: ConversationalUI.ChatContext, $Request: GenAICommons.Request)
+folder 'Chat handoff'
+begin
+  retrieve $First from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext][Status != 'Error'] sort by createdDate asc first;
+  if $First = empty or $First/Role != GenAICommons.ENUM_MessageRole.assistant then
+    return;
+  end if;
+  retrieve $RequestMessages from $Request/GenAICommons.Request_Message;
+  $Empty = filter $RequestMessages where Role = GenAICommons.ENUM_MessageRole.user and (Content = empty or trim(Content) = '');
+  loop $Placeholder in $Empty begin
+    change $Placeholder ("Content" = '(I opened the chat. The app had a message for me.)');
+  end loop;
+end;
+
+/** Called first by the support agent's action microflow. Returns true when the message is handled without the model: the customer asked for a person (the request is queued), or a person is handling the chat (the message waits for them). */
+create or modify microflow "ServiceDesk"."SUB_Handoff_Intercept" ($ChatContext: ConversationalUI.ChatContext)
+returns Boolean as $Handled
+folder 'Chat handoff'
+begin
+  $Prompt = call microflow ConversationalUI.ChatContext_GetCurrentUserPrompt(ChatContext = $ChatContext);
+  declare $Text String = (if $Prompt = empty then '' else toLowerCase(trim($Prompt)));
+  if $Prompt != empty then
+    call microflow ConversationalUI.ChatContext_SetTopic(Topic = (if length($Prompt) >= 200 then substring($Prompt, 0, 200) else $Prompt), ChatContext = $ChatContext, ForceOverwrite = false);
+  end if;
+  $Open = call microflow "ServiceDesk"."SUB_Handoff_GetOpen" (ChatContext = $ChatContext);
+  declare $Reply String = '';
+  if $Open != empty and $Open/Status = ServiceDesk.ENUM_HandoffStatus.Active then
+    change $Open ("LastCustomerMessageAt" = [%CurrentDateTime%]) commit;
+    -- the placeholder answer the client already shows becomes a delivery note
+    set $Reply = '_Sent to ' + (if $Open/AgentName = empty then 'support' else $Open/AgentName) + '. They will reply here._';
+  else
+    $AsksForPerson = call microflow "ServiceDesk"."SUB_Handoff_AsksForPerson" (Text = $Text);
+    if $Open = empty and $AsksForPerson then
+      $Handoff = call microflow "ServiceDesk"."SUB_Handoff_Request" (ChatContext = $ChatContext, Reason = (if $Prompt = empty then '' else $Prompt));
+      set $Reply = 'Of course. I have asked a support agent to join this chat. They can read our conversation so far, and will reply right here.';
+    else
+      return false;
+    end if;
+  end if;
+  retrieve $Pending from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext][Role = 'assistant'][Status = 'Loading'] sort by createdDate desc first;
+  if $Pending != empty then
+    change $Pending ("Content" = $Reply, "Status" = ConversationalUI.ENUM_MessageStatus.Success) commit refresh;
+  end if;
+  change $ChatContext ("Status" = ConversationalUI.ENUM_ChatContextStatus.Ready) commit refresh;
+  return true;
+end;
+
+/** When a message arrived in this chat in the last few seconds from someone else (a support agent, or a delay notice), refreshes it so the message list shows it. */
+create or modify microflow "ServiceDesk"."SUB_Chat_RefreshRecent" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat handoff'
+begin
+  if $ChatContext = empty then
+    return;
+  end if;
+  declare $Since DateTime = addSeconds([%CurrentDateTime%], -8);
+  retrieve $Recent from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext][Role = 'assistant'][Status = 'Success'][createdDate > $Since] sort by createdDate desc first;
+  if $Recent != empty then
+    commit $Recent refresh;
+  end if;
+end;
+
+/** ChatCompanion's timed refresh on the chat page. */
+create or modify microflow "ServiceDesk"."ACT_Chat_LiveRefresh" ($ChatContext: ConversationalUI.ChatContext)
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Chat_RefreshRecent" (ChatContext = $ChatContext);
+end;
+
+/** The chat as markdown for the support agent: each message with who wrote it. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_Transcript" ($ChatContext: ConversationalUI.ChatContext)
+returns String as $Transcript
+folder 'Chat handoff'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Out String = '';
+  retrieve $Messages from ConversationalUI.Message where [ConversationalUI.Message_ChatContext = $ChatContext][Status = 'Success'] sort by createdDate asc;
+  loop $Message in $Messages begin
+    declare $Who String = (if $Message/Role = GenAICommons.ENUM_MessageRole.user then '**Customer**' else (if $Message/Content != empty and startsWith($Message/Content, '**') and contains($Message/Content, ' · support**') then '' else '**Assistant**'));
+    set $Out = $Out + (if $Out = '' then '' else $NL + $NL + '---' + $NL + $NL) + (if $Who = '' then '' else $Who + ' · ' + formatDateTime($Message/createdDate, 'HH:mm') + $NL + $NL) + (if $Message/Content = empty then '' else $Message/Content);
+  end loop;
+  return (if $Out = '' then '_No messages yet._' else $Out);
+end;
+
+/** Data source of the reply box on the live chat page. */
+create or modify microflow "ServiceDesk"."DS_HandoffDraft" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+returns "ServiceDesk"."HandoffDraft" as $Draft
+folder 'Chat handoff'
+begin
+  $Draft = create "ServiceDesk"."HandoffDraft" ("ServiceDesk"."HandoffDraft_ChatHandoff" = $ChatHandoff);
+  return $Draft;
+end;
+
+/** Rebuilds the transcript on the live chat page when the chat changed. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_RefreshTranscript" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  retrieve $Chat from $ChatHandoff/"ServiceDesk"."ChatHandoff_ChatContext";
+  if $Chat = empty then
+    return;
+  end if;
+  $Transcript = call microflow "ServiceDesk"."SUB_Handoff_Transcript" (ChatContext = $Chat);
+  if $ChatHandoff/Transcript = empty or $ChatHandoff/Transcript != $Transcript then
+    change $ChatHandoff ("Transcript" = $Transcript) commit refresh;
+  end if;
+end;
+
+/** ChatCompanion's timed refresh on the live chat page. */
+create or modify microflow "ServiceDesk"."ACT_Handoff_LiveRefresh" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Handoff_RefreshTranscript" (ChatHandoff = $ChatHandoff);
+end;
+
+/** Takes a waiting live chat for the current support agent (who joins the customer's chat) and refreshes its transcript. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_Take" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  retrieve $Chat from $ChatHandoff/"ServiceDesk"."ChatHandoff_ChatContext";
+  if $ChatHandoff/Status = ServiceDesk.ENUM_HandoffStatus.Waiting and $Chat != empty then
+    $Name = call microflow "ServiceDesk"."SUB_CurrentUser_DisplayName" ();
+    change $ChatHandoff ("Status" = ServiceDesk.ENUM_HandoffStatus.Active, "TakenAt" = [%CurrentDateTime%], "AgentName" = $Name, "ServiceDesk"."ChatHandoff_Agent" = $currentUser) commit;
+    $Joined = call microflow "ServiceDesk"."SUB_Chat_PostMessage" (ChatContext = $Chat, Content = '**' + $Name + ' · support**' + urlDecode('%0A') + urlDecode('%0A') + 'Hi, I''m ' + $Name + ' from the service desk. I''ve read our chat so far. How can I help?');
+  end if;
+  call microflow "ServiceDesk"."SUB_Handoff_RefreshTranscript" (ChatHandoff = $ChatHandoff);
+end;
+
+/** Open button in the live chat queue. */
+create or modify microflow "ServiceDesk"."ACT_Handoff_Open" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Handoff_Take" (ChatHandoff = $ChatHandoff);
+  show page "ServiceDesk"."LiveChat_Handle" (ChatHandoff = $ChatHandoff);
+end;
+
+/** The agent's reply goes into the customer's chat; refuses an empty reply or a chat already handed back. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_SendReply" ($HandoffDraft: "ServiceDesk"."HandoffDraft")
+folder 'Chat handoff'
+begin
+  if $HandoffDraft/Text = empty or trim($HandoffDraft/Text) = '' then
+    validation feedback $HandoffDraft/Text message 'Type a reply first.';
+    return;
+  end if;
+  retrieve $Handoff from $HandoffDraft/"ServiceDesk"."HandoffDraft_ChatHandoff";
+  retrieve $Chat from $Handoff/"ServiceDesk"."ChatHandoff_ChatContext";
+  if $Handoff/Status = ServiceDesk.ENUM_HandoffStatus.Closed or $Chat = empty then
+    validation feedback $HandoffDraft/Text message 'This chat is back with the assistant.';
+    return;
+  end if;
+  declare $Name String = (if $Handoff/AgentName = empty then 'Support' else $Handoff/AgentName);
+  $Reply = call microflow "ServiceDesk"."SUB_Chat_PostMessage" (ChatContext = $Chat, Content = '**' + $Name + ' · support**' + urlDecode('%0A') + urlDecode('%0A') + trim($HandoffDraft/Text));
+  change $HandoffDraft ("Text" = '') refresh;
+  call microflow "ServiceDesk"."SUB_Handoff_RefreshTranscript" (ChatHandoff = $Handoff);
+end;
+
+/** Send button on the live chat page. */
+create or modify microflow "ServiceDesk"."ACT_Handoff_Send" ($HandoffDraft: "ServiceDesk"."HandoffDraft")
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Handoff_SendReply" (HandoffDraft = $HandoffDraft);
+end;
+
+/** Closes a live chat: the chat goes back to the assistant, and the customer is told. */
+create or modify microflow "ServiceDesk"."SUB_Handoff_Close" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  retrieve $Chat from $ChatHandoff/"ServiceDesk"."ChatHandoff_ChatContext";
+  change $ChatHandoff ("Status" = ServiceDesk.ENUM_HandoffStatus.Closed, "ClosedAt" = [%CurrentDateTime%]) commit;
+  if $Chat != empty then
+    $Left = call microflow "ServiceDesk"."SUB_Chat_PostMessage" (ChatContext = $Chat, Content = (if $ChatHandoff/AgentName = empty then 'Support' else $ChatHandoff/AgentName) + ' has left the chat. I''m back to help: just ask.');
+  end if;
+end;
+
+/** "Hand back to the assistant" button on the live chat page. */
+create or modify microflow "ServiceDesk"."ACT_Handoff_Close" ($ChatHandoff: "ServiceDesk"."ChatHandoff")
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_Handoff_Close" (ChatHandoff = $ChatHandoff);
+  show page "ServiceDesk"."LiveChat_Queue";
+end;
+
+/** Refreshes a handoff that changed in the last few seconds, so the grid shows it. */
+create or modify microflow "ServiceDesk"."SUB_LiveChatQueue_RefreshRecent" ()
+folder 'Chat handoff'
+begin
+  declare $Since DateTime = addSeconds([%CurrentDateTime%], -8);
+  retrieve $Changed from "ServiceDesk"."ChatHandoff" where [changedDate > $Since] sort by changedDate desc first;
+  if $Changed != empty then
+    commit $Changed refresh;
+  end if;
+end;
+
+/** ChatCompanion's timed refresh on the live chat queue. */
+create or modify microflow "ServiceDesk"."ACT_LiveChatQueue_Refresh" ()
+folder 'Chat handoff'
+begin
+  call microflow "ServiceDesk"."SUB_LiveChatQueue_RefreshRecent" ();
+end;
+
+grant execute on microflow "ServiceDesk"."ACT_Handoff_Request" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Chat_LiveRefresh" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Handoff_Open" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Handoff_Send" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Handoff_Close" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Handoff_LiveRefresh" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_LiveChatQueue_Refresh" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_HandoffDraft" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** Staff: one live chat — the conversation so far, and a reply box. */
+create or modify page "ServiceDesk"."LiveChat_Handle" folder 'Chat handoff'
+(
+  params: ( $ChatHandoff: "ServiceDesk"."ChatHandoff" ),
+  title: 'Live chat',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgLive {
+    row {
+      column (desktopwidth: 12) {
+        dataview dvHandoff (datasource: $ChatHandoff) {
+          dynamictext txtLiveHeading (content: 'Live chat with {1}', contentparams: ({1} = CustomerName), rendermode: H2)
+          dynamictext txtLiveMeta (content: '{1} · asked {2} · {3}', contentparams: ({1} = Status, {2} = RequestedAt, {3} = Topic), Class: 'sd-eyebrow')
+          container ctTranscript (Class: 'sd-panel sd-live-transcript') {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtTranscript ( stringAttribute: Transcript )
+          }
+          pluggablewidget 'com.servicedesk.widgets.chatcompanion.ChatCompanion' ccLiveRefresh ( voiceInput: false, refreshAction: microflow "ServiceDesk"."ACT_Handoff_LiveRefresh" (ChatHandoff = $currentObject), refreshSeconds: 4 )
+          dataview dvDraft (datasource: microflow "ServiceDesk"."DS_HandoffDraft"(ChatHandoff = $currentObject), Class: 'sd-live-reply') {
+            textarea txtReply (label: 'Your reply', attribute: "Text")
+            container ctReplyButtons (Class: 'sd-live-reply__buttons') {
+              actionbutton btnSendReply (caption: 'Send', action: call microflow "ServiceDesk"."ACT_Handoff_Send"("HandoffDraft" = $currentObject), buttonstyle: primary)
+              actionbutton btnCloseHandoff (caption: 'Hand back to the assistant', action: call microflow "ServiceDesk"."ACT_Handoff_Close"("ChatHandoff" = $ChatHandoff))
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Staff: open chats where a customer asked for a person, the longest waiting first. */
+create or modify page "ServiceDesk"."LiveChat_Queue" folder 'Chat handoff'
+(
+  title: 'Live chats',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'live-chats'
+)
+{
+  layoutgrid lgQueue {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtQueueHeading (content: 'Live chats', rendermode: H2)
+        dynamictext txtQueueHelp (content: 'Customers who asked to talk to a person. Open one to read the chat and reply; the assistant stays quiet until you hand the chat back.', rendermode: Paragraph)
+        pluggablewidget 'com.servicedesk.widgets.chatcompanion.ChatCompanion' ccQueueRefresh ( voiceInput: false, refreshAction: microflow "ServiceDesk"."ACT_LiveChatQueue_Refresh", refreshSeconds: 5 )
+        datagrid dgHandoffs (
+          datasource: database from "ServiceDesk"."ChatHandoff" where [Status != 'Closed'] sort by "RequestedAt" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "HandoffNumber", caption: '#')
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddHandoffStatus }
+          column (attribute: "CustomerName", caption: 'Customer') { textfilter tfHandoffCustomer }
+          column (attribute: "Topic", caption: 'Topic')
+          column (attribute: "RequestedAt", caption: 'Asked')
+          column (attribute: "LastCustomerMessageAt", caption: 'Last message')
+          column (attribute: "AgentName", caption: 'Agent')
+          column (caption: '') {
+            actionbutton btnOpenHandoff (caption: 'Open', action: call microflow "ServiceDesk"."ACT_Handoff_Open"("ChatHandoff" = $currentObject), buttonstyle: primary)
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."LiveChat_Handle" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."LiveChat_Queue" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
