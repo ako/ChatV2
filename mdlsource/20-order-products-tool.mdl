@@ -2,11 +2,11 @@ mdl 1;
 
 -- What an order contains, for the AI - scoped to the signed-in user.
 --
--- The product-graph MCP server only reaches the order-free catalog dataset
--- (tools/sparql-duckdb: its mapping has no orders), so no prompt or query can make it reveal an order.
+-- The AI's product tools only reach the order-free catalog dataset
+-- (ProductTools.java), so no prompt or query can make them reveal an order.
 -- Order contents come from here instead: the agent tool GetOrderProducts first
 -- finds the order the way GetOrderStatus does (a customer only finds their own),
--- then asks the full graph (ServiceDesk.ProductGraphSparqlEndpoint, /products)
+-- then asks the products dataset (JA_Sparql_Query)
 -- for that one order's lines and the known issues and recalls that apply to them.
 
 /** One row of the order-contents query: an order line, with one issue that applies to its product (or none). */
@@ -100,11 +100,7 @@ begin
     + 'OPTIONAL { { ?i shop:affects ?p . BIND("" AS ?via) } UNION { ?p shop:hasComponent ?c . ?i shop:affects ?c . ?c shop:sku ?via } '
     + '?i shop:issueId ?id ; rdfs:label ?label ; shop:advice ?advice . OPTIONAL { ?i shop:affectsBatch ?ibatch } } '
     + '} ORDER BY ?sku ?id';
-  $Results = call rest service post @"ServiceDesk"."ProductGraphSparqlEndpoint" (
-    Headers: ('Accept': 'application/sparql-results+json', 'Content-Type': 'application/sparql-query'),
-    Body: $Query,
-    Timeout: 30,
-  ) returns String on error without rollback begin
+  $Results = call java action "ServiceDesk"."JA_Sparql_Query" (Dataset = 'products', Query = $Query) on error without rollback begin
     log warning node 'ServiceDesk' 'Order contents for {1} not read from the product graph: {2}' with ({1} = $Order/OrderNumber, {2} = $latestError/Message);
     return 'The product graph cannot be reached right now, so the contents of order ' + $Order/OrderNumber + ' are not available.';
   end error;

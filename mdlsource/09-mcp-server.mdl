@@ -192,6 +192,47 @@ begin
     Schema = '{"type": "object", "properties": {"Slug": {"type": "string", "description": "The page slug from wiki_index, e.g. returns"}}, "required": ["Slug"]}',
     Title = 'Read a wiki page'
   );
+  -- the product catalog graph (25-sparql-in-runtime.mdl): the order-free catalog dataset only
+  $FindProductTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'find_product',
+    Description = 'Finds products by SKU or by words in the name (e.g. EB-200, battery, charger): SKU, name, type, price, warranty, supplier and, for bikes, the components it ships with.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_Product_Find',
+    Schema = '{"type": "object", "properties": {"Search": {"type": "string", "description": "A SKU or words from the name"}}, "required": ["Search"]}',
+    Title = 'Find a product'
+  );
+  $CompatibleTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'compatible_parts',
+    Description = 'For a bike: the parts and accessories that fit it. For a part or accessory: what it fits on or works with.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_Product_CompatibleParts',
+    Schema = '{"type": "object", "properties": {"Sku": {"type": "string", "description": "A SKU, e.g. EB-200 or CHG-4A"}}, "required": ["Sku"]}',
+    Title = 'Compatible parts'
+  );
+  $IssuesTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'known_issues',
+    Description = 'Known issues and recalls for a product, including those on the components a bike ships with. A recall only applies to the production batch it names.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_Product_KnownIssues',
+    Schema = '{"type": "object", "properties": {"Sku": {"type": "string", "description": "A SKU, e.g. BAT-418"}}, "required": ["Sku"]}',
+    Title = 'Known issues and recalls'
+  );
+  $OutlineTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'product_outline',
+    Description = 'A product as an outline card (JSON): price, warranty, supplier, what it ships with, what fits it or what it fits on, and its known issues and recalls.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_Product_Outline',
+    Schema = '{"type": "object", "properties": {"Sku": {"type": "string", "description": "A SKU, e.g. EB-200"}}, "required": ["Sku"]}',
+    Title = 'Product outline'
+  );
+  $SparqlTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'sparql_query',
+    Description = 'A read-only SPARQL SELECT or ASK on the product catalog graph (products, suppliers, known issues and recalls, wiki pages; no orders), at most 50 rows. Prefixes shop:, rdf:, rdfs: and xsd: are predeclared.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_Product_Sparql',
+    Schema = '{"type": "object", "properties": {"Query": {"type": "string", "description": "A SPARQL SELECT or ASK query"}}, "required": ["Query"]}',
+    Title = 'SPARQL on the product catalog'
+  );
   $WikiProposeTool = call java action MCPServer.AddTool(
     McpServer = $McpServer,
     Name = 'wiki_propose_edit',

@@ -37,21 +37,6 @@ create or modify consumed mcp service "ServiceDesk"."CarrierTracking" folder 'Ag
   Documentation: 'Parcel tracking for PostNL, DHL and UPS (tools/carrier-mcp).'
 );
 
-/** URL of the product knowledge graph MCP server (tools/product-graph-mcp, over tools/sparql-duckdb). */
-create or modify constant "ServiceDesk"."ProductGraphMcpEndpoint" folder 'Agents' (
-  Type: String,
-  DefaultValue: 'http://127.0.0.1:8766/mcp'
-);
-
-/** External MCP server over the shop's product catalog graph (SPARQL over the app database; no orders, see tools/sparql-duckdb): find_product, compatible_parts, known_issues, product_outline, sparql_query. */
-create or modify consumed mcp service "ServiceDesk"."ProductGraph" folder 'Agents' (
-  ProtocolVersion: v2025_03_26,
-  Endpoint: @"ServiceDesk"."ProductGraphMcpEndpoint",
-  Version: '1.0.0',
-  ConnectionTimeoutSeconds: 30,
-  Documentation: 'Product knowledge graph: catalog, parts and compatibility, suppliers, known issues and recalls, order contents (tools/product-graph-mcp).'
-);
-
 create or modify ai model "ServiceDesk"."SupportModel" folder 'Agents' (
   Provider: MxCloudGenAI,
   Key: @"ServiceDesk"."MxGenAIKey"
@@ -90,7 +75,7 @@ Tools:
   - WikiRead: one page in full by its slug, with the pages it links to. Follow a link when the answer needs it.
   - WikiProposeEdit (staff only): propose a new or corrected page when a support agent asks you to add or fix something in the wiki; a person reviews it before it is published.
 - GetKnowledgeBaseStatus (staff only): how many knowledge chunks each policy document has in the PgVector database and when it was last loaded. Use it when staff ask whether a policy document is in the knowledge base.
-- Product graph service (the shop's product catalog graph, the system of record for product data; it holds no orders):
+- Product catalog tools (the shop's product catalog graph, the system of record for product data; it holds no orders):
   - find_product: look up a product by SKU or name (price, warranty, supplier, components).
   - compatible_parts: which parts and accessories fit a bike, or what a part fits on. Use it for "does X fit my bike" and replacement-part questions; find the customer's bike first with GetOrderProducts.
   - known_issues: known issues and recalls for a product and its components.
@@ -234,9 +219,44 @@ Answer format (the chat shows cards):
     UserAccessApproval: VisibleForUser
   )
 
-  mcp service "ServiceDesk"."ProductGraph" (
+  tool find_product (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_Find",
     Enabled: true,
-    UserAccessApproval: VisibleForUser
+    UserAccessApproval: VisibleForUser,
+    Description: 'Finds products by SKU or by words in the name (e.g. EB-200, battery, charger): SKU, name, type, price, warranty, supplier and, for bikes, the components it ships with. Input: Search.'
+  )
+
+  tool compatible_parts (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_CompatibleParts",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'For a bike: the parts and accessories that fit it. For a part or accessory: what it fits on or works with. Input: Sku, e.g. EB-200 or CHG-4A.'
+  )
+
+  tool known_issues (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_KnownIssues",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'Known issues and recalls for a product, including those on the components a bike ships with. A recall only applies to the production batch it names. Input: Sku.'
+  )
+
+  tool product_outline (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_Outline",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'A product as an outline card, as JSON: price, warranty, supplier, what it ships with, what fits it or what it fits on, known issues and recalls; every node has a ref. Put the JSON in a ```card block unchanged. Input: Sku.'
+  )
+
+  tool sparql_query (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_Sparql",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'A read-only SPARQL SELECT or ASK on the product catalog graph, for product questions the other tools do not cover; at most 50 rows. Prefixes shop:, rdf:, rdfs: and xsd: are predeclared. Classes: shop:Product (shop:Bike, shop:EBike, shop:Part, shop:Accessory), shop:Supplier, shop:KnownIssue (shop:Recall), shop:WikiPage. Product: shop:sku, rdfs:label, shop:price, shop:warrantyYears, shop:suppliedBy, shop:hasComponent, shop:compatibleWith, shop:wheelSize, shop:seatPostDiameter, shop:brakes, shop:rackMount. Issue: shop:issueId, rdfs:label, shop:affects, shop:affectsBatch, shop:announced, shop:advice. Wiki page: shop:slug, rdfs:label, rdfs:comment, shop:tags, shop:linksTo, shop:mentions (a product). It holds no orders. Input: Query.'
   )
 
   tool GetKnowledgeBaseStatus (

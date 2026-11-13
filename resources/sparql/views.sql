@@ -1,7 +1,7 @@
 -- DuckDB views over the attached app database (schema `app`, read-only), shaped
 -- for the R2RML mappings in mappings/: one row per resource, values already in
 -- their RDF form (codes for IRIs, prices as decimal(10,2), dates as DATE).
--- {VOCAB_DIR} is replaced by the server with this directory.
+-- {VOCAB_DIR} is replaced with this directory by servicedesk.graph.SparqlGraph.
 
 -- The vocabulary (vocab*.ttl): classes and property labels, split by dataset.
 create or replace table vocab as

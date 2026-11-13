@@ -1,0 +1,108 @@
+mdl 1;
+
+-- SPARQL inside the Mendix runtime: no graph server, no sidecar.
+--
+-- An in-process DuckDB (Java dependency org.duckdb:duckdb_jdbc) attaches this
+-- app's own database read-only with the runtime's database settings, and its
+-- rdf extension translates each SPARQL query into SQL through an R2RML mapping
+-- (resources/sparql). Every query reads the current data. The engine is
+-- javasource/servicedesk/graph/SparqlGraph.java; the AI's product tools are
+-- ProductTools.java, over the order-free catalog dataset.
+--
+-- The rdf and postgres extensions load from resources/sparql/extensions when
+-- they are bundled there (tools/product-catalog/bundle-extensions.sh, for
+-- servers without internet), otherwise DuckDB installs them once on first use.
+
+-- The module depends on org.duckdb:duckdb_jdbc 2.0.0.1, added once by
+-- tools/product-catalog/add-duckdb-dependency.mdl: adding a jar dependency is
+-- not re-runnable yet (ako/mxcli#2239), so it cannot live in this script.
+
+/** Runs a read-only SPARQL SELECT or ASK on a dataset of the app's own data (catalog, products or app) and returns the SPARQL 1.1 JSON results. Raises an error when the query fails. Only for server-side use after the caller has decided what the user may see. */
+create or modify java action "ServiceDesk"."JA_Sparql_Query" folder 'Product graph' (
+  /** catalog (products, suppliers, issues, wiki), products (plus orders and lines) or app (plus customers and tickets). */
+  Dataset: String,
+  /** A SPARQL SELECT or ASK query. */
+  Query: String
+) returns String as $Results
+not exposed
+as $$
+return servicedesk.graph.SparqlGraph.queryJson(this.Dataset, this.Query);
+$$;
+
+/** Runs one of the AI's product tools over the order-free catalog dataset: find_product, compatible_parts, known_issues, product_outline or sparql_query. */
+create or modify java action "ServiceDesk"."JA_ProductGraph_Tool" folder 'Product graph' (
+  /** find_product, compatible_parts, known_issues, product_outline or sparql_query. */
+  Tool: String,
+  /** The search text, SKU or SPARQL query. */
+  Argument: String
+) returns String as $Result
+not exposed
+as $$
+return servicedesk.graph.ProductTools.run(this.Tool, this.Argument);
+$$;
+
+/** Agent tool: products by SKU or by words in the name, with type, price, warranty, supplier and what a bike ships with. */
+create or modify microflow "ServiceDesk"."Tool_Product_Find" ($Search: String)
+returns String as $Result
+folder 'Product graph'
+begin
+  $Result = call java action "ServiceDesk"."JA_ProductGraph_Tool" (Tool = 'find_product', Argument = $Search) on error without rollback begin
+    log warning node 'ServiceDesk' 'Product tool find_product failed: {1}' with ({1} = $latestError/Message);
+    return 'The product catalog cannot be read right now.';
+  end error;
+  return $Result;
+end;
+
+/** Agent tool: what fits a bike, or what a part or accessory fits on. */
+create or modify microflow "ServiceDesk"."Tool_Product_CompatibleParts" ($Sku: String)
+returns String as $Result
+folder 'Product graph'
+begin
+  $Result = call java action "ServiceDesk"."JA_ProductGraph_Tool" (Tool = 'compatible_parts', Argument = $Sku) on error without rollback begin
+    log warning node 'ServiceDesk' 'Product tool compatible_parts failed: {1}' with ({1} = $latestError/Message);
+    return 'The product catalog cannot be read right now.';
+  end error;
+  return $Result;
+end;
+
+/** Agent tool: known issues and recalls of a product and of the components a bike ships with. */
+create or modify microflow "ServiceDesk"."Tool_Product_KnownIssues" ($Sku: String)
+returns String as $Result
+folder 'Product graph'
+begin
+  $Result = call java action "ServiceDesk"."JA_ProductGraph_Tool" (Tool = 'known_issues', Argument = $Sku) on error without rollback begin
+    log warning node 'ServiceDesk' 'Product tool known_issues failed: {1}' with ({1} = $latestError/Message);
+    return 'The product catalog cannot be read right now.';
+  end error;
+  return $Result;
+end;
+
+/** Agent tool: a product as a ready-made outline card (JSON). */
+create or modify microflow "ServiceDesk"."Tool_Product_Outline" ($Sku: String)
+returns String as $Result
+folder 'Product graph'
+begin
+  $Result = call java action "ServiceDesk"."JA_ProductGraph_Tool" (Tool = 'product_outline', Argument = $Sku) on error without rollback begin
+    log warning node 'ServiceDesk' 'Product tool product_outline failed: {1}' with ({1} = $latestError/Message);
+    return 'The product catalog cannot be read right now.';
+  end error;
+  return $Result;
+end;
+
+/** Agent tool: a read-only SPARQL SELECT or ASK on the catalog dataset (no orders), at most 50 rows. */
+create or modify microflow "ServiceDesk"."Tool_Product_Sparql" ($Query: String)
+returns String as $Result
+folder 'Product graph'
+begin
+  $Result = call java action "ServiceDesk"."JA_ProductGraph_Tool" (Tool = 'sparql_query', Argument = $Query) on error without rollback begin
+    log warning node 'ServiceDesk' 'Product tool sparql_query failed: {1}' with ({1} = $latestError/Message);
+    return 'The product catalog cannot be read right now.';
+  end error;
+  return $Result;
+end;
+
+grant execute on microflow "ServiceDesk"."Tool_Product_Find" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."Tool_Product_CompatibleParts" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."Tool_Product_KnownIssues" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."Tool_Product_Outline" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."Tool_Product_Sparql" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

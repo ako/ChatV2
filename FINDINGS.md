@@ -1714,3 +1714,29 @@ Caveat: `views.sql` names Mendix's tables and columns, as the wiki search does. 
 mxcli side: removing a role from a `grant` line in a re-run script does not revoke it, and changing a grant's role list left an overlapping duplicate rule. `revoke all on entity … from …` followed by re-running the script gave a clean state. Exec is additive for access rules; that is worth remembering, not a defect.
 
 Caught only by a live chat: the endpoint answered curl but gave the app **400 "No query"**. The Mendix runtime's REST call sends its body with `Transfer-Encoding: chunked` and no `Content-Length`, and the first server read `Content-Length` only. It now reads chunked bodies. After the fix, the same chat question ("is the e-bike in SO-10003 affected by a recall, which seat post fits?") answers from the graph: batch B2605 is not affected by the B2603 recall, and SSP-27 fits. The startup outline load logs no error. curl-only tests would have passed against the broken server; test an endpoint with the client that will call it.
+
+## SPARQL moved into the Mendix runtime: no sidecar, no MCP server (2026-11-13)
+
+The DuckDB endpoint was still a Python service, and the AI's product tools a second one. Both are gone. The module now depends on `org.duckdb:duckdb_jdbc:2.0.0.1`, which bundles the native library for every platform (80 MB). mxbuild resolved it into `vendorlib` on the next build; nothing was installed by hand. `servicedesk.graph.SparqlGraph` opens an in-process DuckDB, attaches the app database read-only with the runtime's own settings (`Core.getConfiguration().getDatabaseSettingAsString("DatabaseHost" | "DatabaseName" | "DatabaseUserName" | "DatabasePassword")`), and runs `execute_sparql` with the mappings from `resources/sparql`. `JA_Sparql_Query` replaced both REST calls, and five microflow tools (`Tool_Product_*`, logic in `ProductTools.java`) replaced the consumed MCP service. The same tools are on the app's own MCP server.
+
+Measured:
+- **Startup:** the outline snapshot loads at startup with no error (378 rows), and the log reads "DuckDB attached the app database read-only". JDK 21 warns "System::load has been called by org.duckdb.DuckDBNative", which is harmless.
+- **The app's MCP server:** `tests-live/mcp/product_graph_test.py`, now pointed at it, passes 12/12. That covers no orders in the catalog (also over every triple), the recall found through a bike's component, the wiki reachable, writes and `SERVICE` refused, and a malformed query explained rather than raised.
+- **A live chat** ("is the e-bike in SO-10003 affected by a recall, which seat post fits?") answers correctly from the in-app tools: batch B2605, not the recalled B2603, and SSP-27 fits.
+- **Microflow tests:** 61/61. Two new tests run DuckDB inside the test runtime: the catalog dataset answers ASK for orders with false while the products dataset has rows, and a SPARQL update is refused.
+
+Extensions:
+- **Downloaded:** with nothing bundled, the first query installs `rdf` (community repository) and `postgres` into `<runtime temp>/duckdb-extensions`. Measured on the first start.
+- **Bundled, offline:** `tools/product-catalog/bundle-extensions.sh` installs them into `resources/sparql/extensions` (git-ignored, about 120 MB). The runtime then loads them from there: "loaded the rdf and postgres extensions bundled with the app".
+- **A bare community extension file is refused.** The first bundling script downloaded the bare `.duckdb_extension` files and the runtime used `LOAD '<path>'`. DuckDB refused rdf: "signature is either missing or invalid and unsigned extensions are disabled". Loaded by path, a community extension's signature is not accepted; installed (with its `.info` metadata, which records the repository), it is. So the bundle is an installed extension folder, made by DuckDB itself, and the runtime points `extension_directory` at it.
+
+Trade-offs:
+- **The app's own database user:** the reader role (`servicedesk_graph`) is gone with the sidecar, and DuckDB connects as the app's user. The attach is READ_ONLY and the extension parses only queries, so writes are still impossible. Which tables a query reaches is now limited by `views.sql` and the mappings, no longer by the database.
+- **Native code:** it runs in the runtime's JVM. On Mendix Cloud this still needs a test: outbound access to DuckDB's repositories, or a bundle, and loading a native library from `deployment/model/lib/userlib`.
+
+Gates for this change:
+- **Idempotent exec:** every touched script's second exec writes nothing. The jar dependency cannot sit in a re-runnable script (`ADD JAR DEPENDENCY` fails with "already exists" on the second run, and `SET` fails on a fresh project), so it moved to the run-once `tools/product-catalog/add-duckdb-dependency.mdl`. Filed as ako/mxcli#2239.
+- **lint:** 48 warnings, up from 43. All five are CONV013 on the new `MCPServer.AddTool` calls in `SUB_MCP_RegisterTools`, the same warning the existing eight registrations carry.
+- **report:** 41/100, down from 43.
+- **docker check:** 0 errors.
+- **test:** 61/61.

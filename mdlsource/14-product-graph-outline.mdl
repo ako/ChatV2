@@ -3,16 +3,14 @@ mdl 1;
 -- Product graph outline: a page for service-desk staff that shows the product
 -- knowledge graph as an outline tree: class -> product, supplier, issue, order
 -- or wiki page -> its facts and links, both ways. The graph is the app's own
--- data: tools/sparql-duckdb answers SPARQL over this database (R2RML mapping).
+-- data: JA_Sparql_Query answers SPARQL over this database inside the runtime
+-- (25-sparql-in-runtime.mdl).
 --
--- Straight SPARQL over HTTP, no MCP server in between: the app POSTs one
--- SELECT query (tools/sparql-duckdb/queries/outline.rq, kept in step by hand), a JSLT
+-- One SPARQL SELECT query on the products dataset (tools/product-catalog/queries/outline.rq, kept in step by hand), a JSLT
 -- data transformer flattens the SPARQL JSON results, and an import mapping turns
 -- the rows into GraphNode objects. Every row carries its parent's key, so the
 -- tree needs no associations. "Reload from graph" replaces the snapshot.
 
-/** SPARQL query endpoint of the product graph (tools/sparql-duckdb over the app database, read-only). */
-create or modify constant "ServiceDesk"."ProductGraphSparqlEndpoint" folder 'Product graph' ( Type: String, DefaultValue: 'http://localhost:3030/products/sparql' );
 
 /** One node of the product graph outline, loaded from the graph with SPARQL. Kind is class, resource, value, link, inlink or line. */
 create or modify persistent entity "ServiceDesk"."GraphNode" (
@@ -62,17 +60,13 @@ create or modify import mapping "ServiceDesk"."IMM_GraphOutline" folder 'Product
   }
 };
 
-/** Loads the outline from the product graph: one SPARQL query over HTTP, flattened by a data transformer and imported as GraphNode objects, replacing the stored ones. Returns false, and keeps the old outline, when the graph cannot be reached. */
+/** Loads the outline from the product graph: one SPARQL query on the products dataset, flattened by a data transformer and imported as GraphNode objects, replacing the stored ones. Returns false, and keeps the old outline, when the graph cannot be reached. */
 create or modify microflow "ServiceDesk"."SUB_ProductGraph_Load" ()
 returns Boolean as $Loaded
 folder 'Product graph'
 begin
   declare $Query String = 'PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> PREFIX shop: <https://example.org/bikeshop#> SELECT ?key ?parent ?label ?kind ?detail ?sort WHERE { { { SELECT ?c (COUNT(DISTINCT ?i) AS ?n) WHERE { ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) } GROUP BY ?c } ?c rdfs:label ?cl . BIND(STR(?c) AS ?key) BIND("" AS ?parent) BIND(?cl AS ?label) BIND("class" AS ?kind) BIND(STR(?n) AS ?detail) BIND(?cl AS ?sort) } UNION { ?i a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) OPTIONAL { ?i rdfs:label ?il } OPTIONAL { ?i shop:sku ?sku } OPTIONAL { ?i shop:orderNumber ?on } OPTIONAL { ?i shop:issueId ?iid } BIND(COALESCE(?sku, ?iid, ?on, "") AS ?code) BIND(COALESCE(?il, ?on, REPLACE(STR(?i), "^.*#", "")) AS ?name) BIND(STR(?i) AS ?key) BIND(STR(?c) AS ?parent) BIND("resource" AS ?kind) BIND(IF(?code != "" && ?code != ?name, CONCAT(?code, " · ", ?name), ?name) AS ?label) BIND("" AS ?detail) BIND(?label AS ?sort) } UNION { ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) ?s ?p ?o . FILTER(?p NOT IN (rdf:type, rdfs:label, shop:hasLine, shop:sku, shop:orderNumber, shop:issueId)) OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?o rdfs:label ?ol } BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn) BIND(CONCAT(STR(?s), "|", STR(?p), "|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent) BIND(IF(isIRI(?o), "link", "value") AS ?kind) BIND(CONCAT(IF(isIRI(?o), "→ ", ""), ?pn, ": ", COALESCE(?ol, STR(?o))) AS ?label) BIND(IF(isIRI(?o), STR(?o), "") AS ?detail) BIND(CONCAT("1 ", ?label) AS ?sort) } UNION { ?s a ?c . FILTER(STRSTARTS(STR(?c), STR(shop:)) && ?c != shop:OrderLine) ?x ?p ?s . FILTER(isIRI(?x)) OPTIONAL { ?p rdfs:label ?pl } OPTIONAL { ?x rdfs:label ?xl } OPTIONAL { ?x shop:orderNumber ?xon } BIND(REPLACE(COALESCE(?pl, REPLACE(STR(?p), "^.*#", "")), " [(].*$", "") AS ?pn) BIND(CONCAT(STR(?s), "|in|", STR(?p), "|", STR(?x)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind) BIND(CONCAT("← ", ?pn, ": ", COALESCE(?xl, ?xon, REPLACE(STR(?x), "^.*#", ""))) AS ?label) BIND(STR(?x) AS ?detail) BIND(CONCAT("3 ", ?label) AS ?sort) } UNION { ?s shop:hasLine ?ln . ?ln shop:product ?lp ; shop:quantity ?q ; shop:unitPrice ?up . OPTIONAL { ?ln shop:batch ?b } OPTIONAL { ?lp rdfs:label ?lpl } ?lp shop:sku ?lsku . BIND(CONCAT(STR(?s), "|line|", STR(?lp)) AS ?key) BIND(STR(?s) AS ?parent) BIND("line" AS ?kind) BIND(CONCAT("order line: ", STR(?q), " × ", ?lsku, " ", ?lpl, " at EUR ", STR(?up), IF(BOUND(?b), CONCAT(", batch ", ?b), "")) AS ?label) BIND(STR(?lp) AS ?detail) BIND(CONCAT("0 ", ?label) AS ?sort) } UNION { ?s a ?c . FILTER(?c != shop:OrderLine) ?o shop:hasLine ?ln . ?ln shop:product ?s ; shop:quantity ?q . ?o shop:orderNumber ?on . OPTIONAL { ?ln shop:batch ?b } BIND(CONCAT(STR(?s), "|in-order|", STR(?o)) AS ?key) BIND(STR(?s) AS ?parent) BIND("inlink" AS ?kind) BIND(CONCAT("← in order ", ?on, " (", STR(?q), " ×", IF(BOUND(?b), CONCAT(", batch ", ?b), ""), ")") AS ?label) BIND(STR(?o) AS ?detail) BIND(CONCAT("4 ", ?label) AS ?sort) } }';
-  $Results = call rest service post @"ServiceDesk"."ProductGraphSparqlEndpoint" (
-    Headers: ('Accept': 'application/sparql-results+json', 'Content-Type': 'application/sparql-query'),
-    Body: $Query,
-    Timeout: 30,
-  ) returns String on error without rollback begin
+  $Results = call java action "ServiceDesk"."JA_Sparql_Query" (Dataset = 'products', Query = $Query) on error without rollback begin
     log error node 'ServiceDesk' 'Reading the product graph failed: {1}' with ({1} = $latestError/Message);
     return false;
   end error;

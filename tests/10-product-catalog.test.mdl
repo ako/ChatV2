@@ -36,3 +36,22 @@ $ComponentCount = count $Components;
 $PartComponentCount = count $PartComponents;
 declare $Ok Boolean = $FitsCount = 1 and $ComponentCount = 1 and $PartComponentCount = 0;
 /
+
+/**
+ * @test SPARQL runs inside the runtime, and the catalog dataset holds no orders while the products dataset does
+ * @expect $Ok = true
+ */
+$Seeded = call microflow ServiceDesk.SUB_ProductCatalog_Seed();
+$Catalog = call java action ServiceDesk.JA_Sparql_Query(Dataset = 'catalog', Query = 'ASK { ?o <https://example.org/bikeshop#orderNumber> ?n }');
+$Products = call java action ServiceDesk.JA_Sparql_Query(Dataset = 'products', Query = 'SELECT ?sku WHERE { ?p <https://example.org/bikeshop#sku> ?sku } ORDER BY ?sku LIMIT 1');
+declare $Ok Boolean = $Catalog = '{"head":{},"boolean":false}' and contains($Products, '"vars":["sku"]') and contains($Products, '"type":"literal"');
+/
+
+/**
+ * @test The product tools refuse a SPARQL update and explain a malformed query
+ * @expect $Ok = true
+ */
+$Update = call microflow ServiceDesk.Tool_Product_Sparql(Query = 'INSERT DATA { <urn:a> <urn:b> "c" }');
+$Broken = call microflow ServiceDesk.Tool_Product_Sparql(Query = 'SELECT ?x WHERE { ?x }');
+declare $Ok Boolean = startsWith($Update, 'Refused') and startsWith($Broken, 'Query failed');
+/
