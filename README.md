@@ -3,6 +3,13 @@
 A demo Mendix app to try out the **agent and chat features of Mendix 11.16** (Agents Kit 2),
 built with [mxcli](https://mxcli.org).
 
+## Demo video
+
+[![ServiceDesk Copilot — a narrated tour (4 min)](https://img.youtube.com/vi/YLLsEZe-5h0/maxresdefault.jpg)](https://youtu.be/YLLsEZe-5h0)
+
+A narrated four-minute tour of the app: the chat with its cards and actions, returns,
+delivery notices, the hand-over to a person, the wiki and the MCP server.
+
 ## What it is for
 
 A demo app for testing the Mendix 11.16 Agents Kit 2 features. Service-desk staff chat
