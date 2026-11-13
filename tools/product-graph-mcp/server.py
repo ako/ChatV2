@@ -1,8 +1,8 @@
 """The bike shop's product knowledge graph, published to agents over MCP.
 
-The graph (tools/fuseki/products.ttl, served read-only by Apache Jena Fuseki)
-is the system of record for product data: catalog, parts and compatibility,
-suppliers, known issues and recalls, and what each order contains. The
+The graph is the ServiceDesk app's own data: tools/sparql-duckdb answers SPARQL
+over the app database through an R2RML mapping: catalog, parts and
+compatibility, suppliers, known issues and recalls, and the wiki. The
 ServiceDesk app's SupportAgent consumes this server (consumed MCP service
 ServiceDesk.ProductGraph), so its answers are grounded in the graph.
 
@@ -10,7 +10,7 @@ This server is the catalog of what the agent may see: a few curated tools, plus
 one read-only SPARQL tool that refuses anything but SELECT and ASK.
 
 Run:  python3 tools/product-graph-mcp/server.py      (http://127.0.0.1:8766/mcp)
-Needs Fuseki (sh tools/fuseki/start.sh) and the Python MCP SDK 2.x.
+Needs tools/sparql-duckdb/server.py and the Python MCP SDK 2.x.
 """
 import json
 import os
@@ -20,7 +20,7 @@ import urllib.request
 
 from mcp.server.mcpserver import MCPServer
 
-# The catalog dataset: the product graph WITHOUT orders (see tools/fuseki/start.sh).
+# The catalog dataset: the product graph WITHOUT orders (tools/sparql-duckdb/mappings/catalog.r2rml.ttl).
 # Whatever the model asks, nothing reachable from here can reveal a customer's order;
 # order contents come from the app's GetOrderProducts tool, which checks the user.
 ENDPOINT = os.environ.get("PRODUCT_GRAPH_SPARQL", "http://localhost:3030/catalog/sparql")
@@ -31,17 +31,18 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 """
 SCHEMA = """Prefix shop: <https://example.org/bikeshop#>, labels in rdfs:label.
 Classes: shop:Product with subclasses shop:Bike (shop:EBike), shop:Part, shop:Accessory; shop:Supplier;
-shop:KnownIssue (subclass shop:Recall).
+shop:KnownIssue (subclass shop:Recall); shop:WikiPage.
 Product properties: shop:sku, rdfs:label, shop:price (EUR), shop:warrantyYears, shop:suppliedBy (Supplier),
 shop:hasComponent (parts a bike ships with), shop:compatibleWith (what a part or accessory fits on or works with),
 bikes also shop:wheelSize, shop:seatPostDiameter, shop:brakes, shop:rackMount.
 Known issues: shop:issueId, rdfs:label, shop:affects (Product), shop:affectsBatch (recalls only), shop:announced, shop:advice.
+Wiki pages: shop:slug, rdfs:label (title), rdfs:comment (summary), shop:tags, shop:updated, shop:linksTo (WikiPage), shop:mentions (a Product it names by SKU).
 Orders are not in this graph: what an order contains comes from the app (GetOrderProducts), for the signed-in user only."""
 
 server = MCPServer(
     name="ProductGraph",
     version="1.0.0",
-    instructions="The bike shop's product catalog graph: products, parts and compatibility, suppliers, known issues and recalls. " + SCHEMA,
+    instructions="The bike shop's product catalog graph: products, parts and compatibility, suppliers, known issues and recalls, and the wiki pages. " + SCHEMA,
 )
 
 

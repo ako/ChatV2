@@ -1,6 +1,6 @@
 # Live test of the product-graph MCP server (tools/product-graph-mcp): tool list,
 # each curated tool, and the read-only SPARQL tool refusing writes.
-# Needs Fuseki (sh tools/fuseki/start.sh) and the server (python3 tools/product-graph-mcp/server.py).
+# Needs the SPARQL endpoint (python3 tools/sparql-duckdb/server.py) and the server (python3 tools/product-graph-mcp/server.py).
 import json, urllib.request
 URL = 'http://127.0.0.1:8766/mcp'
 def post(body, session=None):

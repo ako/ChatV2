@@ -1,0 +1,38 @@
+mdl 1;
+
+-- The product catalog in the app database (24-product-catalog.mdl): the seed
+-- helpers are idempotent, so a restart never duplicates catalog data.
+
+/**
+ * @test Seeding a product twice keeps one, linked to its supplier
+ * @expect $Ok = true
+ */
+call microflow ServiceDesk.SUB_Supplier_SeedOne(Code = 'TestSupplier', Name = 'Test supplier', Country = 'Netherlands');
+call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-1', Name = 'Test bike', Kind = ServiceDesk.ENUM_ProductKind.Bike, Price = 100, WarrantyYears = 2, SupplierCode = 'TestSupplier', WheelSize = '28 inch', SeatPostDiameter = empty, Brakes = empty, RackMount = true);
+call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-1', Name = 'Test bike again', Kind = ServiceDesk.ENUM_ProductKind.Bike, Price = 200, WarrantyYears = 2, SupplierCode = 'TestSupplier', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
+retrieve $Products from ServiceDesk.Product where [Sku = 'TST-1'];
+$Count = count $Products;
+$Product = head $Products;
+retrieve $Supplier from $Product/ServiceDesk.Product_Supplier;
+declare $Ok Boolean = $Count = 1 and $Product/Name = 'Test bike' and $Supplier/Code = 'TestSupplier';
+/
+
+/**
+ * @test Linking a part as compatible twice keeps one link, and a component link is separate
+ * @expect $Ok = true
+ */
+call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-B', Name = 'Test e-bike', Kind = ServiceDesk.ENUM_ProductKind.EBike, Price = 1000, WarrantyYears = 5, SupplierCode = 'none', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
+call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-P', Name = 'Test battery', Kind = ServiceDesk.ENUM_ProductKind.Part, Price = 10, WarrantyYears = 2, SupplierCode = 'none', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
+call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B', IsComponent = false);
+call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B', IsComponent = false);
+call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-B', ToSku = 'TST-P', IsComponent = true);
+retrieve $Part from ServiceDesk.Product where [Sku = 'TST-P'] first;
+retrieve $Bike from ServiceDesk.Product where [Sku = 'TST-B'] first;
+retrieve $FitsOn from $Part/ServiceDesk.Product_CompatibleWith;
+retrieve $Components from $Bike/ServiceDesk.Product_Component;
+retrieve $PartComponents from $Part/ServiceDesk.Product_Component;
+$FitsCount = count $FitsOn;
+$ComponentCount = count $Components;
+$PartComponentCount = count $PartComponents;
+declare $Ok Boolean = $FitsCount = 1 and $ComponentCount = 1 and $PartComponentCount = 0;
+/

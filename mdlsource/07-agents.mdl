@@ -37,13 +37,13 @@ create or modify consumed mcp service "ServiceDesk"."CarrierTracking" folder 'Ag
   Documentation: 'Parcel tracking for PostNL, DHL and UPS (tools/carrier-mcp).'
 );
 
-/** URL of the product knowledge graph MCP server (tools/product-graph-mcp, over Apache Jena Fuseki). */
+/** URL of the product knowledge graph MCP server (tools/product-graph-mcp, over tools/sparql-duckdb). */
 create or modify constant "ServiceDesk"."ProductGraphMcpEndpoint" folder 'Agents' (
   Type: String,
   DefaultValue: 'http://127.0.0.1:8766/mcp'
 );
 
-/** External MCP server over the shop's product catalog graph (SPARQL; no orders, see tools/fuseki/start.sh): find_product, compatible_parts, known_issues, product_outline, sparql_query. */
+/** External MCP server over the shop's product catalog graph (SPARQL over the app database; no orders, see tools/sparql-duckdb): find_product, compatible_parts, known_issues, product_outline, sparql_query. */
 create or modify consumed mcp service "ServiceDesk"."ProductGraph" folder 'Agents' (
   ProtocolVersion: v2025_03_26,
   Endpoint: @"ServiceDesk"."ProductGraphMcpEndpoint",

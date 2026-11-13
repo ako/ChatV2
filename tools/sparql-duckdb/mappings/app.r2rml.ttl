@@ -1,0 +1,35 @@
+# The rest of the app: every order with its status and customer, customers
+# and support tickets. For the /app dataset (staff tooling); customer e-mail is not mapped.
+@prefix rr: <http://www.w3.org/ns/r2rml#> .
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+<#Vocab_app_Iri> rr:logicalTable [ rr:tableName "vocab_app_iri" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:IRI ] ] .
+<#Vocab_app_Lit> rr:logicalTable [ rr:tableName "vocab_app_lit" ] ;
+  rr:subjectMap [ rr:column "s" ; rr:termType rr:IRI ] ;
+  rr:predicateObjectMap [ rr:predicateMap [ rr:column "p" ] ; rr:objectMap [ rr:column "o" ; rr:termType rr:Literal ] ] .
+<#AnyOrder> rr:logicalTable [ rr:tableName "shop_order" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{ordernumber}" ; rr:class shop:Order ] ;
+  rr:predicateObjectMap [ rr:predicate shop:orderNumber ; rr:objectMap [ rr:column "ordernumber" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:status ; rr:objectMap [ rr:column "status" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:orderDate ; rr:objectMap [ rr:column "orderdate" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:placedBy ; rr:objectMap [ rr:template "https://example.org/bikeshop#customer-{customer}" ] ] .
+
+<#Customer> rr:logicalTable [ rr:tableName "customer" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#customer-{id}" ; rr:class shop:Customer ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "name" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:company ; rr:objectMap [ rr:column "company" ] ] .
+
+<#Ticket> rr:logicalTable [ rr:tableName "ticket" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#ticket-{ticketnumber}" ; rr:class shop:Ticket ] ;
+  rr:predicateObjectMap [ rr:predicate shop:ticketNumber ; rr:objectMap [ rr:column "ticketnumber" ] ] ;
+  rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column "subject" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:status ; rr:objectMap [ rr:column "status" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:category ; rr:objectMap [ rr:column "category" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:priority ; rr:objectMap [ rr:column "priority" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:created ; rr:objectMap [ rr:column "created" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:raisedBy ; rr:objectMap [ rr:template "https://example.org/bikeshop#customer-{customer}" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:aboutOrder ; rr:objectMap [ rr:template "https://example.org/bikeshop#{ordernumber}" ] ] .

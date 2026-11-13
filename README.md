@@ -23,6 +23,9 @@ MCP and uses tools from an external MCP server.
 - **Customer**, who has many **Orders**
 - **Ticket**, linked to a Customer and optionally an Order. A Ticket has many **Attachments**.
 - **RefundRequest**, one per Order
+- The product catalog: **Product** (with parts, compatibility and **Supplier**), **KnownIssue** and
+  recall, and the **OrderLines** of an order. SPARQL reads it, and the rest of the app, through
+  DuckDB (see Product knowledge graph).
 - Steps people act on: ticket triage, then assignment, then resolution, with refund
   approval. This is modelled as a **workflow** that includes an AI Agent Task.
 - Counts across records: open tickets per category and priority, and refund totals.
@@ -162,32 +165,58 @@ su postgres -c "psql -c 'create database servicedesk_vectors owner mendix' -d po
 
 Change the database with the `ServiceDesk.PgVectorJdbcUrl`, `ServiceDesk.PgVectorUser` and `ServiceDesk.PgVectorPassword` constants.
 
-## Product knowledge graph (SPARQL, through MCP)
+## Product knowledge graph (SPARQL over the app database)
 
-The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, and what each order contains (with battery production batches). The graph is `tools/fuseki/products.ttl`, served read-only by **Apache Jena Fuseki** (Apache 2.0) as two datasets:
+The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, what each order contains (with battery production batches), and the wiki. There is **no separate graph database**. The data lives in the app's own entities (`Product`, `Supplier`, `KnownIssue`, `OrderLine`, see `mdlsource/24-product-catalog.mdl`). **DuckDB** answers SPARQL over them with its [`rdf` community extension](https://duckdb.org/community_extensions/extensions/rdf), see `tools/sparql-duckdb`:
 
-- `/products`: the whole graph, orders included. Only the app queries it, server-side and after checking who is asking: the GetOrderProducts tool (`mdlsource/20-order-products-tool.mdl`), the Product graph outline and the reference API behind the chat cards and the explorer.
-- `/catalog`: the same graph **without orders**. This is all the **MCP server** (`tools/product-graph-mcp`) can reach, so no prompt and no `sparql_query` can make the AI reveal a customer's order. The server offers `find_product`, `compatible_parts`, `known_issues`, `product_outline`, and a read-only `sparql_query` (SELECT and ASK only).
+1. DuckDB attaches the app's PostgreSQL database **read-only**, as the role `servicedesk_graph`. That role can SELECT exactly the mapped tables and nothing else (`setup-reader.sh`).
+2. `views.sql` shapes those tables into one row per resource.
+3. An **R2RML mapping** (`mappings/*.r2rml.ttl`) says which rows are which triples. The extension translates each SPARQL query into SQL through that mapping (`execute_sparql`), so every query reads the current data and nothing is copied.
 
-What an order contains comes from the app's **GetOrderProducts** tool. Like GetOrderStatus, it only finds the signed-in customer's own orders.
+`server.py` serves it over the SPARQL 1.1 protocol (SELECT and ASK, JSON results) at the paths Fuseki used, so the app and the MCP server did not change:
 
-Start both next to the app (Fuseki needs Java 21+ and downloads itself from Maven Central the first time):
+| Dataset | Mappings | Who queries it |
+|---|---|---|
+| `/catalog/sparql` | products, suppliers, issues, the wiki (pages, `linksTo`, `mentions` a SKU) | the **MCP server**, so the AI. It holds no orders, so no prompt or `sparql_query` can reveal a customer's order. |
+| `/products/sparql` | the catalog plus orders and their lines | only the app, server-side and after checking who is asking: GetOrderProducts (`mdlsource/20-order-products-tool.mdl`), the Product graph outline, and the reference API behind the chat cards and the explorer |
+| `/app/sparql` | all of that plus every order's status and customer, customers (no e-mail) and tickets | staff tooling, from the command line for now |
+
+The MCP server (`tools/product-graph-mcp`) offers `find_product`, `compatible_parts`, `known_issues`, `product_outline`, and a read-only `sparql_query` (SELECT and ASK only). What an order contains comes from the app's **GetOrderProducts** tool. Like GetOrderStatus, it only finds the signed-in customer's own orders.
+
+Start both next to the app, once its tables exist (`bash tools/start-helpers.sh` does this). It needs `pip install duckdb`; the extensions download themselves the first time:
 
 ```bash
-sh tools/fuseki/start.sh
+sh tools/sparql-duckdb/setup-reader.sh
+```
+
+```bash
+setsid nohup python3 tools/sparql-duckdb/server.py > /tmp/servicedesk-sparql.log 2>&1 &
 ```
 
 ```bash
 setsid nohup python3 tools/product-graph-mcp/server.py > /tmp/product-graph.log 2>&1 &
 ```
 
-The SPARQL endpoints are `http://localhost:3030/products/sparql` (full) and `http://localhost:3030/catalog/sparql` (no orders), and the MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The live test also checks that the catalog holds no orders, even for a query over every triple.
+The MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The live test also checks that the catalog holds no orders, even for a query over every triple.
+
+A query across the whole app: which customers bought something a recall affects, directly or as a component of a bike, and which battery batch they got:
+
+```bash
+curl -s http://127.0.0.1:3030/app/sparql -H 'Content-Type: application/sparql-query' --data-binary 'PREFIX shop: <https://example.org/bikeshop#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?customer ?order ?sku ?batch ?recall WHERE {
+  ?i a shop:Recall ; shop:issueId ?recall .
+  { ?i shop:affects ?p } UNION { ?p shop:hasComponent ?part . ?i shop:affects ?part }
+  ?p shop:sku ?sku . ?o shop:hasLine ?l ; shop:orderNumber ?order ; shop:placedBy ?c .
+  ?l shop:product ?p . OPTIONAL { ?l shop:batch ?batch } ?c rdfs:label ?customer }'
+```
+
+The catalog is seeded once from `tools/sparql-duckdb/products.ttl`, the Turtle file Fuseki used to serve. `generate_catalog_seed.py` turns it into `mdlsource/24b-product-catalog-seed.mdl`. The app has no catalog edit pages yet.
 
 ### Product graph page (SPARQL from the app)
 
-Support agents and administrators also get a **Product graph** page: an outline of the whole graph, built with the Tree node widget. Open a class (Part, Order, Supplier...) to see its members, and a member to see its facts. → is a link to another node, and ← is a node that links here, such as the orders containing a part or the recall affecting it.
+Support agents and administrators also get a **Product graph** page: an outline of the whole graph, built with the Tree node widget. Open a class (Part, Order, Supplier, Wiki page...) to see its members, and a member to see its facts. → is a link to another node, and ← is a node that links here, such as the orders containing a part or the recall affecting it.
 
-The app reads the graph itself, without the MCP server (`mdlsource/14-product-graph-outline.mdl`). It POSTs one SPARQL SELECT (`tools/fuseki/queries/outline.rq`) to `ServiceDesk.ProductGraphSparqlEndpoint`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when Fuseki is down.
+The app reads the graph itself, without the MCP server (`mdlsource/14-product-graph-outline.mdl`). It POSTs one SPARQL SELECT (`tools/sparql-duckdb/queries/outline.rq`) to `ServiceDesk.ProductGraphSparqlEndpoint`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when the endpoint is down.
 
 ## SQL to the vector database
 

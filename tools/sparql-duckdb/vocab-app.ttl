@@ -1,0 +1,10 @@
+@prefix shop: <https://example.org/bikeshop#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+shop:Customer      a rdfs:Class ; rdfs:label "Customer" .
+shop:Ticket        a rdfs:Class ; rdfs:label "Support ticket" .
+shop:placedBy      rdfs:label "order placed by" .
+shop:orderDate     rdfs:label "order date" .
+shop:status        rdfs:label "status" .
+shop:ticketNumber  rdfs:label "ticket number" .
+shop:raisedBy      rdfs:label "ticket raised by" .
+shop:aboutOrder    rdfs:label "ticket is about order" .
