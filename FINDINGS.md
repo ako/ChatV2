@@ -1646,3 +1646,19 @@ Notes:
 - **The index is not ours.** It sits on a table Mendix manages, and Mendix's own sync leaves unknown indexes alone, as far as this run shows: `wiki_fts_idx` survived several restarts. If an entity change makes Mendix rebuild the table, run `setup.sh` again.
 - **On Mendix Cloud the app's database is not reachable** over the External Database Connector. There, the same query would run against a separate search database that the app keeps up to date when a page is published.
 - **Wrong conclusion on the way:** a screenshot script wrote relative to the working directory, and I compared a stale file for three rounds before noticing. Write test artifacts to an absolute path.
+
+### Update: full-text search on the runtime's own connection (2026-11-13)
+
+The External Database Connector version needed a second login to the app's own database: a role, a password constant and a setup script. It also could not run on Mendix Cloud, where the app's database is not reachable that way. The runtime API offers the app's own connection instead: `Core.dataStorage().executeWithConnection(IContext, Function<Connection, R>)` in `com.mendix.public-api.jar`. Two Java actions now use it:
+- `JA_Wiki_SearchFullText` runs the same weighted query as a `PreparedStatement`, with the user's text as its only parameter, and builds `WikiSearchRow` objects.
+- `JA_Wiki_EnsureSearchIndex` runs `create index if not exists wiki_fts_idx …` from `ASU_App`. It logs and returns false on a database that is not PostgreSQL, so startup never fails on it.
+
+The connector, its three constants, the role and `tools/wiki-search/setup.sh` are gone.
+
+Measured:
+- **The startup action creates the index.** It was dropped (`pg_indexes` count 0), the app was restarted, and the count was 1.
+- **PostgreSQL uses it.** `explain` with `enable_seqscan = off` gives "Bitmap Index Scan on wiki_fts_idx" for the app's expression. The index expression and the query's must match exactly; they share one Java constant.
+- **The context overload matters.** With `executeWithConnection(getContext(), …)` the search sees a page the same transaction has just stored. A new microflow test stores a page and searches for it with a stemmed word, and passes. Control: switched to the overload without a context, the same test fails ("expected $Ok = true, actual: false"); switched back, it passes.
+- `tests-live/mcp/wiki_test.py` 13/13, and the search page still shows ranked results with snippets.
+
+Caveat: the SQL names Mendix's own table and columns (`"servicedesk$wikipage"`, `title`, `body`, …). Renaming the entity or an attribute means changing the Java constant too; nothing checks that at build time.

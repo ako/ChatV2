@@ -48,3 +48,13 @@ commit $Mention;
 $Results = call microflow ServiceDesk.Tool_WikiSearch(Query = 'helmets');
 declare $Ok Boolean = find($Results, 'test-search-helmets') >= 0 and find($Results, 'test-search-accessories') > find($Results, 'test-search-helmets');
 /
+
+/**
+ * @test Full-text search stems words and sees a page this transaction just stored
+ * @expect $Ok = true
+ */
+$Page = create ServiceDesk.WikiPage (Slug = 'test-fts-refunds', Title = 'Test refunds for zephyr bikes', Summary = 'Money back.', Body = 'Refunds for the zephyr are paid within 7 days.');
+commit $Page;
+$Results = call microflow ServiceDesk.Tool_WikiSearch(Query = 'refunding zephyrs');
+declare $Ok Boolean = find($Results, 'full-text search') >= 0 and find($Results, 'test-fts-refunds') >= 0 and find($Results, '**') >= 0;
+/

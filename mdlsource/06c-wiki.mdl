@@ -202,21 +202,16 @@ end;
 
 -- ---------------------------------------------------------------- full-text search (PostgreSQL)
 
--- Search runs in the database with PostgreSQL full-text search, over the External
--- Database Connector as a read-only role (tools/wiki-search/setup.sh creates the
--- role and a GIN index on the same weighted expression: title and tags A, summary B,
--- body C). Words are stemmed ("refunded" finds "refund"), any word of the query may
--- match and pages matching more and heavier words rank first, and ts_headline marks
--- the matches in a snippet. Without the role or the database, search falls back to
--- the word match below. The password is not in the model; pass it per run:
---   --constant ServiceDesk.WikiSearchDbPassword=@file:.mxcli/wiki-search.password
-
-/** JDBC URL of the app's own database, read for wiki search. */
-create or modify constant "ServiceDesk"."WikiSearchDbUrl" folder 'Wiki' ( Type: String, DefaultValue: 'jdbc:postgresql://127.0.0.1:5432/servicedeskcopilot' );
-/** Read-only database role for wiki search (SELECT on the wiki table only). */
-create or modify constant "ServiceDesk"."WikiSearchDbUser" folder 'Wiki' ( Type: String, DefaultValue: 'wiki_search' );
-/** Password of the wiki search role. No value in the model; pass it per run. */
-create or modify constant "ServiceDesk"."WikiSearchDbPassword" folder 'Wiki' ( Type: String, DefaultValue: '' );
+-- Search runs in the app's own database with PostgreSQL full-text search, on a
+-- connection the runtime lends from its pool (Core.dataStorage().executeWithConnection),
+-- so there is no extra role, password or connector: it works wherever the app runs on
+-- PostgreSQL, Mendix Cloud included. The query is a PreparedStatement with the user's
+-- text as its only parameter. A weighted tsvector (title and tags A, summary B, body C)
+-- is matched against the query's stemmed words, any word may match, pages matching more
+-- and heavier words rank first (ts_rank_cd), and ts_headline marks the matches in a
+-- snippet. A GIN index on the same expression is created at startup
+-- (JA_Wiki_EnsureSearchIndex, from ASU_App). Without PostgreSQL, or when nothing
+-- matches, search falls back to the word match below.
 
 /** One full-text search hit: the page, its rank, and a snippet with the matches in bold. */
 create or modify non-persistent entity "ServiceDesk"."WikiSearchRow" (
@@ -236,26 +231,82 @@ create or modify non-persistent entity "ServiceDesk"."WikiSearch" (
 grant read *, write * on entity "ServiceDesk"."WikiSearchRow" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 grant create, read *, write * on entity "ServiceDesk"."WikiSearch" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
-create or modify database connection "ServiceDesk"."WikiSearchDatabase" folder 'Wiki' (
-  Type: 'PostgreSQL',
-  ConnectionString: @"ServiceDesk"."WikiSearchDbUrl",
-  Username: @"ServiceDesk"."WikiSearchDbUser",
-  Password: @"ServiceDesk"."WikiSearchDbPassword"
-) {
-  query SearchPages (
-    Sql: $$select p.slug as slug, p.title as title, p.summary as summary, ts_rank_cd(setweight(to_tsvector('english'::regconfig, coalesce(p.title, '') || ' ' || coalesce(p.tags, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(p.summary, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(p.body, '')), 'C'), q.query)::numeric(12,6) as rank, ts_headline('english', regexp_replace(regexp_replace(coalesce(p.body, ''), '\[\[([^]|]*)[^]]*\]\]', '\1', 'g'), '[#*|>`_]+|-{2,}|\s+', ' ', 'g'), q.query, 'StartSel=**, StopSel=**, MaxWords=30, MinWords=12, MaxFragments=2, FragmentDelimiter=" … "') as snippet from "servicedesk$wikipage" p, (select to_tsquery('english', replace(plainto_tsquery('english', {query})::text, ' & ', ' | ')) as query) q where (setweight(to_tsvector('english'::regconfig, coalesce(p.title, '') || ' ' || coalesce(p.tags, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(p.summary, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(p.body, '')), 'C')) @@ q.query order by rank desc, p.title limit 5$$,
-    Parameters: ( query: String ),
-    Returns: "ServiceDesk"."WikiSearchRow",
-    Map: ( "Slug" = slug, "Title" = title, "Summary" = summary, "Rank" = rank, "Snippet" = snippet )
-  )
-};
+/** Full-text search over the wiki pages in the app's database, on a connection from the runtime's pool: up to five pages, best first, each with a snippet. Throws when the database is not PostgreSQL or the query fails. */
+create or modify java action "ServiceDesk"."JA_Wiki_SearchFullText" folder 'Wiki' (
+  /** What the user is looking for, in their own words. */
+  Query: String
+) returns List of "ServiceDesk"."WikiSearchRow" as $Rows
+not exposed
+as $$
+import com.mendix.core.Core;
+import com.mendix.systemwideinterfaces.core.IMendixObject;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+// the context's own connection: the search sees what this request has changed but not committed
+return Core.dataStorage().executeWithConnection(getContext(), connection -> {
+	java.util.List<IMendixObject> rows = new ArrayList<>();
+	try (PreparedStatement statement = connection.prepareStatement(SEARCH_SQL)) {
+		statement.setString(1, Query == null ? "" : Query);
+		try (ResultSet result = statement.executeQuery()) {
+			while (result.next()) {
+				IMendixObject row = Core.instantiate(getContext(), "ServiceDesk.WikiSearchRow");
+				row.setValue(getContext(), "Slug", result.getString("slug"));
+				row.setValue(getContext(), "Title", result.getString("title"));
+				row.setValue(getContext(), "Summary", result.getString("summary"));
+				row.setValue(getContext(), "Rank", result.getBigDecimal("rank"));
+				row.setValue(getContext(), "Snippet", result.getString("snippet"));
+				rows.add(row);
+			}
+		}
+	} catch (SQLException e) {
+		throw new RuntimeException("Wiki full-text search failed: " + e.getMessage(), e);
+	}
+	return rows;
+});
+$$
+extra code $$
+	// The table and columns Mendix keeps for ServiceDesk.WikiPage. The search expression
+	// must match INDEX_SQL's exactly, or PostgreSQL does not use the index.
+	static final String TABLE = "\"servicedesk$wikipage\"";
+	static final String DOCUMENT = "setweight(to_tsvector('english'::regconfig, coalesce(title, '') || ' ' || coalesce(tags, '')), 'A') || setweight(to_tsvector('english'::regconfig, coalesce(summary, '')), 'B') || setweight(to_tsvector('english'::regconfig, coalesce(body, '')), 'C')";
+	static final String SEARCH_SQL = "select slug, title, summary, ts_rank_cd(" + DOCUMENT + ", q.query)::numeric(12,6) as rank, "
+		+ "ts_headline('english', regexp_replace(regexp_replace(coalesce(body, ''), '\\[\\[([^]|]*)[^]]*\\]\\]', '\\1', 'g'), '[#*|>`_]+|-{2,}|\\s+', ' ', 'g'), q.query, "
+		+ "'StartSel=**, StopSel=**, MaxWords=30, MinWords=12, MaxFragments=2, FragmentDelimiter=\" … \"') as snippet "
+		+ "from " + TABLE + ", (select to_tsquery('english', replace(plainto_tsquery('english', ?)::text, ' & ', ' | ')) as query) q "
+		+ "where (" + DOCUMENT + ") @@ q.query order by rank desc, title limit 5";
+	static final String INDEX_SQL = "create index if not exists wiki_fts_idx on " + TABLE + " using gin ((" + DOCUMENT + "))";
+$$;
 
-/** Full-text search in the database: up to five pages, best first. Raises an error when the database cannot be read; callers fall back to the word match. */
+/** Creates the GIN index the wiki's full-text search uses, when it is not there yet. Returns false (and logs) when it cannot, e.g. on a database that is not PostgreSQL; search then still works, more slowly or with the word match. */
+create or modify java action "ServiceDesk"."JA_Wiki_EnsureSearchIndex" folder 'Wiki' (
+) returns Boolean as $IndexReady
+not exposed
+as $$
+import com.mendix.core.Core;
+import java.sql.Statement;
+try {
+	return Core.dataStorage().executeWithConnection(connection -> {
+		try (Statement statement = connection.createStatement()) {
+			statement.execute(JA_Wiki_SearchFullText.INDEX_SQL);
+			return true;
+		} catch (java.sql.SQLException e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
+	});
+} catch (RuntimeException e) {
+	Core.getLogger("ServiceDesk").warn("Wiki search index not created: " + e.getMessage());
+	return false;
+}
+$$;
+
+/** Full-text search in the database: up to five pages, best first. Raises an error when it is not available; callers fall back to the word match. */
 create or modify microflow "ServiceDesk"."SUB_Wiki_SearchFullText" ($Query: String)
 returns List of "ServiceDesk"."WikiSearchRow" as $Rows
 folder 'Wiki'
 begin
-  $Rows = execute database query "ServiceDesk"."WikiSearchDatabase"."SearchPages" (query = (if $Query = empty then '' else $Query));
+  $Rows = call java action "ServiceDesk"."JA_Wiki_SearchFullText" (Query = (if $Query = empty then '' else $Query));
   return $Rows;
 end;
 

@@ -45,6 +45,9 @@ begin
   $RuntimeAgentReady = call microflow "ServiceDesk"."SUB_SetUpRuntimeAgent" ();
   $PricesSeeded = call microflow "ServiceDesk"."SUB_ModelPrice_Seed" ();
   $PlacesSeeded = call microflow "ServiceDesk"."SUB_Place_Seed" ();
+  $WikiIndexReady = call java action "ServiceDesk"."JA_Wiki_EnsureSearchIndex" () on error without rollback begin
+    log warning node 'ServiceDesk' 'Wiki search index not checked: {1}' with ({1} = $latestError/Message);
+  end error;
   return true;
 end;
 
