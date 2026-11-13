@@ -128,8 +128,13 @@
     .chat-input-wrapper {
         background: transparent;
     }
+    // the message box: a rounded box inset in the panel, so its border never runs
+    // along the panel's own border and corners
     .chat-input-wrapper {
-        border-top: 1px solid var(--mxt-line);
+        margin: 4px 16px 16px;
+        border: 1px solid var(--mxt-line);
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.22);
     }
     textarea.form-control {
         background: rgba(0, 0, 0, 0.28);
@@ -170,8 +175,9 @@
     position: relative;
     .sd-compose-tools {
         position: absolute;
-        left: 30px;
-        bottom: 30px;
+        // level with the first line of text in the inset message box
+        left: 26px;
+        bottom: 48px;
         display: flex;
         gap: 6px;
         z-index: 2;
@@ -191,7 +197,8 @@
     }
     // Conversational UI zeroes the textarea's padding with !important; make room for the tools on the left
     .chat-input-wrapper .mx-textarea textarea.form-control.mx-textarea-input {
-        padding-left: 150px !important;
+        padding-left: 146px !important;
+        padding-top: 10px !important;
     }
 }
 
