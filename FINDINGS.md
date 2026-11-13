@@ -1168,7 +1168,8 @@ scoped agent tool (GetDeliveryStatistics), chart and outline card types in ChatR
 REST endpoint that serves product graph node details for clickable references.
 
 Found on the way:
-- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.**
+- **`mxcli check` passed two OQL mistakes that `docker check` then failed with CE0174.** Filed as
+  [ako/mxcli#2208](https://github.com/ako/mxcli/issues/2208), fix in [ako/mxcli#2216](https://github.com/ako/mxcli/pull/2216).
   - `e.Leg != empty` in a view entity: OQL has no `empty`, it needs `is not null`.
   - An unquoted `ServiceDesk.Order` in a join path: `Order` is an OQL reserved word, so write `ServiceDesk."Order"`.
   - Separately, division in OQL is `:`, not `/`, which is the path separator.
@@ -1225,7 +1226,8 @@ Found on the way:
   Commons' `Agent.Description` is String(200). Agent Editor Commons logged "tried setting a value of length 203"
   at startup and kept the *previous* version of the agent. `mxcli check`, `exec` and `docker check` were all
   clean. The symptom was the eligibility agent returning an empty answer every time. Three hypotheses
-  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Check the startup log
+  (knowledge-base tool, streaming, the prompt) were tried before the startup log showed it. Filed as
+  [ako/mxcli#2211](https://github.com/ako/mxcli/issues/2211), check warning MDL-AGENT04 in [ako/mxcli#2220](https://github.com/ako/mxcli/pull/2220). Check the startup log
   for "Agent Editor Commons" errors after changing an agent.
 - **The knowledge base as a tool of a task agent was not confirmed to work** with `Agent_Call_WithoutHistory`:
   its runs were all on the stale agent. The eligibility agent now gets the policy text in its prompt
@@ -1387,7 +1389,7 @@ How it was verified:
 
 **Theme from a design.** `mxcli theme create glass --from design/glass-tokens.css --base console` took the 37 `--mxt-*` tokens straight from a small tokens file read off the canvas. Two things it did not do:
 - It took the glass look itself (blur, glows, translucent panels) only as far as the palette goes. That went into the theme's skin mixin.
-- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy.
+- It vendors no font when `--from` names a family the base does not ship. It says so for Inter, but not for JetBrains Mono, which the base names but did not copy. Filed as [ako/mxcli#2210](https://github.com/ako/mxcli/issues/2210), fix in [ako/mxcli#2218](https://github.com/ako/mxcli/pull/2218).
 
 `theme apply glass` removed the signal theme's partial and fonts from `theme/web/`.
 
@@ -1465,7 +1467,7 @@ Verified live as demo_customer:
 
 **A route stop per place, not per scan.** Three scans at two places (Leipzig picked up; Venlo arrived, then delayed) are two stops. The stop shows the latest scan at that place, so the Venlo stop carries the delay. Taking the first scan made the panel's Venlo stop teal while the chat's was amber.
 
-**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run.
+**`revoke` is a one-off in a repeatable script.** Narrowing Place from admin CRUD to read-only with `revoke … from Admin` worked once. Then the roles shared one read rule, and a second run refused: the rule "also grants" other roles. From a fresh model the plain `grant read` produces the same state, so the revoke was removed from the script after it had run. Filed as [ako/mxcli#2209](https://github.com/ako/mxcli/issues/2209), fix in [ako/mxcli#2219](https://github.com/ako/mxcli/pull/2219).
 
 The 404 in the browser console is Conversational UI's own `llm-streaming` endpoint, present before this change.
 
@@ -1570,7 +1572,7 @@ Studio Pro keeps such an add-on as a file in the app's `modules/` folder, with n
 
 **Fix:** `modules/AgentEditor.mxmodule` taken from the 2.7.0 package (the version of the installed AgentEditorCommons) and committed. Afterwards `mxcli show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on, `docker check` reports 0 errors, and the app builds and runs.
 
-When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205.
+When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205, fix in [ako/mxcli#2217](https://github.com/ako/mxcli/pull/2217).
 
 ## Wiki prototype: a curated knowledge base instead of chunks (2026-11-13)
 
@@ -1646,6 +1648,25 @@ Notes:
 - **The index is not ours.** It sits on a table Mendix manages, and Mendix's own sync leaves unknown indexes alone, as far as this run shows: `wiki_fts_idx` survived several restarts. If an entity change makes Mendix rebuild the table, run `setup.sh` again.
 - **On Mendix Cloud the app's database is not reachable** over the External Database Connector. There, the same query would run against a separate search database that the app keeps up to date when a page is published.
 - **Wrong conclusion on the way:** a screenshot script wrote relative to the working directory, and I compared a stale file for three rounds before noticing. Write test artifacts to an absolute path.
+
+## mxcli gaps from these findings: issues and fix PRs (2026-11-13)
+
+A review of this file against mxcli `main` (f7031349) found that almost every mxcli gap reported here was already filed and fixed. Four were not filed. All four reproduced on a copy of this project and are now filed, with fix PRs. The fix for #2205 is in a PR too.
+
+| Gap | Issue | Fix PR |
+|---|---|---|
+| `check` passed `!= empty` and an unquoted `ServiceDesk.Order` in view OQL (CE0174) | [ako/mxcli#2208](https://github.com/ako/mxcli/issues/2208) | [ako/mxcli#2216](https://github.com/ako/mxcli/pull/2216) |
+| `revoke … from Admin` refused because a shared read rule "also grants" other roles | [ako/mxcli#2209](https://github.com/ako/mxcli/issues/2209) | [ako/mxcli#2219](https://github.com/ako/mxcli/pull/2219) |
+| `theme create --from` dropped JetBrains Mono while `--mxt-font-mono` still named it | [ako/mxcli#2210](https://github.com/ako/mxcli/issues/2210) | [ako/mxcli#2218](https://github.com/ako/mxcli/pull/2218) |
+| An agent description over 200 characters (or a name over 50) passes `check` | [ako/mxcli#2211](https://github.com/ako/mxcli/issues/2211) | [ako/mxcli#2220](https://github.com/ako/mxcli/pull/2220) |
+| `marketplace install` left out `modules/AgentEditor.mxmodule` | [ako/mxcli#2205](https://github.com/ako/mxcli/issues/2205) | [ako/mxcli#2217](https://github.com/ako/mxcli/pull/2217) |
+
+How each was verified:
+- **OQL:** each case was exec'd into its own copy of the project and checked with mxbuild 11.16. `e.Leg != empty` gives CE0174 "Cannot resolve path part 'empty'", and unquoted `Order` gives CE0174 too; the `is not null` / `"Order"` control is clean. A further run measured which names fail unquoted as an entity or attribute: Order, Group, Limit, Offset, End, Key, Count, Sum, Distinct, Select, Like, Asc, Desc, Having, Where, Join, Exists and Cast do; Status, Value, Date, Position, Index, Coalesce and Top don't. The fix reports `empty` as MDL030 and those 18 words as MDL032.
+- **Revoke:** on current `main`, a script with this file's grant + revoke pattern fails on every run, the first included. The refused rule is the read-only rule the `grant` added, which the revoke would not change. With the fix, the first run narrows Admin and the second reports "nothing to revoke".
+- **Theme:** with `design/glass-tokens.css` and `--base console`, the fixed build ships JetBrains Mono's woff2 files and `@font-face`. Space Grotesk is still dropped, correctly: console's heading is `var(--mxt-font)`, which is now Inter.
+- **Agent lengths:** Agent Editor Commons' import (`AgentFromModel_CreateUpdateAgent`) writes the agent name into `AgentCommons.Agent.Title` (String(50)) and the description into `Agent.Description` (String(200)). The new warning MDL-AGENT04 covers those two and the tool name, title and description lengths. It gives no finding on this project's agent scripts.
+- **Add-on module:** `package.xml` in the Agent Editor 2.7.0 package doesn't list `modules/AgentEditor.mxmodule`, which is why the installer skipped it. In a fresh 11.16 app, the fixed `marketplace install 257918 --version 2.7.0` writes the file byte-identical to the one committed here, and `show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on. The unfixed build lists the file under "Left out". It is not yet confirmed in Studio Pro that the agent editor then opens.
 
 ### Update: full-text search on the runtime's own connection (2026-11-13)
 
