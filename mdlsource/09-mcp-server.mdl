@@ -91,6 +91,25 @@ create or modify import mapping "ServiceDesk"."IMM_TokenIntrospection"
   }
 };
 
+/** MCP prompt: answer a question from the shop's wiki (06c-wiki.mdl). Hands the client the wiki's index and how to use the wiki tools. */
+create or modify microflow "ServiceDesk"."MCPPrompt_WikiAnswer" (
+  $Prompt: MCPServer.Prompt,
+  $Question: String
+)
+returns MCPServer.PromptMessage as $Message
+folder 'MCP'
+begin
+  declare $NL String = urlDecode('%0A');
+  $Index = call microflow "ServiceDesk"."Tool_WikiIndex" ();
+  $Message = create MCPServer.PromptMessage (
+    Role = 'USER',
+    Content = 'Answer this question from the service desk wiki: ' + (if $Question = empty then '' else $Question) + $NL + $NL
+      + 'Use wiki_read with a slug from the index below to open the pages you need, and follow their links when the answer depends on them. Use wiki_search when the index does not make the page obvious. Answer only from what the pages say, and name the pages you used.' + $NL + $NL
+      + $Index
+  );
+  return $Message;
+end;
+
 /** Authenticates an MCP request with an OAuth bearer token: introspects it at the issuer, requires it to be active, issued for this server (audience) and to hold the required scope, then maps preferred_username to the app user. Never throws: any failure returns empty, which the MCP module answers with 401. */
 create or modify microflow "ServiceDesk"."MCP_Authenticate_OAuth" (
   $HttpRequest: System.HttpRequest,
@@ -128,7 +147,7 @@ begin
   return $Account;
 end;
 
-/** Registers the service-desk tools and the ticket-reply prompt on an MCP server. */
+/** Registers the service-desk tools, the wiki tools and the ticket-reply and wiki-answer prompts on an MCP server. */
 create or modify microflow "ServiceDesk"."SUB_MCP_RegisterTools" ($McpServer: MCPServer.McpServer)
 folder 'MCP'
 begin
@@ -148,6 +167,39 @@ begin
     Schema = '{"type": "object", "properties": {"SearchText": {"type": "string", "description": "A word or phrase"}}, "required": ["SearchText"]}',
     Title = 'Search tickets'
   );
+  -- the wiki (06c-wiki.mdl): read by anyone signed in; proposing an edit is for staff and goes through review
+  $WikiIndexTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'wiki_index',
+    Description = 'The service desk wiki''s table of contents: every page''s slug, title, one-line summary and tags. Read it first for questions about returns, refunds, delivery, warranty and other policies.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_WikiIndex',
+    Schema = '{"type": "object", "properties": {}}',
+    Title = 'Wiki index'
+  );
+  $WikiSearchTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'wiki_search',
+    Description = 'Finds wiki pages by words in their title, tags, summary or text, best matches first.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_WikiSearch',
+    Schema = '{"type": "object", "properties": {"Query": {"type": "string", "description": "A few words, e.g. return e-bike"}}, "required": ["Query"]}',
+    Title = 'Search the wiki'
+  );
+  $WikiReadTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'wiki_read',
+    Description = 'One wiki page in full (markdown, [[slug]] links), with the pages it links to and the pages that link to it.',
+    ExecutingMicroflow = 'ServiceDesk.Tool_WikiRead',
+    Schema = '{"type": "object", "properties": {"Slug": {"type": "string", "description": "The page slug from wiki_index, e.g. returns"}}, "required": ["Slug"]}',
+    Title = 'Read a wiki page'
+  );
+  $WikiProposeTool = call java action MCPServer.AddTool(
+    McpServer = $McpServer,
+    Name = 'wiki_propose_edit',
+    Description = 'Support staff only: proposes a new page or a whole new version of a page. A support agent reviews it in the app before it is published; nothing changes until then.',
+    ExecutingMicroflow = 'ServiceDesk.MCPTool_WikiProposeEdit',
+    Schema = '{"type": "object", "properties": {"Slug": {"type": "string", "description": "Lowercase words joined by hyphens; an existing slug to change that page"}, "Title": {"type": "string"}, "Summary": {"type": "string", "description": "One sentence: what the page answers"}, "Body": {"type": "string", "description": "The whole page in markdown; link other pages with [[slug]]"}, "Reason": {"type": "string", "description": "What is new or changed, and why"}}, "required": ["Slug", "Title", "Summary", "Body", "Reason"]}',
+    Title = 'Propose a wiki edit'
+  );
   $Arguments = create list of MCPServer.PromptArgument;
   call microflow MCPServer.PopulatePromptArgList(PromptArgumentList = $Arguments, Name = 'TicketNumber', Description = 'The ticket number, e.g. 1003', Required = true);
   $Prompt = call java action MCPServer.AddPrompt(
@@ -156,6 +208,15 @@ begin
     Description = 'Draft a reply to the customer for one support ticket.',
     Parameters = $Arguments,
     Microflow = 'ServiceDesk.MCPPrompt_TicketReply'
+  );
+  $WikiArguments = create list of MCPServer.PromptArgument;
+  call microflow MCPServer.PopulatePromptArgList(PromptArgumentList = $WikiArguments, Name = 'Question', Description = 'The question to answer from the wiki', Required = true);
+  $WikiPrompt = call java action MCPServer.AddPrompt(
+    McpServer = $McpServer,
+    Name = 'wiki_answer',
+    Description = 'Answer a question from the service desk wiki: starts with the wiki index and says how to use the wiki tools.',
+    Parameters = $WikiArguments,
+    Microflow = 'ServiceDesk.MCPPrompt_WikiAnswer'
   );
 end;
 

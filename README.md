@@ -355,4 +355,8 @@ Besides the vector knowledge base, the policy knowledge lives in a **wiki**: mar
   - **WikiProposeEdit**: staff only, after approval in the chat.
 
   For policy questions it reads the index, opens the pages it needs, and quotes them in a policy card. The citation check finds the quote on the wiki page itself and labels it "Wiki: <page>". The vector knowledge base remains a fallback.
+- **Over MCP:** both MCP servers (`/servicedesk/mcp` with app-account headers, `/servicedesk-oauth/mcp` with OAuth) publish the wiki to any MCP client: Claude Code, Claude Desktop, or another agent. That makes it a shared second brain, with the app's sign-in, access rules and review step.
+  - Tools: `wiki_index`, `wiki_search`, `wiki_read`, and `wiki_propose_edit`. Proposing is for staff only; customers are refused. A proposal goes through the same review and is logged as coming from "MCP".
+  - Prompt: `wiki_answer`, which starts from the index and says how to use the tools.
+  - Live test: `python3 tests-live/mcp/wiki_test.py`.
 - **A new environment starts with an empty wiki:** press **Compile policy documents** once and approve the proposals.

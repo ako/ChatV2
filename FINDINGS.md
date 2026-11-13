@@ -1601,3 +1601,23 @@ Found on the way:
 - **The shared `.sd-panel` style sets `height: 100%`,** which suits the chat's columns. On the review page it made both panels run into the form below them. Wiki panels now set their own height.
 - **A page that customers can open must not show an entity they cannot read,** even in a grid only staff would use. mxbuild reported CE2729 for the revisions grid on the wiki page, and `mxcli check` did not catch it. The log moved to a staff-only page.
 - **The assistant echoed `[[returns]]` in a chat answer.** The prompt now says to name pages by title.
+
+## The wiki over MCP (2026-11-13)
+
+Both MCP servers register four wiki tools (`wiki_index`, `wiki_search`, `wiki_read`, `wiki_propose_edit`) and a `wiki_answer` prompt, beside the order and ticket tools. They are the same microflows the chat assistant uses, so the MCP Server module runs them as the signed-in user. Proposing an edit checks that the caller is staff.
+
+Verified live with `tests-live/mcp/wiki_test.py` against `/servicedesk/mcp` (9 checks pass):
+- the wiki tools are listed;
+- the index lists the pages;
+- "return e-bike kilometres" finds the returns page first;
+- reading a page gives its links and backlinks;
+- "refund" suggests "refunds";
+- a customer's edit is refused, and an invalid slug is refused;
+- demo_agent's "Bike sizing" page became a proposal and was then approved in the app;
+- the prompt carries the question and the index.
+
+`basic_auth_test.py` still passes. The OAuth server registers the same tools through the same microflow. It was not tested live this time, because Keycloak was not running.
+
+- **Tool output named the chat tool names** ("open a page with WikiRead"). An MCP client knows those tools as `wiki_read`, so the wording is now neutral ("with the read tool").
+- **A proposal over MCP was logged as coming from the chat.** The MCP tool is a thin wrapper (`MCPTool_WikiProposeEdit`) that records "MCP, <user>"; it shares `SUB_Wiki_ProposeAsStaff` with the chat tool.
+- **The live test proposes a page every run.** Each run leaves a review task: approve or reject it in My tasks.

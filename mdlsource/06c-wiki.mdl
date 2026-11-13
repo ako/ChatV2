@@ -220,7 +220,7 @@ begin
   if length($Pages) = 0 then
     return 'The wiki has no pages yet.';
   end if;
-  declare $Out String = 'Wiki index (' + toString(length($Pages)) + ' pages). Open a page with WikiRead and its slug.' + $NL;
+  declare $Out String = 'Wiki index (' + toString(length($Pages)) + ' pages). Open a page by its slug with the read tool.' + $NL;
   loop $Page in $Pages begin
     set $Out = $Out + '- ' + $Page/Slug + ': ' + (if $Page/Title = empty then $Page/Slug else $Page/Title)
       + (if $Page/Summary = empty then '' else ' — ' + $Page/Summary)
@@ -243,7 +243,7 @@ begin
     loop $C in $Close begin
       set $Names = $Names + (if $Names = '' then '' else ', ') + $C/Slug;
     end loop;
-    return 'There is no wiki page "' + $Wanted + '".' + (if $Names = '' then ' Use WikiIndex or WikiSearch to find the right page.' else ' Did you mean: ' + $Names + '?');
+    return 'There is no wiki page "' + $Wanted + '".' + (if $Names = '' then ' Use the index or search to find the right page.' else ' Did you mean: ' + $Names + '?');
   end if;
   retrieve $Backlinks from "ServiceDesk"."WikiLink" where [ToSlug = $Wanted];
   declare $From String = '';
@@ -297,11 +297,11 @@ begin
     end if;
   end loop;
   if length($Hits) = 0 then
-    return 'No wiki page matches "' + (if $Query = empty then '' else $Query) + '". Read WikiIndex for the list of pages.';
+    return 'No wiki page matches "' + (if $Query = empty then '' else $Query) + '". Read the index for the list of pages.';
   end if;
   $Sorted = sort $Hits by Score desc;
   $Top = range $Sorted limit 5;
-  declare $Out String = 'Best matching wiki pages (open one with WikiRead):' + $NL;
+  declare $Out String = 'Best matching wiki pages (open one by its slug with the read tool):' + $NL;
   loop $H in $Top begin
     set $Out = $Out + '- ' + $H/Slug + ': ' + (if $H/Title = empty then '' else $H/Title) + (if $H/Summary = empty then '' else ' — ' + $H/Summary) + $NL;
   end loop;
@@ -459,8 +459,8 @@ begin
   return $New;
 end;
 
-/** Agent tool (staff only): proposes a new or changed wiki page; a support agent reviews it before it is published. */
-create or modify microflow "ServiceDesk"."Tool_WikiProposeEdit" ($Slug: String, $Title: String, $Summary: String, $Body: String, $Reason: String)
+/** Proposes a page edit for review on behalf of the current user, when that user is staff. Channel says where it came from (Chat, MCP). Returns the answer for the caller. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_ProposeAsStaff" ($Slug: String, $Title: String, $Summary: String, $Body: String, $Reason: String, $Channel: String)
 returns String as $Answer
 folder 'Wiki'
 begin
@@ -468,11 +468,29 @@ begin
   if $Customer != empty then
     return 'Only support staff can propose changes to the wiki.';
   end if;
-  $Revision = call microflow "ServiceDesk"."SUB_WikiRevision_Propose" (Slug = $Slug, Title = $Title, Summary = $Summary, Tags = '', Body = $Body, Reason = $Reason, Source = 'Chat, ' + $currentUser/Name, WikiJob = empty);
+  $Revision = call microflow "ServiceDesk"."SUB_WikiRevision_Propose" (Slug = $Slug, Title = $Title, Summary = $Summary, Tags = '', Body = $Body, Reason = $Reason, Source = $Channel + ', ' + $currentUser/Name, WikiJob = empty);
   if $Revision = empty then
     return 'Not proposed: the slug must be lowercase words joined by hyphens (e.g. returns-and-refunds) and the body must not be empty.';
   end if;
   return 'Proposed wiki edit ' + toString($Revision/RevisionNumber) + ' for page "' + $Revision/Slug + '" (' + (if $Revision/IsNewPage then 'new page' else 'change') + '). It appears in My tasks for review before it is published.';
+end;
+
+/** Agent tool (staff only): proposes a new or changed wiki page from the chat; a support agent reviews it before it is published. */
+create or modify microflow "ServiceDesk"."Tool_WikiProposeEdit" ($Slug: String, $Title: String, $Summary: String, $Body: String, $Reason: String)
+returns String as $Answer
+folder 'Wiki'
+begin
+  $Result = call microflow "ServiceDesk"."SUB_Wiki_ProposeAsStaff" (Slug = $Slug, Title = $Title, Summary = $Summary, Body = $Body, Reason = $Reason, Channel = 'Chat');
+  return $Result;
+end;
+
+/** MCP tool wiki_propose_edit (09-mcp-server.mdl): the same as the chat tool, recorded as coming over MCP. */
+create or modify microflow "ServiceDesk"."MCPTool_WikiProposeEdit" ($Slug: String, $Title: String, $Summary: String, $Body: String, $Reason: String)
+returns String as $Answer
+folder 'Wiki'
+begin
+  $Result = call microflow "ServiceDesk"."SUB_Wiki_ProposeAsStaff" (Slug = $Slug, Title = $Title, Summary = $Summary, Body = $Body, Reason = $Reason, Channel = 'MCP');
+  return $Result;
 end;
 
 -- ---------------------------------------------------------------- the curator (ingest and lint)
