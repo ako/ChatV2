@@ -82,7 +82,7 @@ if (!window.__recReady) { window.__recReady = true;
 }
 '''
 
-# The prototype recorder's cursor, ripple and title card, unchanged.
+# The prototype recorder's cursor and ripple, and the title card: a title and one line under it.
 HELP = r'''
 if (!window.__cur && window.__curInit !== true) { window.__curInit = true; window.__cur = null; }
 window.__click = (sel, also) => {
@@ -104,7 +104,7 @@ window.__card = (title, sub, out) => {
   if (!c) { c = document.createElement('div'); c.id='__card';
     Object.assign(c.style,{position:'absolute',inset:'0',zIndex:10000,background:'radial-gradient(1200px 700px at 30% 30%,#1d232b,#101316)',color:'#e9ecef',fontFamily:'Inter,sans-serif',display:'flex',flexDirection:'column',justifyContent:'center',padding:'0 130px',borderRadius:'12px',transition:'opacity .6s ease',opacity:'0'});
     document.querySelector('#stage').append(c); }
-  if (!out) c.innerHTML = `<div style="font-size:18px;letter-spacing:.2em;color:#e0a43a;font-weight:600">MENDIX · AGENT DX</div><div style="font-size:120px;font-weight:700;letter-spacing:-.03em;margin-top:8px">Agent <span style="color:#5b9bff">Studio</span></div><div style="font-family:IBM Plex Mono,monospace;font-size:20px;color:#7d8790;margin-top:4px">built on mxcli 2.0</div><div style="font-size:34px;color:#aab3bc;margin-top:14px">${title}</div><div style="font-size:22px;color:#7d8790;margin-top:10px">${sub||''}</div>`;
+  if (!out) c.innerHTML = `<div style="font-size:104px;font-weight:700;letter-spacing:-.03em;line-height:1.05">${title}</div><div style="font-family:'JetBrains Mono',IBM Plex Mono,monospace;font-size:40px;color:#5b9bff;margin-top:24px">${sub||''}</div>`;
   requestAnimationFrame(()=>{ c.style.opacity = out ? '0' : '1'; });
 };
 '''

@@ -105,12 +105,12 @@
    "check_setup": "!!__last() && /heads-up about order SO-10002/.test(__last().innerText) && document.querySelectorAll('.sd-conversation .crt-root').length === 1"
   },
   {
-   "js": "__card('ServiceDesk Copilot', 'A tour of the app')"
+   "js": "__card('ServiceDesk Copilot', 'made with mxcli')"
   }
  ],
  "beats": [
   {
-   "say": "This is Service Desk Copilot: a support assistant for an online bike shop, built in Mendix with Agent Studio, on M X C L I. Let's take a tour.",
+   "say": "This is Service Desk Copilot: a support assistant for an online bike shop, made with M X C L I. Let's take a tour.",
    "do": [],
    "min": 8
   },
@@ -921,7 +921,7 @@
     ],
     [
      0.5,
-     "__card('ServiceDesk Copilot', 'Agents, cards, workflows and a curated wiki, in one Mendix app')"
+     "__card('ServiceDesk Copilot', 'made with mxcli')"
     ]
    ],
    "min": 8
