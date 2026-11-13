@@ -3,14 +3,14 @@ mdl 1;
 -- The product catalog, stored in the app database: products, suppliers,
 -- parts and compatibility, known issues and recalls, and what each order
 -- contains. It used to live in a Turtle file served by Apache Jena Fuseki; now
--- the app owns the data and tools/sparql-duckdb serves it as RDF. DuckDB
+-- the app owns the data and the runtime serves it as RDF (25-sparql-in-runtime.mdl). DuckDB
 -- attaches this database read-only, and an R2RML mapping turns these tables
 -- into the same triples the Turtle file had (shop:sku, shop:compatibleWith, ...).
 -- The data is maintained by the seed only, for now: no edit pages yet.
 -- So SPARQL reaches every table that is mapped: the catalog, orders, the wiki,
 -- customers and tickets.
 -- The seed (24b-product-catalog-seed.mdl) is generated from
--- tools/sparql-duckdb/products.ttl by tools/sparql-duckdb/generate_catalog_seed.py.
+-- tools/product-catalog/products.ttl by tools/product-catalog/generate_catalog_seed.py.
 
 /** What kind of product: the RDF class it maps to (shop:Bike, shop:EBike, shop:Part, shop:Accessory). */
 create or modify enumeration "ServiceDesk"."ENUM_ProductKind" (

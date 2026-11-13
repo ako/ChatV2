@@ -42,3 +42,4 @@ __pycache__/
 
 # screenshots from browser test scripts run in the project root
 /*.png
+/resources/sparql/extensions/

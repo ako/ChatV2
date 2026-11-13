@@ -25,7 +25,7 @@ MCP and uses tools from an external MCP server.
 - **RefundRequest**, one per Order
 - The product catalog: **Product** (with parts, compatibility and **Supplier**), **KnownIssue** and
   recall, and the **OrderLines** of an order. SPARQL reads it, and the rest of the app, through
-  DuckDB (see Product knowledge graph).
+  DuckDB inside the runtime (see Product knowledge graph).
 - Steps people act on: ticket triage, then assignment, then resolution, with refund
   approval. This is modelled as a **workflow** that includes an AI Agent Task.
 - Counts across records: open tickets per category and priority, and refund totals.
@@ -165,58 +165,47 @@ su postgres -c "psql -c 'create database servicedesk_vectors owner mendix' -d po
 
 Change the database with the `ServiceDesk.PgVectorJdbcUrl`, `ServiceDesk.PgVectorUser` and `ServiceDesk.PgVectorPassword` constants.
 
-## Product knowledge graph (SPARQL over the app database)
+## Product knowledge graph (SPARQL inside the runtime)
 
-The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, what each order contains (with battery production batches), and the wiki. There is **no separate graph database**. The data lives in the app's own entities (`Product`, `Supplier`, `KnownIssue`, `OrderLine`, see `mdlsource/24-product-catalog.mdl`). **DuckDB** answers SPARQL over them with its [`rdf` community extension](https://duckdb.org/community_extensions/extensions/rdf), see `tools/sparql-duckdb`:
+The support agent's product answers are grounded in a **product knowledge graph**: products, parts and compatibility, suppliers, known issues and recalls, what each order contains (with battery production batches), and the wiki. It needs **no graph database and no extra server**: only the Mendix runtime and its PostgreSQL database.
 
-1. DuckDB attaches the app's PostgreSQL database **read-only**, as the role `servicedesk_graph`. That role can SELECT exactly the mapped tables and nothing else (`setup-reader.sh`).
-2. `views.sql` shapes those tables into one row per resource.
-3. An **R2RML mapping** (`mappings/*.r2rml.ttl`) says which rows are which triples. The extension translates each SPARQL query into SQL through that mapping (`execute_sparql`), so every query reads the current data and nothing is copied.
-
-`server.py` serves it over the SPARQL 1.1 protocol (SELECT and ASK, JSON results) at the paths Fuseki used, so the app and the MCP server did not change:
+- **The data is app data.** It lives in the app's own entities (`Product`, `Supplier`, `KnownIssue`, `OrderLine`, see `mdlsource/24-product-catalog.mdl`).
+- **The runtime answers SPARQL over it** (`mdlsource/25-sparql-in-runtime.mdl`). The module depends on `org.duckdb:duckdb_jdbc`, so an in-process **DuckDB** runs inside the Mendix runtime. `javasource/servicedesk/graph/SparqlGraph.java` attaches the app database **read-only**, with the runtime's own database settings. It creates the views in `resources/sparql/views.sql`, and DuckDB's [`rdf` extension](https://duckdb.org/community_extensions/extensions/rdf) translates each query into SQL through an **R2RML mapping** (`resources/sparql/mappings`). Every query reads the current data; nothing is copied.
 
 | Dataset | Mappings | Who queries it |
 |---|---|---|
-| `/catalog/sparql` | products, suppliers, issues, the wiki (pages, `linksTo`, `mentions` a SKU) | the **MCP server**, so the AI. It holds no orders, so no prompt or `sparql_query` can reveal a customer's order. |
-| `/products/sparql` | the catalog plus orders and their lines | only the app, server-side and after checking who is asking: GetOrderProducts (`mdlsource/20-order-products-tool.mdl`), the Product graph outline, and the reference API behind the chat cards and the explorer |
-| `/app/sparql` | all of that plus every order's status and customer, customers (no e-mail) and tickets | staff tooling, from the command line for now |
+| `catalog` | products, suppliers, issues, the wiki (pages, `linksTo`, `mentions` a SKU) | the **AI's product tools**. It holds no orders, so no prompt or `sparql_query` can reveal a customer's order. |
+| `products` | the catalog plus orders and their lines | only the app, after checking who is asking: GetOrderProducts (`mdlsource/20-order-products-tool.mdl`), the Product graph outline, and the reference API behind the chat cards and the explorer |
+| `app` | all of that plus every order's status and customer, customers (no e-mail) and tickets | server-side microflows (`JA_Sparql_Query` with `Dataset = 'app'`) |
 
-The MCP server (`tools/product-graph-mcp`) offers `find_product`, `compatible_parts`, `known_issues`, `product_outline`, and a read-only `sparql_query` (SELECT and ASK only). What an order contains comes from the app's **GetOrderProducts** tool. Like GetOrderStatus, it only finds the signed-in customer's own orders.
+The product tools are `find_product`, `compatible_parts`, `known_issues`, `product_outline` and a read-only `sparql_query` (SELECT and ASK only, at most 50 rows). They are in-app microflow tools of the support agent (`Tool_Product_*`, logic in `ProductTools.java`), and the same tools are published on the app's own MCP server. What an order contains comes from the app's **GetOrderProducts** tool. Like GetOrderStatus, it only finds the signed-in customer's own orders.
 
-Start both next to the app, once its tables exist (`bash tools/start-helpers.sh` does this). It needs `pip install duckdb`; the extensions download themselves the first time:
+`python3 tests-live/mcp/product_graph_test.py` checks every tool through the app's MCP server, including that the catalog holds no orders, even for a query over every triple.
+
+**Extensions.** DuckDB needs two extensions, `rdf` and `postgres`. By default the runtime downloads them on first use into its temp folder. For a server without internet access, bundle them into `resources/sparql/extensions` before packaging the app. This uses `pip install duckdb`, on the platform the app will run on:
 
 ```bash
-sh tools/sparql-duckdb/setup-reader.sh
+sh tools/product-catalog/bundle-extensions.sh
 ```
 
-```bash
-setsid nohup python3 tools/sparql-duckdb/server.py > /tmp/servicedesk-sparql.log 2>&1 &
-```
+A query across the whole app, from a microflow (`JA_Sparql_Query`, dataset `app`): which customers bought something a recall affects, directly or as a component of a bike, and which battery batch they got:
 
-```bash
-setsid nohup python3 tools/product-graph-mcp/server.py > /tmp/product-graph.log 2>&1 &
-```
-
-The MCP endpoint is `http://127.0.0.1:8766/mcp` (constant `ServiceDesk.ProductGraphMcpEndpoint`). `python3 tests-live/mcp/product_graph_test.py` checks every tool. The live test also checks that the catalog holds no orders, even for a query over every triple.
-
-A query across the whole app: which customers bought something a recall affects, directly or as a component of a bike, and which battery batch they got:
-
-```bash
-curl -s http://127.0.0.1:3030/app/sparql -H 'Content-Type: application/sparql-query' --data-binary 'PREFIX shop: <https://example.org/bikeshop#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+```sparql
+PREFIX shop: <https://example.org/bikeshop#> PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?customer ?order ?sku ?batch ?recall WHERE {
   ?i a shop:Recall ; shop:issueId ?recall .
   { ?i shop:affects ?p } UNION { ?p shop:hasComponent ?part . ?i shop:affects ?part }
   ?p shop:sku ?sku . ?o shop:hasLine ?l ; shop:orderNumber ?order ; shop:placedBy ?c .
-  ?l shop:product ?p . OPTIONAL { ?l shop:batch ?batch } ?c rdfs:label ?customer }'
+  ?l shop:product ?p . OPTIONAL { ?l shop:batch ?batch } ?c rdfs:label ?customer }
 ```
 
-The catalog is seeded once from `tools/sparql-duckdb/products.ttl`, the Turtle file Fuseki used to serve. `generate_catalog_seed.py` turns it into `mdlsource/24b-product-catalog-seed.mdl`. The app has no catalog edit pages yet.
+The catalog is seeded once from `tools/product-catalog/products.ttl`, the Turtle file Fuseki used to serve. `generate_catalog_seed.py` turns it into `mdlsource/24b-product-catalog-seed.mdl`. The app has no catalog edit pages yet.
 
 ### Product graph page (SPARQL from the app)
 
 Support agents and administrators also get a **Product graph** page: an outline of the whole graph, built with the Tree node widget. Open a class (Part, Order, Supplier, Wiki page...) to see its members, and a member to see its facts. → is a link to another node, and ← is a node that links here, such as the orders containing a part or the recall affecting it.
 
-The app reads the graph itself, without the MCP server (`mdlsource/14-product-graph-outline.mdl`). It POSTs one SPARQL SELECT (`tools/sparql-duckdb/queries/outline.rq`) to `ServiceDesk.ProductGraphSparqlEndpoint`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when the endpoint is down.
+The app reads the graph itself (`mdlsource/14-product-graph-outline.mdl`). It runs one SPARQL SELECT (`tools/product-catalog/queries/outline.rq`) on the `products` dataset with `JA_Sparql_Query`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when the query fails.
 
 ## SQL to the vector database
 
@@ -267,7 +256,7 @@ A customer asks the assistant to return something ("I'd like to return the child
 
 Customers follow their returns on the **Returns** page and can ask the assistant about them (tool GetReturnStatus). Support agents find the tasks under **My tasks**.
 
-Start the helper servers (carrier, product graph, product graph MCP) with `sh tools/start-helpers.sh`; a recycled container stops them.
+Start the helper server (the fake carrier) with `sh tools/start-helpers.sh`; a recycled container stops it. The product graph needs none.
 
 ## Product explorer and graph cards
 

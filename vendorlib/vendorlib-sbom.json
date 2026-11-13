@@ -3705,6 +3705,70 @@
     },
     {
       "type" : "library",
+      "bom-ref" : "pkg:maven/org.duckdb/duckdb_jdbc@2.0.0.1?type=jar",
+      "group" : "org.duckdb",
+      "name" : "duckdb_jdbc",
+      "version" : "2.0.0.1",
+      "description" : "A JDBC-Compliant driver for the DuckDB data management system",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "0383330fb91cffcf38fb8074c586c265"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "20200e3a9721cfa1266151a3f7a96e8955578b3a"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "6cb8b0e0fc51b2e45aead2d2c1e1fd09dd10267db2966e69aaab0de67319f826"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "adb2a7df35faae35f9f709e9f837d46c73fa51120220df7d0690cd7f7c39fcb1776cff4da4461efe767632faf534703f4fdf272d70a4f40607f554324024f054"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "6673af3448ace1d54626150bef9607f9b0b4d104624ab7f901b2cee0b0067f25"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "48bd4b8e5e361f16f128e35701108294244507bc1a19f743ebe22658c83feabb27861332ba26c73c30aaa916a1c0c5550141339464430f9332dff9fbbbb84a04"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "fea7762a856409f287651debeffa8f4f41fe0b6a32e8681d8ffbadba52dee40985cce80c7e5eb5e960560e291d2ec7d8"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "5882316b70f06b670e2d014c3aba4d42f9488d22b9815cd56ca5830b84f6f88a956385edb08f89c8b71b66339c8b3044"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "MIT",
+            "url" : "https://opensource.org/license/mit/"
+          }
+        }
+      ],
+      "purl" : "pkg:maven/org.duckdb/duckdb_jdbc@2.0.0.1?type=jar",
+      "modified" : false,
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "http://github.com/duckdb/duckdb/tree/main"
+        }
+      ],
+      "properties" : [
+        {
+          "name" : "cdx:maven:package:test",
+          "value" : "false"
+        }
+      ]
+    },
+    {
+      "type" : "library",
       "bom-ref" : "pkg:maven/org.hsqldb/hsqldb@2.7.1?type=jar",
       "publisher" : "The HSQL Development Group",
       "group" : "org.hsqldb",
@@ -4658,6 +4722,7 @@
         "pkg:maven/commons-io/commons-io@2.21.0?type=jar",
         "pkg:maven/com.oracle.database.security/osdt_core@21.5.0.0?type=jar",
         "pkg:maven/com.oracle.database.jdbc/ucp@21.5.0.0?type=jar",
+        "pkg:maven/org.duckdb/duckdb_jdbc@2.0.0.1?type=jar",
         "pkg:maven/org.apache.commons/commons-text@1.14.0?type=jar",
         "pkg:maven/org.bouncycastle/bcpkix-jdk18on@1.85?type=jar",
         "pkg:maven/com.openai/openai-java@4.13.0?type=jar",
@@ -4910,6 +4975,10 @@
     },
     {
       "ref" : "pkg:maven/org.checkerframework/checker-qual@3.55.1?type=jar",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:maven/org.duckdb/duckdb_jdbc@2.0.0.1?type=jar",
       "dependsOn" : [ ]
     },
     {
