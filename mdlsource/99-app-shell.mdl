@@ -93,6 +93,7 @@ create or modify navigation Responsive
   menu item 'Returns' ( OnClick: show page "ServiceDesk"."Return_Overview", Icon: Atlas_Core.Atlas."arrow-circle-left" )
   menu item 'Refund requests' ( OnClick: show page "ServiceDesk"."RefundRequest_Overview", Icon: Atlas_Core.Atlas.euro )
   menu item 'Customers' ( OnClick: show page "ServiceDesk"."Customer_Overview", Icon: Atlas_Core.Atlas."user-neutral-group" )
+  menu item 'Wiki' ( OnClick: show page "ServiceDesk"."Wiki_Overview", Icon: Atlas_Core.Atlas."book-open" )
   menu item 'Policy documents' ( OnClick: show page "ServiceDesk"."PolicyDocument_Overview", Icon: Atlas_Core.Atlas.document )
   menu item 'Product explorer' ( OnClick: show page "ServiceDesk"."ProductGraph_Explorer", Icon: Atlas_Core.Atlas."share-arrow" )
   menu item 'Product graph' ( OnClick: call microflow "ServiceDesk"."ACT_ProductGraph_Open", Icon: Atlas_Core.Atlas."hierarchy-files" )

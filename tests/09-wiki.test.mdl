@@ -1,0 +1,50 @@
+mdl 1;
+
+-- The wiki (06c-wiki.mdl): [[links]], slugs, search and rendering.
+
+/**
+ * @test Links are found once each, in order, with labels and case ignored
+ * @expect $Slugs = 'refunds,damaged-items,warranty'
+ */
+$Slugs = call microflow ServiceDesk.SUB_Wiki_LinkedSlugs(Body = 'See [[refunds]] and [[Damaged-Items|damaged items]]. Also [[warranty]] and again [[refunds]].');
+/
+
+/**
+ * @test A body without links has none, and an unclosed link is ignored
+ * @expect $Slugs = ''
+ */
+$Slugs = call microflow ServiceDesk.SUB_Wiki_LinkedSlugs(Body = 'No links here, only [[ an unclosed one');
+/
+
+/**
+ * @test A slug is lowercase words joined by hyphens
+ * @expect $Ok = true
+ */
+$Good = call microflow ServiceDesk.SUB_Wiki_IsValidSlug(Slug = 'returns-and-refunds');
+$Upper = call microflow ServiceDesk.SUB_Wiki_IsValidSlug(Slug = 'Returns');
+$Space = call microflow ServiceDesk.SUB_Wiki_IsValidSlug(Slug = 'returns and refunds');
+$Dash = call microflow ServiceDesk.SUB_Wiki_IsValidSlug(Slug = '-returns');
+declare $Ok Boolean = $Good and not($Upper) and not($Space) and not($Dash);
+/
+
+/**
+ * @test Rendering shows an existing page's title in bold and a missing page in italics
+ * @expect $Ok = true
+ */
+$Page = create ServiceDesk.WikiPage (Slug = 'test-render-target', Title = 'Render target', Body = 'x');
+commit $Page;
+$Markdown = call microflow ServiceDesk.SUB_Wiki_Render(Body = 'Go to [[test-render-target]] or [[test-missing-page|the missing one]].');
+declare $Ok Boolean = $Markdown = 'Go to **Render target** or *the missing one*.';
+/
+
+/**
+ * @test Search ranks a page whose title matches above one that only mentions the word
+ * @expect $Ok = true
+ */
+$Title = create ServiceDesk.WikiPage (Slug = 'test-search-helmets', Title = 'Helmets', Summary = 'Sizes and care.', Body = 'Fit and cleaning.');
+$Mention = create ServiceDesk.WikiPage (Slug = 'test-search-accessories', Title = 'Accessories', Summary = 'Lights and locks.', Body = 'We also sell helmets.');
+commit $Title;
+commit $Mention;
+$Results = call microflow ServiceDesk.Tool_WikiSearch(Query = 'helmets');
+declare $Ok Boolean = find($Results, 'test-search-helmets') >= 0 and find($Results, 'test-search-accessories') > find($Results, 'test-search-helmets');
+/

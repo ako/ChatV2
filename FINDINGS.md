@@ -1571,3 +1571,33 @@ Studio Pro keeps such an add-on as a file in the app's `modules/` folder, with n
 **Fix:** `modules/AgentEditor.mxmodule` taken from the 2.7.0 package (the version of the installed AgentEditorCommons) and committed. Afterwards `mxcli show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on, `docker check` reports 0 errors, and the app builds and runs.
 
 When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205.
+
+## Wiki prototype: a curated knowledge base instead of chunks (2026-11-13)
+
+Verified live:
+- **Compile.** The curator turned the two policy documents (185 and 162 words) into 8 linked pages in one 24-second run: returns, refunds, goodwill refund for late delivery, damaged items, delivery and carriers, changing the delivery address, warranty, password reset. Each came with a reason. All 8 went through review tasks into the wiki.
+- **Check.** The lint run proposed 3 fixes, all real:
+  - "Any item: 45 days" read as covering bikes too, which have 14 days. The source has the same ambiguity, and the vector knowledge base passes it on unchanged.
+  - A rule on the password page was stated twice.
+  - A summary list repeated the paragraphs above it.
+- **Chat.** Four customer questions were answered from the wiki: e-bike returns, changing the address, a late order, workshop hours plus a helmet return.
+  - For staff, the Tool calls tab shows WikiIndex, then WikiRead on the pages the answer used.
+  - Every policy-card quote was found word for word on the cited page ("Wiki: Returns", "Wiki: Goodwill refund for late delivery", and so on).
+- **Edit from the chat.** A staff request to add an "Opening hours" page became a proposal after the approval prompt. Once approved, it answered the next customer question.
+
+Not compared: answer quality and cost against the vector knowledge base on the same questions. With two short documents both give the same facts; the differences are elsewhere:
+- **Traceable answers:** every answer comes from a page a person approved.
+- **Contradictions surface:** the lint pass found one in the sources.
+- **People can edit the knowledge directly.**
+- **Cost:** reading pages costs more tokens per question than four retrieved chunks. That was not measured.
+
+Design decisions and what they cost:
+- **The curator gets everything in its prompt and answers with JSON; it uses no tools.** Ingest is then one deterministic call, and the JSON is the proposal. It only works while the whole wiki fits in the prompt: fine for tens of pages, not for thousands. Proposals still waiting for review are included, so a second run builds on them.
+- **Pages are database objects, not `.md` files.** Mendix security, history and search work on them as on any entity. Export to files or git is not built.
+- **Search is a word count, not full-text or embeddings:** title and tags count double. Fine for nine pages. For hundreds, Postgres full-text through the database connector would be the next step.
+- **Mendix `replaceAll` has no back-references**, so `[[slug]]` is turned into titles by a loop in a microflow (`SUB_Wiki_Render`), not by a regex replace.
+
+Found on the way:
+- **The shared `.sd-panel` style sets `height: 100%`,** which suits the chat's columns. On the review page it made both panels run into the form below them. Wiki panels now set their own height.
+- **A page that customers can open must not show an entity they cannot read,** even in a grid only staff would use. mxbuild reported CE2729 for the revisions grid on the wiki page, and `mxcli check` did not catch it. The log moved to a staff-only page.
+- **The assistant echoed `[[returns]]` in a chat answer.** The prompt now says to name pages by title.

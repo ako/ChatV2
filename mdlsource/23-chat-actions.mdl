@@ -280,7 +280,58 @@ begin
   return trim(substring($Text, $Start + 1, (if $End < 0 then length($Text) else $End) - ($Start + 1)));
 end;
 
-/** REST: the passage of a policy document (by title, or any when none matches) that contains the quote. */
+/** The paragraph of a wiki page that contains the quote, or empty. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_FindPassage" ($WikiPage: "ServiceDesk"."WikiPage", $Quote: String)
+returns String as $Passage
+folder 'Chat actions'
+begin
+  if $WikiPage/Body = empty or $Quote = empty then
+    return '';
+  end if;
+  -- one line per paragraph, without markdown emphasis, so a quote matches across line breaks and bold text
+  declare $Text String = replaceAll(replaceAll(replaceAll(replaceAll($WikiPage/Body, '\r', ''), '(?<!\n)\n(?!\n)', ' '), '[ \t]+', ' '), '\*\*|__', '');
+  declare $Needle String = toLowerCase(trim(replaceAll(replaceAll($Quote, '\s+', ' '), '\*\*|__', '')));
+  if length($Needle) < 12 then
+    return '';
+  end if;
+  declare $At Integer = find(toLowerCase($Text), $Needle);
+  if $At < 0 then
+    return '';
+  end if;
+  declare $Before String = substring($Text, 0, $At);
+  declare $Start Integer = findLast($Before, urlDecode('%0A'));
+  declare $End Integer = find($Text, urlDecode('%0A'), $At);
+  return trim(substring($Text, $Start + 1, (if $End < 0 then length($Text) else $End) - ($Start + 1)));
+end;
+
+/** Fills the citation from the wiki: the page the answer named first, then any page whose text contains the quote. Returns whether one was found. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_Cite" ($Citation: "ServiceDesk"."CitationView", $Wanted: String, $Quote: String)
+returns Boolean as $Found
+folder 'Chat actions'
+begin
+  retrieve $Pages from "ServiceDesk"."WikiPage" sort by "Title" asc;
+  $NamedPages = filter $Pages where $Wanted != '' and (contains(toLowerCase($currentObject/Title), $Wanted) or $currentObject/Slug = $Wanted);
+  loop $NamedPage in $NamedPages begin
+    $PagePassage = call microflow "ServiceDesk"."SUB_Wiki_FindPassage" (WikiPage = $NamedPage, Quote = $Quote);
+    if $PagePassage != '' then
+      change $Citation ("Found" = true, "Title" = 'Wiki: ' + $NamedPage/Title, "Passage" = (if length($PagePassage) > 1500 then substring($PagePassage, 0, 1500) + '…' else $PagePassage));
+      break;
+    end if;
+  end loop;
+  if $Citation/Found then
+    return true;
+  end if;
+  loop $AnyPage in $Pages begin
+    $AnyPagePassage = call microflow "ServiceDesk"."SUB_Wiki_FindPassage" (WikiPage = $AnyPage, Quote = $Quote);
+    if $AnyPagePassage != '' then
+      change $Citation ("Found" = true, "Title" = 'Wiki: ' + $AnyPage/Title, "Passage" = (if length($AnyPagePassage) > 1500 then substring($AnyPagePassage, 0, 1500) + '…' else $AnyPagePassage));
+      break;
+    end if;
+  end loop;
+  return $Citation/Found;
+end;
+
+/** REST: the passage of a policy document or wiki page (the one named first, then any) that contains the quote. */
 create or modify microflow "ServiceDesk"."REST_GetCitation" ($doc: String, $quote: String)
 returns "ServiceDesk"."CitationView" as $Citation
 folder 'Chat actions'
@@ -310,6 +361,11 @@ begin
       break;
     end if;
   end loop;
+  if $Result/Found then
+    return $Result;
+  end if;
+  -- not in a policy document: the wiki (06c-wiki.mdl)
+  $InWiki = call microflow "ServiceDesk"."SUB_Wiki_Cite" (Citation = $Result, Wanted = $Wanted, Quote = $quote);
   return $Result;
 end;
 

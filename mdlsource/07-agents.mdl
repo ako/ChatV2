@@ -84,6 +84,11 @@ Tools:
 - GetOrderProducts: what an order contains (products, quantities, prices, production batch) and any known issue or recall that applies to that exact unit. Use it whenever someone asks what they bought or whether a recall or problem affects their order. Like GetOrderStatus it only finds the user's own orders.
 - GetReturnStatus: the return requests of an order, with their status and the reply once it has been sent.
 - IssueRefund: request a refund for an order, at most the order total. Ask for the amount and the reason first. The user is asked to approve it, and a support agent reviews the request afterwards.
+- The shop's wiki (curated pages on returns, refunds, delivery, warranty and other policies and how-tos, kept up to date and checked by staff):
+  - WikiIndex: every page with a one-line summary. Read it first for any policy or how-to question.
+  - WikiSearch: pages matching some words, when the index does not make the right page obvious.
+  - WikiRead: one page in full by its slug, with the pages it links to. Follow a link when the answer needs it.
+  - WikiProposeEdit (staff only): propose a new or corrected page when a support agent asks you to add or fix something in the wiki; a person reviews it before it is published.
 - GetKnowledgeBaseStatus (staff only): how many knowledge chunks each policy document has in the PgVector database and when it was last loaded. Use it when staff ask whether a policy document is in the knowledge base.
 - Product graph service (the shop's product catalog graph, the system of record for product data; it holds no orders):
   - find_product: look up a product by SKU or name (price, warranty, supplier, components).
@@ -93,6 +98,7 @@ Tools:
   - sparql_query: a read-only SPARQL query, only for product questions the other product tools cannot answer.
 
 Rules:
+- Policy and how-to questions: answer from the wiki (WikiIndex, then WikiRead). Use PolicyDocs only when the wiki has no page on the subject. In a policy card, cite the wiki page by its title as "doc" and quote one or two sentences from it word for word. In your answers, name a wiki page by its title; never write the [[slug]] link syntax, which is only for wiki pages.
 - Only report what the tools return. Never invent orders, tickets, amounts, tracking codes, products, compatibility or recalls.
 - A recall applies only to the production batch it names: say whether the customer's unit is affected, based on GetOrderProducts.
 - Order information only comes from GetOrderStatus, GetOrderProducts, GetReturnStatus and GetDeliveryStatistics: a customer sees only their own orders, support staff can look up any order. There is no search of orders by product; ask for the order number. The product graph service has no order data: do not try to find orders with sparql_query.
@@ -179,6 +185,38 @@ Answer format (the chat shows cards):
     Enabled: true,
     UserAccessApproval: VisibleForUser,
     Description: 'Asks the triage agent to classify an existing ticket by category and priority and summarise it. Input: TicketNumber (a whole number, e.g. 1003).'
+  )
+
+  tool WikiIndex (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_WikiIndex",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'The wiki''s table of contents: every page''s slug, title, one-line summary and tags. Read it first for policy and how-to questions. No inputs.'
+  )
+
+  tool WikiSearch (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_WikiSearch",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'Finds wiki pages by words in their title, tags, summary or text, best matches first. Input: Query (a few words).'
+  )
+
+  tool WikiRead (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_WikiRead",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'One wiki page in full, with the pages it links to and the pages that link to it. Input: Slug, e.g. returns-and-refunds.'
+  )
+
+  tool WikiProposeEdit (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_WikiProposeEdit",
+    Enabled: true,
+    UserAccessApproval: UserConfirmationRequired,
+    Description: 'Staff only: proposes a new or corrected wiki page, reviewed by a person before it is published. Inputs: Slug, Title, Summary, Body (markdown, [[slug]] links), Reason.'
   )
 
   knowledge base PolicyDocs (
@@ -278,4 +316,36 @@ Write at most five short lines:
 3. What problem it shows, if any.
 Do not guess facts that are not visible in the file.$$,
   UserPrompt: 'Describe the attached file for the support agent handling this ticket.'
+);
+
+/** Task agent that writes the wiki: compiles sources into linked pages, or checks the wiki. Proposes whole pages as JSON; a person approves each one (06c-wiki.mdl). */
+create or modify agent "ServiceDesk"."WikiCuratorAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  SelectedModel: 'eu.anthropic.claude-sonnet-5-5',
+  EnableBackendStreaming: true,
+  EnableUIStreaming: false,
+  Description: 'Keeps the shop wiki up to date: compiles source documents into linked markdown pages and checks the wiki for contradictions and gaps.',
+  Entity: "ServiceDesk"."WikiJob",
+  Variables: ("Instruction": EntityAttribute, "SourceTitle": EntityAttribute, "SourceText": EntityAttribute, "WikiText": EntityAttribute),
+  SystemPrompt: $$You maintain the wiki of a web shop that sells bikes, e-bikes and accessories. The wiki is read by customers, by support staff and by the shop's support assistant, which answers questions from it.
+
+How the wiki is written:
+- One topic per page, 80 to 300 words. Plain, exact language; keep every number, period, amount and condition exactly as the source states it. Never add facts that are not in the sources or the wiki.
+- Markdown: short paragraphs, lists and the occasional table. No top-level heading: the title is shown separately.
+- Link related pages with [[slug]] where a reader would want to go next, e.g. "see [[delivery-times]]". Link only to pages that exist in the wiki or that you propose in this answer.
+- A slug is lowercase words joined by hyphens: returns-and-refunds. Keep an existing page's slug.
+- The summary is one sentence saying what the page answers. Tags are a few comma-separated words.
+- When you change an existing page, return the whole new page, not a fragment, and keep what is still true.
+
+Answer with only a JSON object, no other text:
+{"pages": [{"slug": "...", "title": "...", "summary": "...", "tags": "...", "body": "...", "reason": "one sentence: what is new or changed, and from which source"}]}
+Return {"pages": []} when nothing needs to change.$$,
+  UserPrompt: $$Task: {{Instruction}}
+
+Sources ({{SourceTitle}}):
+{{SourceText}}
+
+The wiki now:
+{{WikiText}}$$
 );

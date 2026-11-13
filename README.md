@@ -339,3 +339,20 @@ Eleven additions to the chat, most of them in the rich-text widget (`widgets-src
   - **Hand back to the assistant** returns the chat to the model.
   - Both sides see new messages within a few seconds. The ChatCompanion widget runs a refresh microflow every few seconds while the page is visible, and it refreshes only a message that arrived in the last few seconds.
 - **Proactive delay notices** (`mdlsource/16b-chat-delay-notices.mdl`). After every shipment sync (at startup, then every 15 minutes), a problem scan from the carrier is posted into the customer's latest chat, unasked. This covers a delay, or a parcel held at the depot, on a parcel still on its way. The post has an order card with the scans and follow-up questions. Each scan is posted once (`ChatNotice`). Staff see what was sent under **Delivery notices**, and can check the carrier at once with **Check parcels now**.
+
+## Wiki: a knowledge base of linked pages
+
+Besides the vector knowledge base, the policy knowledge lives in a **wiki**: markdown pages that link to each other with `[[slug]]`. An AI curator writes and maintains them, and a person approves every change (the "LLM wiki" approach). Everything is in `mdlsource/06c-wiki.mdl`; the curator agent is in `07-agents.mdl`.
+
+- **Pages** (`WikiPage`) have a slug, title, one-line summary, tags and a markdown body. Each page view shows the pages it links to and the pages that link to it. Menu: **Wiki**.
+- **Compile policy documents** (staff) gives the policy documents and the current wiki to the **WikiCuratorAgent**. It answers with whole new or updated pages as JSON, and each becomes a proposed **WikiRevision**.
+- **Check the wiki** (staff, and every Monday at 06:17) asks the same agent for contradictions, missing links and duplicated text, and to propose fixes.
+- **Every change is reviewed.** The **WF_WikiReview** workflow puts each proposal in **My tasks**. The task page shows the page as it is now next to the proposed version, which the reviewer can correct before publishing. The **Changes and runs** page logs every proposal, decision and curator run.
+- **The assistant reads the wiki** with four tools:
+  - **WikiIndex**: every page with its summary;
+  - **WikiSearch**: word match, title and tags weighted;
+  - **WikiRead**: a page, with its links and backlinks;
+  - **WikiProposeEdit**: staff only, after approval in the chat.
+
+  For policy questions it reads the index, opens the pages it needs, and quotes them in a policy card. The citation check finds the quote on the wiki page itself and labels it "Wiki: <page>". The vector knowledge base remains a fallback.
+- **A new environment starts with an empty wiki:** press **Compile policy documents** once and approve the proposals.

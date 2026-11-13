@@ -1,0 +1,858 @@
+mdl 1;
+
+-- The shop's wiki: a knowledge base of linked markdown pages that an AI keeps
+-- up to date, instead of a vector index of document chunks (the "LLM wiki"
+-- approach). Pages link to each other with [[slug]]. An index of every page with
+-- a one-line summary is what an agent reads first; it then opens the pages it
+-- needs and follows their links.
+--
+--   * Ingest: the curator agent (07-agents.mdl) reads the policy documents and the
+--     current wiki, and proposes whole new or updated pages.
+--   * Lint: the same agent checks the wiki for contradictions, missing links and
+--     unclear pages, and proposes fixes.
+--   * Every proposed change is a WikiRevision, reviewed by a person in a workflow
+--     (WF_WikiReview) before it reaches the wiki.
+--   * Every curator run is logged as a WikiJob.
+--   * The support agent reads the wiki through four tools (Tool_Wiki*); staff can
+--     propose an edit from the chat.
+--
+-- Runs before 07-agents.mdl, whose agents use these tools and the WikiJob entity.
+
+-- ---------------------------------------------------------------- domain model
+
+/** One page of the wiki. Body is markdown; [[slug]] links to another page. */
+create or modify persistent entity "ServiceDesk"."WikiPage" (
+  "Slug": String(100) not null unique,
+  "Title": String(200),
+  "Summary": String(500),
+  "Tags": String(200),
+  "Body": String(unlimited),
+  "UpdatedAt": DateTime,
+  "UpdatedBy": String(200)
+)
+index ("Slug");
+
+/** A [[link]] from a page to another page's slug (that page may not exist yet). */
+create or modify persistent entity "ServiceDesk"."WikiLink" (
+  "ToSlug": String(100)
+);
+create or modify association "ServiceDesk"."WikiLink_From" from "ServiceDesk"."WikiLink" to "ServiceDesk"."WikiPage" on delete cascade;
+
+create or modify enumeration "ServiceDesk"."ENUM_WikiRevisionStatus" (
+  Proposed 'Waiting for review',
+  Approved 'Approved',
+  Rejected 'Rejected'
+);
+
+create or modify enumeration "ServiceDesk"."ENUM_WikiJobKind" (
+  Ingest 'Compile sources',
+  Lint 'Check the wiki'
+);
+
+/** A run of the curator agent: what it was asked, what it answered, how many edits it proposed. The wiki's log. */
+create or modify persistent entity "ServiceDesk"."WikiJob" (
+  "JobNumber": AutoNumber default 1,
+  "Kind": Enumeration("ServiceDesk"."ENUM_WikiJobKind"),
+  "Instruction": String(unlimited),
+  "SourceTitle": String(200),
+  "SourceText": String(unlimited),
+  "WikiText": String(unlimited),
+  "StartedAt": DateTime,
+  "Answer": String(unlimited),
+  "Proposed": Integer default 0,
+  "Outcome": String(500)
+);
+
+/** A proposed new or changed page, with the page as it was when proposed. Reaches the wiki only when a person approves it. */
+create or modify persistent entity "ServiceDesk"."WikiRevision" (
+  "RevisionNumber": AutoNumber default 1,
+  "Slug": String(100),
+  "Title": String(200),
+  "Summary": String(500),
+  "Tags": String(200),
+  "Body": String(unlimited),
+  "PreviousBody": String(unlimited),
+  "IsNewPage": Boolean default false,
+  "Reason": String(1000),
+  "Source": String(200),
+  "Status": Enumeration("ServiceDesk"."ENUM_WikiRevisionStatus") default 'Proposed',
+  "ProposedAt": DateTime,
+  "DecidedAt": DateTime,
+  "DecidedBy": String(200)
+);
+create or modify association "ServiceDesk"."WikiRevision_WikiPage" from "ServiceDesk"."WikiRevision" to "ServiceDesk"."WikiPage" on delete cascade;
+create or modify association "ServiceDesk"."WikiRevision_WikiJob" from "ServiceDesk"."WikiRevision" to "ServiceDesk"."WikiJob";
+
+/** One page the curator agent proposes (its JSON answer). */
+create or modify non-persistent entity "ServiceDesk"."WikiProposal" (
+  "Slug": String(100),
+  "Title": String(200),
+  "Summary": String(500),
+  "Tags": String(200),
+  "Body": String(unlimited),
+  "Reason": String(1000)
+);
+
+/** A search hit, for ranking. */
+create or modify non-persistent entity "ServiceDesk"."WikiHit" (
+  "Slug": String(100),
+  "Title": String(200),
+  "Summary": String(500),
+  "Score": Integer
+);
+
+/** A page as the wiki page shows it: the body with [[links]] turned into page titles. */
+create or modify non-persistent entity "ServiceDesk"."WikiPageView" (
+  "Markdown": String(unlimited)
+);
+
+grant read * on entity "ServiceDesk"."WikiPage" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."WikiLink" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read *, write * on entity "ServiceDesk"."WikiRevision" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."WikiJob" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant create, read *, write * on entity "ServiceDesk"."WikiPageView" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+-- ---------------------------------------------------------------- links
+
+/** True for a slug of lowercase words joined by hyphens: returns-and-refunds. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_IsValidSlug" ($Slug: String)
+returns Boolean as $Valid
+folder 'Wiki'
+begin
+  return $Slug != empty and length($Slug) <= 100 and isMatch($Slug, '[a-z0-9]+(-[a-z0-9]+)*');
+end;
+
+/** The slugs a body links to with [[slug]] or [[slug|label]], each once, comma-separated in order of appearance. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_LinkedSlugs" ($Body: String)
+returns String as $Slugs
+folder 'Wiki'
+begin
+  if $Body = empty then
+    return '';
+  end if;
+  declare $Out String = ',';
+  declare $Close Integer = -1;
+  declare $Slug String = '';
+  declare $At Integer = find($Body, '[[');
+  while $At >= 0
+  begin
+    set $Close = find($Body, ']]', $At + 2);
+    if $Close < 0 then
+      break;
+    end if;
+    set $Slug = toLowerCase(trim(substring($Body, $At + 2, $Close - $At - 2)));
+    if find($Slug, '|') >= 0 then
+      set $Slug = trim(substring($Slug, 0, find($Slug, '|')));
+    end if;
+    if $Slug != '' and not(contains($Out, ',' + $Slug + ',')) then
+      set $Out = $Out + $Slug + ',';
+    end if;
+    set $At = find($Body, '[[', $Close + 2);
+  end while;
+  return (if $Out = ',' then '' else substring($Out, 1, length($Out) - 2));
+end;
+
+/** Replaces the page's links with the [[slugs]] its body names now. */
+create or modify microflow "ServiceDesk"."SUB_WikiPage_RefreshLinks" ($WikiPage: "ServiceDesk"."WikiPage")
+folder 'Wiki'
+begin
+  retrieve $Old from $WikiPage/"ServiceDesk"."WikiLink_From";
+  delete $Old;
+  $Slugs = call microflow "ServiceDesk"."SUB_Wiki_LinkedSlugs" (Body = $WikiPage/Body);
+  if $Slugs = '' then
+    return;
+  end if;
+  $Links = create list of "ServiceDesk"."WikiLink";
+  declare $Rest String = $Slugs + ',';
+  declare $Comma Integer = find($Rest, ',');
+  while $Comma >= 0
+  begin
+    $Link = create "ServiceDesk"."WikiLink" ("ToSlug" = substring($Rest, 0, $Comma), "ServiceDesk"."WikiLink_From" = $WikiPage);
+    add $Link to $Links;
+    set $Rest = substring($Rest, $Comma + 1);
+    set $Comma = find($Rest, ',');
+  end while;
+  commit $Links;
+end;
+
+/** The body as markdown for reading: [[slug]] becomes the linked page's title in bold, or the slug in italics when that page does not exist yet. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_Render" ($Body: String)
+returns String as $Markdown
+folder 'Wiki'
+begin
+  if $Body = empty then
+    return '';
+  end if;
+  declare $Out String = '';
+  declare $Pos Integer = 0;
+  declare $Close Integer = -1;
+  declare $Inner String = '';
+  declare $Slug String = '';
+  declare $Label String = '';
+  declare $At Integer = find($Body, '[[');
+  while $At >= 0
+  begin
+    set $Close = find($Body, ']]', $At + 2);
+    if $Close < 0 then
+      break;
+    end if;
+    set $Inner = trim(substring($Body, $At + 2, $Close - $At - 2));
+    set $Slug = toLowerCase(if find($Inner, '|') >= 0 then trim(substring($Inner, 0, find($Inner, '|'))) else $Inner);
+    set $Label = (if find($Inner, '|') >= 0 then trim(substring($Inner, find($Inner, '|') + 1)) else '');
+    retrieve $Target from "ServiceDesk"."WikiPage" where [Slug = $Slug] first;
+    set $Out = $Out + substring($Body, $Pos, $At - $Pos)
+      + (if $Target != empty then '**' + (if $Label != '' then $Label else $Target/Title) + '**' else '*' + (if $Label != '' then $Label else $Slug) + '*');
+    set $Pos = $Close + 2;
+    set $At = find($Body, '[[', $Pos);
+  end while;
+  return $Out + substring($Body, $Pos);
+end;
+
+-- ---------------------------------------------------------------- reading (agent tools)
+
+/** Agent tool: every page with its one-line summary, the wiki's table of contents. Read it first. */
+create or modify microflow "ServiceDesk"."Tool_WikiIndex" ()
+returns String as $Index
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  retrieve $Pages from "ServiceDesk"."WikiPage" sort by "Title" asc;
+  if length($Pages) = 0 then
+    return 'The wiki has no pages yet.';
+  end if;
+  declare $Out String = 'Wiki index (' + toString(length($Pages)) + ' pages). Open a page with WikiRead and its slug.' + $NL;
+  loop $Page in $Pages begin
+    set $Out = $Out + '- ' + $Page/Slug + ': ' + (if $Page/Title = empty then $Page/Slug else $Page/Title)
+      + (if $Page/Summary = empty then '' else ' — ' + $Page/Summary)
+      + (if $Page/Tags = empty or trim($Page/Tags) = '' then '' else ' [' + $Page/Tags + ']') + $NL;
+  end loop;
+  return $Out;
+end;
+
+/** Agent tool: one page in full, with the pages it links to and the pages that link to it. */
+create or modify microflow "ServiceDesk"."Tool_WikiRead" ($Slug: String)
+returns String as $Page
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Wanted String = toLowerCase(trim(if $Slug = empty then '' else $Slug));
+  retrieve $Found from "ServiceDesk"."WikiPage" where [Slug = $Wanted] first;
+  if $Found = empty then
+    retrieve $Close from "ServiceDesk"."WikiPage" where [contains(Slug, $Wanted) or contains(Title, $Wanted)] sort by "Slug" asc limit 5;
+    declare $Names String = '';
+    loop $C in $Close begin
+      set $Names = $Names + (if $Names = '' then '' else ', ') + $C/Slug;
+    end loop;
+    return 'There is no wiki page "' + $Wanted + '".' + (if $Names = '' then ' Use WikiIndex or WikiSearch to find the right page.' else ' Did you mean: ' + $Names + '?');
+  end if;
+  retrieve $Backlinks from "ServiceDesk"."WikiLink" where [ToSlug = $Wanted];
+  declare $From String = '';
+  loop $B in $Backlinks begin
+    retrieve $Source from $B/"ServiceDesk"."WikiLink_From";
+    if $Source != empty and not(contains(', ' + $From + ',', ', ' + $Source/Slug + ',')) then
+      set $From = $From + (if $From = '' then '' else ', ') + $Source/Slug;
+    end if;
+  end loop;
+  $Links = call microflow "ServiceDesk"."SUB_Wiki_LinkedSlugs" (Body = $Found/Body);
+  return '# ' + $Found/Title + ' (' + $Found/Slug + ')' + $NL
+    + (if $Found/Summary = empty then '' else $Found/Summary + $NL)
+    + 'Updated ' + (if $Found/UpdatedAt = empty then '-' else formatDateTime($Found/UpdatedAt, 'yyyy-MM-dd')) + $NL + $NL
+    + (if $Found/Body = empty then '' else $Found/Body) + $NL + $NL
+    + 'Links to: ' + (if $Links = '' then 'none' else replaceAll($Links, ',', ', ')) + $NL
+    + 'Linked from: ' + (if $From = '' then 'none' else $From);
+end;
+
+/** Agent tool: pages ranked by how many of the query's words appear in their title, tags, summary or body (title and tags count double). */
+create or modify microflow "ServiceDesk"."Tool_WikiSearch" ($Query: String)
+returns String as $Results
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Words String = trim(replaceAll(toLowerCase(if $Query = empty then '' else $Query), '[^a-z0-9]+', ' ')) + ' ';
+  retrieve $Pages from "ServiceDesk"."WikiPage";
+  $Hits = create list of "ServiceDesk"."WikiHit";
+  loop $Page in $Pages begin
+    declare $Head String = toLowerCase((if $Page/Title = empty then '' else $Page/Title) + ' ' + (if $Page/Tags = empty then '' else $Page/Tags) + ' ' + $Page/Slug);
+    declare $Text String = toLowerCase((if $Page/Summary = empty then '' else $Page/Summary) + ' ' + (if $Page/Body = empty then '' else $Page/Body));
+    declare $Score Integer = 0;
+    declare $Rest String = $Words;
+    declare $Space Integer = find($Rest, ' ');
+    while $Space >= 0
+    begin
+      declare $Word String = substring($Rest, 0, $Space);
+      if length($Word) >= 3 then
+        if contains($Head, $Word) then
+          set $Score = $Score + 2;
+        end if;
+        if contains($Text, $Word) then
+          set $Score = $Score + 1;
+        end if;
+      end if;
+      set $Rest = substring($Rest, $Space + 1);
+      set $Space = find($Rest, ' ');
+    end while;
+    if $Score > 0 then
+      $Hit = create "ServiceDesk"."WikiHit" ("Slug" = $Page/Slug, "Title" = $Page/Title, "Summary" = $Page/Summary, "Score" = $Score);
+      add $Hit to $Hits;
+    end if;
+  end loop;
+  if length($Hits) = 0 then
+    return 'No wiki page matches "' + (if $Query = empty then '' else $Query) + '". Read WikiIndex for the list of pages.';
+  end if;
+  $Sorted = sort $Hits by Score desc;
+  $Top = range $Sorted limit 5;
+  declare $Out String = 'Best matching wiki pages (open one with WikiRead):' + $NL;
+  loop $H in $Top begin
+    set $Out = $Out + '- ' + $H/Slug + ': ' + (if $H/Title = empty then '' else $H/Title) + (if $H/Summary = empty then '' else ' — ' + $H/Summary) + $NL;
+  end loop;
+  return $Out;
+end;
+
+-- ---------------------------------------------------------------- proposing and applying edits
+
+/** Workflow: the reviewer approved; the page is created or replaced, and its links are refreshed. */
+create or modify microflow "ServiceDesk"."WFA_WikiRevision_Apply" ($WikiRevision: "ServiceDesk"."WikiRevision")
+folder 'Wiki'
+begin
+  retrieve $Page from "ServiceDesk"."WikiPage" where [Slug = $WikiRevision/Slug] first;
+  if $Page = empty then
+    $Created = create "ServiceDesk"."WikiPage" ("Slug" = $WikiRevision/Slug, "Title" = $WikiRevision/Title, "Summary" = $WikiRevision/Summary, "Tags" = $WikiRevision/Tags, "Body" = $WikiRevision/Body, "UpdatedAt" = [%CurrentDateTime%], "UpdatedBy" = $WikiRevision/DecidedBy) commit;
+    call microflow "ServiceDesk"."SUB_WikiPage_RefreshLinks" (WikiPage = $Created);
+    change $WikiRevision ("Status" = ServiceDesk.ENUM_WikiRevisionStatus.Approved, "ServiceDesk"."WikiRevision_WikiPage" = $Created) commit;
+    return;
+  end if;
+  change $Page ("Title" = $WikiRevision/Title, "Summary" = $WikiRevision/Summary, "Tags" = $WikiRevision/Tags, "Body" = $WikiRevision/Body, "UpdatedAt" = [%CurrentDateTime%], "UpdatedBy" = $WikiRevision/DecidedBy) commit;
+  call microflow "ServiceDesk"."SUB_WikiPage_RefreshLinks" (WikiPage = $Page);
+  change $WikiRevision ("Status" = ServiceDesk.ENUM_WikiRevisionStatus.Approved, "ServiceDesk"."WikiRevision_WikiPage" = $Page) commit;
+end;
+
+/** Workflow: the reviewer rejected the edit; the wiki is unchanged. */
+create or modify microflow "ServiceDesk"."WFA_WikiRevision_Reject" ($WikiRevision: "ServiceDesk"."WikiRevision")
+folder 'Wiki'
+begin
+  change $WikiRevision ("Status" = ServiceDesk.ENUM_WikiRevisionStatus.Rejected) commit;
+end;
+
+/** Claims the review task, records who decided, and completes it as Approve or Reject. */
+create or modify microflow "ServiceDesk"."SUB_WikiReview_Complete" ($WorkflowUserTask: System.WorkflowUserTask, $WikiRevision: "ServiceDesk"."WikiRevision", $Approve: Boolean)
+folder 'Wiki'
+begin
+  call microflow "ServiceDesk"."SUB_Task_Assign" (WorkflowUserTask = $WorkflowUserTask);
+  change $WikiRevision ("DecidedAt" = [%CurrentDateTime%], "DecidedBy" = $currentUser/Name) commit;
+  if $Approve then
+    set task outcome $WorkflowUserTask 'Approve';
+  else
+    set task outcome $WorkflowUserTask 'Reject';
+  end if;
+end;
+
+/** Approve button on the review page. */
+create or modify microflow "ServiceDesk"."ACT_WikiReview_Approve" ($WorkflowUserTask: System.WorkflowUserTask, $WikiRevision: "ServiceDesk"."WikiRevision")
+folder 'Wiki'
+begin
+  call microflow "ServiceDesk"."SUB_WikiReview_Complete" (WorkflowUserTask = $WorkflowUserTask, WikiRevision = $WikiRevision, Approve = true);
+  close page;
+end;
+
+/** Reject button on the review page. */
+create or modify microflow "ServiceDesk"."ACT_WikiReview_Reject" ($WorkflowUserTask: System.WorkflowUserTask, $WikiRevision: "ServiceDesk"."WikiRevision")
+folder 'Wiki'
+begin
+  call microflow "ServiceDesk"."SUB_WikiReview_Complete" (WorkflowUserTask = $WorkflowUserTask, WikiRevision = $WikiRevision, Approve = false);
+  close page;
+end;
+
+/** Task page: a support agent approves or rejects a proposed wiki edit, and may correct it first. */
+create or modify page "ServiceDesk"."WF_ReviewWikiEdit" folder 'Wiki'
+(
+  params: ( $WorkflowUserTask: System.WorkflowUserTask, $WikiRevision: "ServiceDesk"."WikiRevision" ),
+  title: 'Review wiki edit',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgWikiReviewOuter {
+   row {
+    column (desktopwidth: autofill) {
+  dataview dvWikiRevision (datasource: $WikiRevision) {
+    layoutgrid lgWikiReview {
+      row {
+        column (desktopwidth: 12) {
+          dynamictext txtReviewHeading (content: 'Wiki edit {1}: {2}', contentparams: ({1} = RevisionNumber, {2} = Title), rendermode: H2)
+          dynamictext txtReviewMeta (content: '{1} · page "{2}" · new page: {3}', contentparams: ({1} = Source, {2} = Slug, {3} = IsNewPage), Class: 'sd-eyebrow')
+          dynamictext txtReviewReason (content: 'Why: {1}', contentparams: ({1} = Reason), rendermode: Paragraph)
+        }
+      }
+      row {
+        column (desktopwidth: 6) {
+          dynamictext txtNowLabel (content: 'Now', Class: 'sd-eyebrow')
+          dynamictext txtNewPage (content: 'A new page: nothing is published under this name yet.', rendermode: Paragraph, Visible: $currentObject/IsNewPage, Class: 'sd-wiki-summary')
+          container ctNow (Class: 'sd-panel sd-wiki-body sd-wiki-compare', Visible: not($currentObject/IsNewPage)) {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtNow ( stringAttribute: PreviousBody )
+          }
+        }
+        column (desktopwidth: 6) {
+          dynamictext txtProposedLabel (content: 'Proposed', Class: 'sd-eyebrow')
+          container ctProposed (Class: 'sd-panel sd-wiki-body sd-wiki-compare') {
+            pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtProposed ( stringAttribute: Body )
+          }
+        }
+      }
+      row {
+        column (desktopwidth: 12) {
+          textbox tbReviewTitle (label: 'Title', attribute: "Title")
+          textbox tbReviewSummary (label: 'Summary', attribute: "Summary")
+          textarea txtReviewBody (label: 'Page text (markdown; correct it before approving if needed)', attribute: "Body", NumberOfLines: 10)
+        }
+      }
+    }
+    footer {
+      actionbutton btnApproveEdit (caption: 'Approve and publish', action: call microflow "ServiceDesk"."ACT_WikiReview_Approve"(WorkflowUserTask = $WorkflowUserTask, WikiRevision = $WikiRevision), buttonstyle: success)
+      actionbutton btnRejectEdit (caption: 'Reject', action: call microflow "ServiceDesk"."ACT_WikiReview_Reject"(WorkflowUserTask = $WorkflowUserTask, WikiRevision = $WikiRevision), buttonstyle: danger)
+    }
+  }
+    }
+   }
+  }
+};
+
+/** Every proposed wiki edit is reviewed by a support agent before it is published. */
+create or modify workflow "ServiceDesk"."WF_WikiReview" folder 'Wiki'
+  parameter $Context: "ServiceDesk"."WikiRevision"
+  display 'Wiki edit {1}' with ({1} = toString($WorkflowContext/RevisionNumber))
+  description '{1}' with ({1} = $WorkflowContext/Title)
+begin
+  user task ReviewWikiEdit 'Review wiki edit'
+    page "ServiceDesk"."WF_ReviewWikiEdit"
+    targeting users xpath [System.UserRoles = '[%UserRole_SupportAgent%]']
+    outcomes
+      'Approve' { call microflow "ServiceDesk"."WFA_WikiRevision_Apply"(WikiRevision = $WorkflowContext) as applyEdit caption 'Publish the page'; }
+      'Reject' { call microflow "ServiceDesk"."WFA_WikiRevision_Reject"(WikiRevision = $WorkflowContext) as rejectEdit caption 'Keep the wiki as it is'; };
+end workflow;
+
+/** Proposes a new or changed page for review: stores it as a WikiRevision with the page as it is now, and starts the review workflow. Returns empty when the slug is not valid. */
+create or modify microflow "ServiceDesk"."SUB_WikiRevision_Propose" ($Slug: String, $Title: String, $Summary: String, $Tags: String, $Body: String, $Reason: String, $Source: String, $WikiJob: "ServiceDesk"."WikiJob")
+returns "ServiceDesk"."WikiRevision" as $Revision
+folder 'Wiki'
+begin
+  declare $Clean String = toLowerCase(trim(if $Slug = empty then '' else $Slug));
+  $Valid = call microflow "ServiceDesk"."SUB_Wiki_IsValidSlug" (Slug = $Clean);
+  if not($Valid) or $Body = empty or trim($Body) = '' then
+    log warning node 'ServiceDesk' 'Wiki edit not proposed: slug "{1}" is not valid or the body is empty.' with ({1} = $Clean);
+    return empty;
+  end if;
+  retrieve $Current from "ServiceDesk"."WikiPage" where [Slug = $Clean] first;
+  $New = create "ServiceDesk"."WikiRevision" (
+    "Slug" = $Clean,
+    "Title" = (if $Title = empty or trim($Title) = '' then $Clean else (if length($Title) > 200 then substring($Title, 0, 200) else $Title)),
+    "Summary" = (if $Summary = empty then '' else (if length($Summary) > 500 then substring($Summary, 0, 500) else $Summary)),
+    "Tags" = (if $Tags = empty then '' else (if length($Tags) > 200 then substring($Tags, 0, 200) else $Tags)),
+    "Body" = $Body,
+    "PreviousBody" = (if $Current = empty or $Current/Body = empty then '' else $Current/Body),
+    "IsNewPage" = $Current = empty,
+    "Reason" = (if $Reason = empty then '' else (if length($Reason) > 1000 then substring($Reason, 0, 1000) else $Reason)),
+    "Source" = (if $Source = empty then '' else $Source),
+    "Status" = ServiceDesk.ENUM_WikiRevisionStatus.Proposed,
+    "ProposedAt" = [%CurrentDateTime%],
+    "ServiceDesk"."WikiRevision_WikiJob" = $WikiJob
+  ) commit;
+  $Workflow = call workflow "ServiceDesk"."WF_WikiReview" ($New);
+  return $New;
+end;
+
+/** Agent tool (staff only): proposes a new or changed wiki page; a support agent reviews it before it is published. */
+create or modify microflow "ServiceDesk"."Tool_WikiProposeEdit" ($Slug: String, $Title: String, $Summary: String, $Body: String, $Reason: String)
+returns String as $Answer
+folder 'Wiki'
+begin
+  $Customer = call microflow "ServiceDesk"."SUB_GetCurrentCustomer" ();
+  if $Customer != empty then
+    return 'Only support staff can propose changes to the wiki.';
+  end if;
+  $Revision = call microflow "ServiceDesk"."SUB_WikiRevision_Propose" (Slug = $Slug, Title = $Title, Summary = $Summary, Tags = '', Body = $Body, Reason = $Reason, Source = 'Chat, ' + $currentUser/Name, WikiJob = empty);
+  if $Revision = empty then
+    return 'Not proposed: the slug must be lowercase words joined by hyphens (e.g. returns-and-refunds) and the body must not be empty.';
+  end if;
+  return 'Proposed wiki edit ' + toString($Revision/RevisionNumber) + ' for page "' + $Revision/Slug + '" (' + (if $Revision/IsNewPage then 'new page' else 'change') + '). It appears in My tasks for review before it is published.';
+end;
+
+-- ---------------------------------------------------------------- the curator (ingest and lint)
+
+/** The whole wiki as text for the curator: every page, and edits still waiting for review. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_Text" ()
+returns String as $Text
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Out String = '';
+  retrieve $Pages from "ServiceDesk"."WikiPage" sort by "Slug" asc;
+  loop $Page in $Pages begin
+    set $Out = $Out + '=== ' + $Page/Slug + ' | ' + $Page/Title + $NL + 'Summary: ' + (if $Page/Summary = empty then '' else $Page/Summary) + $NL + 'Tags: ' + (if $Page/Tags = empty then '' else $Page/Tags) + $NL + $NL + (if $Page/Body = empty then '' else $Page/Body) + $NL + $NL;
+  end loop;
+  retrieve $Pending from "ServiceDesk"."WikiRevision" where [Status = 'Proposed'] sort by "ProposedAt" asc;
+  loop $Edit in $Pending begin
+    set $Out = $Out + '=== ' + $Edit/Slug + ' | ' + $Edit/Title + ' (PROPOSED, waiting for review: build on this version)' + $NL + 'Summary: ' + $Edit/Summary + $NL + $NL + $Edit/Body + $NL + $NL;
+  end loop;
+  return (if $Out = '' then '(The wiki is empty.)' else $Out);
+end;
+
+create or modify json structure "ServiceDesk"."JSON_WikiProposals" folder 'Wiki'
+  sample '{"pages": [{"slug": "returns-and-refunds", "title": "Returns and refunds", "summary": "How long customers have to return items.", "tags": "returns, refunds", "body": "Text with a [[delivery-times]] link.", "reason": "New page from the returns policy."}]}';
+
+create or modify import mapping "ServiceDesk"."IMM_WikiProposals" folder 'Wiki'
+  with json structure "ServiceDesk"."JSON_WikiProposals" root pages
+{
+  create "ServiceDesk"."WikiProposal" {
+    "Slug" = slug,
+    "Title" = title,
+    "Summary" = summary,
+    "Tags" = tags,
+    "Body" = body,
+    "Reason" = reason
+  }
+};
+
+/** Runs the curator agent on a job and proposes each page it returns for review. Returns how many edits were proposed (-1 when the agent failed). */
+create or modify microflow "ServiceDesk"."SUB_WikiJob_Run" ($WikiJob: "ServiceDesk"."WikiJob")
+returns Integer as $Proposed
+folder 'Wiki'
+begin
+  $WikiText = call microflow "ServiceDesk"."SUB_Wiki_Text" ();
+  change $WikiJob ("WikiText" = $WikiText, "StartedAt" = [%CurrentDateTime%]) commit;
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = 'ServiceDesk.WikiCuratorAgent');
+  if $Agent = empty then
+    change $WikiJob ("Outcome" = 'The curator agent is not available.') commit;
+    return -1;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = $WikiJob, OptionalRequest = empty, OptionalFileCollection = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Wiki curator failed on job {1}: {2}' with ({1} = toString($WikiJob/JobNumber), {2} = $latestError/Message);
+    change $WikiJob ("Outcome" = 'The curator agent failed: ' + $latestError/Message) commit;
+    return -1;
+  end error;
+  declare $Answer String = (if $Response = empty or $Response/ResponseText = empty then '' else $Response/ResponseText);
+  change $WikiJob ("Answer" = $Answer) commit;
+  declare $Start Integer = find($Answer, '{');
+  declare $End Integer = findLast($Answer, '}');
+  if $Start < 0 or $End <= $Start then
+    change $WikiJob ("Outcome" = 'The curator''s answer had no JSON.') commit;
+    return -1;
+  end if;
+  declare $Json String = substring($Answer, $Start, $End - $Start + 1);
+  $Proposals = import from mapping "ServiceDesk"."IMM_WikiProposals"($Json) all on error without rollback begin
+    log warning node 'ServiceDesk' 'Wiki curator answer for job {1} is not valid JSON: {2}' with ({1} = toString($WikiJob/JobNumber), {2} = $latestError/Message);
+    change $WikiJob ("Outcome" = 'The curator''s answer was not valid JSON.') commit;
+    return -1;
+  end error;
+  declare $Count Integer = 0;
+  loop $Proposal in $Proposals begin
+    $Revision = call microflow "ServiceDesk"."SUB_WikiRevision_Propose" (Slug = $Proposal/Slug, Title = $Proposal/Title, Summary = $Proposal/Summary, Tags = $Proposal/Tags, Body = $Proposal/Body, Reason = $Proposal/Reason, Source = getCaption($WikiJob/Kind) + ' ' + toString($WikiJob/JobNumber), WikiJob = $WikiJob);
+    if $Revision != empty then
+      set $Count = $Count + 1;
+    end if;
+  end loop;
+  change $WikiJob ("Proposed" = $Count, "Outcome" = (if $Count = 0 then 'No changes needed.' else toString($Count) + ' edit(s) proposed for review.')) commit;
+  return $Count;
+end;
+
+/** The text of a policy document, or empty when it cannot be read. */
+create or modify microflow "ServiceDesk"."SUB_PolicyDocument_Text" ($PolicyDocument: "ServiceDesk"."PolicyDocument")
+returns String as $Text
+folder 'Wiki'
+begin
+  $Read = call java action CommunityCommons.StringFromFile(source = $PolicyDocument, encoding = CommunityCommons.StandardEncodings.UTF_8) on error without rollback begin
+    log warning node 'ServiceDesk' 'Policy document {1} is not readable for the wiki.' with ({1} = $PolicyDocument/Title);
+    return '';
+  end error;
+  return (if $Read = empty then '' else $Read);
+end;
+
+/** Compiles the policy documents into the wiki: one curator run over all of them. Returns the job. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_CompilePolicies" ()
+returns "ServiceDesk"."WikiJob" as $Job
+folder 'Wiki'
+begin
+  declare $NL String = urlDecode('%0A');
+  declare $Sources String = '';
+  declare $Titles String = '';
+  retrieve $Documents from "ServiceDesk"."PolicyDocument" sort by "Title" asc;
+  loop $Document in $Documents begin
+    $Text = call microflow "ServiceDesk"."SUB_PolicyDocument_Text" (PolicyDocument = $Document);
+    if $Text = '' then
+      continue;
+    end if;
+    set $Sources = $Sources + '--- Source document: ' + $Document/Title + ' ---' + $NL + $Text + $NL + $NL;
+    set $Titles = $Titles + (if $Titles = '' then '' else ', ') + $Document/Title;
+  end loop;
+  $New = create "ServiceDesk"."WikiJob" (
+    "Kind" = ServiceDesk.ENUM_WikiJobKind.Ingest,
+    "Instruction" = 'Compile the source documents into the wiki. Split them into pages of one topic each, written for customers and support staff. Update a page that already covers a topic instead of adding a second one, keeping what it says that the sources do not contradict. Link related pages with [[slug]]. Propose only pages that are new or that change.',
+    "SourceTitle" = (if length($Titles) > 200 then substring($Titles, 0, 200) else $Titles),
+    "SourceText" = $Sources
+  ) commit;
+  $Count = call microflow "ServiceDesk"."SUB_WikiJob_Run" (WikiJob = $New);
+  return $New;
+end;
+
+/** Lint: the curator checks the whole wiki for contradictions, missing links and unclear pages. Returns the job. */
+create or modify microflow "ServiceDesk"."SUB_Wiki_Lint" ()
+returns "ServiceDesk"."WikiJob" as $Job
+folder 'Wiki'
+begin
+  $New = create "ServiceDesk"."WikiJob" (
+    "Kind" = ServiceDesk.ENUM_WikiJobKind.Lint,
+    "Instruction" = 'Check the wiki. Look for: statements that contradict each other across pages, pages that should link to each other but do not, links to pages that do not exist, pages that no page links to, and unclear or duplicated text. Propose a corrected version only of pages that need a fix (at most five), and say in each reason what you fixed. If nothing needs fixing, return {"pages": []}.',
+    "SourceTitle" = 'The wiki itself',
+    "SourceText" = '(none: check the wiki below)'
+  ) commit;
+  $Count = call microflow "ServiceDesk"."SUB_WikiJob_Run" (WikiJob = $New);
+  return $New;
+end;
+
+/** One curator run: what it was asked and what came of it. */
+create or modify page "ServiceDesk"."WikiJob_View" folder 'Wiki'
+(
+  params: ( $WikiJob: "ServiceDesk"."WikiJob" ),
+  title: 'Wiki run',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgWikiJob {
+    row {
+      column (desktopwidth: 12) {
+        dataview dvWikiJob (datasource: $WikiJob) {
+          dynamictext txtJobHeading (content: 'Wiki run {1}: {2}', contentparams: ({1} = JobNumber, {2} = Kind), rendermode: H2)
+          dynamictext txtJobOutcome (content: '{1}', contentparams: ({1} = Outcome), rendermode: H4)
+          dynamictext txtJobHelp (content: 'Each proposed edit is a task in My tasks: a support agent approves or rejects it before it reaches the wiki.', rendermode: Paragraph)
+          datagrid dgJobRevisions (
+            datasource: database from "ServiceDesk"."WikiRevision" where ["ServiceDesk"."WikiRevision_WikiJob" = $WikiJob] sort by "RevisionNumber" asc,
+            designproperties: ('Hover': on, 'Striped': on)
+          ) {
+            column (attribute: "RevisionNumber", caption: '#')
+            column (attribute: "Title", caption: 'Page')
+            column (attribute: "IsNewPage", caption: 'New')
+            column (attribute: "Reason", caption: 'Why')
+            column (attribute: "Status", caption: 'Status')
+          }
+          textarea txtJobInstruction (label: 'Asked', attribute: "Instruction", Editable: Never)
+          textarea txtJobSources (label: 'Sources', attribute: "SourceTitle", Editable: Never)
+        }
+      }
+    }
+  }
+};
+
+/** "Compile policy documents" button on the wiki page. */
+create or modify microflow "ServiceDesk"."ACT_Wiki_CompilePolicies" ()
+folder 'Wiki'
+begin
+  $Job = call microflow "ServiceDesk"."SUB_Wiki_CompilePolicies" ();
+  show page "ServiceDesk"."WikiJob_View" ("WikiJob" = $Job);
+end;
+
+/** "Check the wiki" button on the wiki page. */
+create or modify microflow "ServiceDesk"."ACT_Wiki_Lint" ()
+folder 'Wiki'
+begin
+  $Job = call microflow "ServiceDesk"."SUB_Wiki_Lint" ();
+  show page "ServiceDesk"."WikiJob_View" ("WikiJob" = $Job);
+end;
+
+/** Scheduled weekly: lint the wiki when it has pages. */
+create or modify microflow "ServiceDesk"."SE_Wiki_Lint" ()
+folder 'Wiki'
+begin
+  retrieve $Any from "ServiceDesk"."WikiPage" first;
+  if $Any = empty then
+    return;
+  end if;
+  $Job = call microflow "ServiceDesk"."SUB_Wiki_Lint" ();
+end;
+
+create or modify scheduled event "ServiceDesk"."SE_WikiLint" folder 'Wiki' (
+  Microflow: "ServiceDesk"."SE_Wiki_Lint",
+  Repeat: Weekly,
+  Weekdays: 'Monday',
+  HourOfDay: 6,
+  MinuteOfHour: 17,
+  Enabled: true,
+  OnOverlap: SkipNext
+);
+
+-- ---------------------------------------------------------------- pages
+
+/** Data source of a wiki page's body, with links shown as page titles. */
+create or modify microflow "ServiceDesk"."DS_WikiPage_View" ($WikiPage: "ServiceDesk"."WikiPage")
+returns "ServiceDesk"."WikiPageView" as $View
+folder 'Wiki'
+begin
+  $Markdown = call microflow "ServiceDesk"."SUB_Wiki_Render" (Body = $WikiPage/Body);
+  $New = create "ServiceDesk"."WikiPageView" ("Markdown" = $Markdown);
+  return $New;
+end;
+
+/** The pages this page links to (that exist). */
+create or modify microflow "ServiceDesk"."DS_WikiPage_LinksTo" ($WikiPage: "ServiceDesk"."WikiPage")
+returns list of "ServiceDesk"."WikiPage" as $Pages
+folder 'Wiki'
+begin
+  retrieve $Pages from "ServiceDesk"."WikiPage" where [Slug = '__none__'];
+  retrieve $Links from $WikiPage/"ServiceDesk"."WikiLink_From";
+  loop $Link in $Links begin
+    retrieve $Target from "ServiceDesk"."WikiPage" where [Slug = $Link/ToSlug] first;
+    if $Target != empty then
+      add $Target to $Pages;
+    end if;
+  end loop;
+  return $Pages;
+end;
+
+/** The pages that link to this page. */
+create or modify microflow "ServiceDesk"."DS_WikiPage_LinkedFrom" ($WikiPage: "ServiceDesk"."WikiPage")
+returns list of "ServiceDesk"."WikiPage" as $Pages
+folder 'Wiki'
+begin
+  retrieve $Pages from "ServiceDesk"."WikiPage" where ["ServiceDesk"."WikiLink_From"/"ServiceDesk"."WikiLink"/ToSlug = $WikiPage/Slug] sort by "Title" asc;
+  return $Pages;
+end;
+
+/** Opens a wiki page. */
+create or modify microflow "ServiceDesk"."ACT_WikiPage_Open" ($WikiPage: "ServiceDesk"."WikiPage")
+folder 'Wiki'
+begin
+  show page "ServiceDesk"."WikiPage_View" ("WikiPage" = $WikiPage);
+end;
+
+grant execute on microflow "ServiceDesk"."DS_WikiPage_View" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_WikiPage_LinksTo" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."DS_WikiPage_LinkedFrom" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_WikiPage_Open" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Wiki_CompilePolicies" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_Wiki_Lint" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_WikiReview_Approve" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."ACT_WikiReview_Reject" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** One wiki page: the body, the pages it links to and the pages that link to it. */
+create or modify page "ServiceDesk"."WikiPage_View" folder 'Wiki'
+(
+  params: ( $WikiPage: "ServiceDesk"."WikiPage" ),
+  title: 'Wiki',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgWikiPage {
+    row {
+      column (desktopwidth: 8) {
+        dataview dvWikiPage (datasource: $WikiPage) {
+          dynamictext txtWikiTitle (content: '{1}', contentparams: ({1} = Title), rendermode: H2)
+          dynamictext txtWikiSummary (content: '{1}', contentparams: ({1} = Summary), rendermode: Paragraph, Class: 'sd-wiki-summary')
+          dynamictext txtWikiMeta (content: '{1} · updated {2} by {3}', contentparams: ({1} = Tags, {2} = UpdatedAt, {3} = UpdatedBy), Class: 'sd-eyebrow')
+          container ctWikiBody (Class: 'sd-panel sd-wiki-body') {
+            dataview dvWikiBody (datasource: microflow "ServiceDesk"."DS_WikiPage_View"(WikiPage = $WikiPage)) {
+              pluggablewidget 'com.servicedesk.widgets.chatrichtext.ChatRichText' crtWikiBody ( stringAttribute: Markdown )
+            }
+          }
+        }
+      }
+      column (desktopwidth: 4) {
+        container ctWikiLinks (Class: 'sd-panel sd-wiki-links') {
+          dynamictext txtLinksTo (content: 'Links to', Class: 'sd-eyebrow')
+          listview lvLinksTo (datasource: microflow "ServiceDesk"."DS_WikiPage_LinksTo"(WikiPage = $WikiPage), Class: 'sd-wiki-linklist') {
+            actionbutton btnLinkTo (caption: '{1}', captionparams: ({1} = Title), action: call microflow "ServiceDesk"."ACT_WikiPage_Open"(WikiPage = $currentObject), Class: 'sd-wiki-linkbtn')
+          }
+          dynamictext txtLinkedFrom (content: 'Linked from', Class: 'sd-eyebrow')
+          listview lvLinkedFrom (datasource: microflow "ServiceDesk"."DS_WikiPage_LinkedFrom"(WikiPage = $WikiPage), Class: 'sd-wiki-linklist') {
+            actionbutton btnLinkedFrom (caption: '{1}', captionparams: ({1} = Title), action: call microflow "ServiceDesk"."ACT_WikiPage_Open"(WikiPage = $currentObject), Class: 'sd-wiki-linkbtn')
+          }
+        }
+      }
+    }
+  }
+};
+
+
+/** Staff: every proposed change with its decision, and every curator run. */
+create or modify page "ServiceDesk"."Wiki_Changes" folder 'Wiki'
+(
+  title: 'Wiki changes',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'wiki-changes'
+)
+{
+  layoutgrid lgWikiChanges {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtWikiChangesHeading (content: 'Wiki changes', rendermode: H2)
+        dynamictext txtWikiChangesHelp (content: 'Every change proposed by the curator or from the chat, and what the reviewer decided. Below: each run of the curator, the wiki''s log.', rendermode: Paragraph)
+        datagrid dgWikiRevisions (
+          datasource: database from "ServiceDesk"."WikiRevision" sort by "RevisionNumber" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "RevisionNumber", caption: '#')
+          column (attribute: "Title", caption: 'Page') { textfilter tfRevTitle }
+          column (attribute: "Source", caption: 'From')
+          column (attribute: "Reason", caption: 'Why')
+          column (attribute: "Status", caption: 'Status') { dropdownfilter ddRevStatus }
+          column (attribute: "DecidedBy", caption: 'Decided by')
+        }
+        dynamictext txtWikiRuns (content: 'Curator runs', rendermode: H3)
+        datagrid dgWikiJobs (
+          datasource: database from "ServiceDesk"."WikiJob" sort by "JobNumber" desc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "JobNumber", caption: '#')
+          column (attribute: "Kind", caption: 'Run')
+          column (attribute: "SourceTitle", caption: 'Sources')
+          column (attribute: "StartedAt", caption: 'Started')
+          column (attribute: "Outcome", caption: 'Outcome')
+          column (caption: '') {
+            actionbutton btnOpenWikiJob (caption: 'Open', action: show page "ServiceDesk"."WikiJob_View"("WikiJob" = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."Wiki_Changes" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+/** The wiki: every page, searchable, with the curator's buttons and its log for staff. */
+create or modify page "ServiceDesk"."Wiki_Overview" folder 'Wiki'
+(
+  title: 'Wiki',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'wiki'
+)
+{
+  layoutgrid lgWiki {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtWikiHeading (content: 'Wiki', rendermode: H2)
+        dynamictext txtWikiHelp (content: 'The shop''s knowledge as linked pages. An AI curator writes and updates them from the policy documents; a support agent approves every change. The assistant reads these pages to answer policy and how-to questions.', rendermode: Paragraph)
+        container ctWikiActions (Class: 'sd-wiki-actions') {
+          actionbutton btnCompile (caption: 'Compile policy documents', action: call microflow "ServiceDesk"."ACT_Wiki_CompilePolicies", buttonstyle: primary, icon: Atlas_Core.Atlas."document")
+          actionbutton btnLint (caption: 'Check the wiki', action: call microflow "ServiceDesk"."ACT_Wiki_Lint", icon: Atlas_Core.Atlas."checkmark-circle")
+          actionbutton btnWikiChanges (caption: 'Changes and runs', action: show page "ServiceDesk"."Wiki_Changes", icon: Atlas_Core.Atlas.dashboard)
+        }
+        datagrid dgWikiPages (
+          datasource: database from "ServiceDesk"."WikiPage" sort by "Title" asc,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Title", caption: 'Page') { textfilter tfWikiTitle }
+          column (attribute: "Summary", caption: 'Summary') { textfilter tfWikiSummary }
+          column (attribute: "Tags", caption: 'Tags') { textfilter tfWikiTags }
+          column (attribute: "UpdatedAt", caption: 'Updated')
+          column (caption: '') {
+            actionbutton btnOpenWikiPage (caption: 'Open', action: call microflow "ServiceDesk"."ACT_WikiPage_Open"(WikiPage = $currentObject))
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."WikiPage_View" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."Wiki_Overview" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WikiJob_View" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant view on page "ServiceDesk"."WF_ReviewWikiEdit" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
