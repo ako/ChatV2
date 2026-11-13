@@ -762,8 +762,8 @@
     }
    ],
    "check": {
-    "js": "/Decision: Eligible \\(by AI\\)/.test(document.body.innerText) && /RL-\\d+/.test(document.querySelector('.mx-name-txtDraft textarea').value)",
-    "why": "the AI decided eligible and the draft carries a return label"
+    "js": "/Decision: Eligible \\(by AI\\)/.test(document.body.innerText) && /RL-\\d+/.test(document.querySelector('.mx-name-txtDraft textarea').value) && /^Dear /.test(document.querySelector('.mx-name-txtDraft textarea').value.trim())",
+    "why": "the AI decided eligible and the draft carries a return label, starting with the greeting"
    },
    "say": "Meanwhile, the return workflow has a task for Sam. The AI found the return eligible and drafted the reply, with a return label. He approves it with one click.",
    "do": [

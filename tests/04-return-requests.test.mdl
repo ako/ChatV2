@@ -101,3 +101,22 @@ $Done = call microflow ServiceDesk.SUB_ReturnRequest_Withdraw(ReturnRequest = $R
 retrieve $After from ServiceDesk.ReturnRequest where [Item = 'SSP-31 Seat post'] first;
 declare $Outcome String = toString($Done) + '|' + getKey($After/Status);
 /
+
+/**
+ * @test A drafted reply loses a leading subject line and a remark about the message
+ * @expect $Ok = true
+ */
+declare $NL String = urlDecode('%0A');
+$Clean = call microflow ServiceDesk.SUB_Return_CleanReply(Text = 'Subject: none needed. Writing the message now.' + $NL + 'Here is the reply:' + $NL + $NL + 'Dear customer,' + $NL + $NL + 'Your return is accepted.' + $NL + 'The service desk');
+declare $Ok Boolean = startsWith($Clean, 'Dear customer,') and endsWith($Clean, 'The service desk');
+/
+
+/**
+ * @test A reply that starts with the greeting is kept as it is
+ * @expect $Ok = true
+ */
+declare $NL String = urlDecode('%0A');
+declare $Reply String = 'Dear Ada,' + $NL + $NL + 'Thank you for your request.' + $NL + 'The service desk';
+$Clean = call microflow ServiceDesk.SUB_Return_CleanReply(Text = $Reply);
+declare $Ok Boolean = $Clean = $Reply;
+/

@@ -1683,3 +1683,10 @@ Measured:
 - `tests-live/mcp/wiki_test.py` 13/13, and the search page still shows ranked results with snippets.
 
 Caveat: the SQL names Mendix's own table and columns (`"servicedesk$wikipage"`, `title`, `body`, …). Renaming the entity or an attribute means changing the Java constant too; nothing checks that at build time.
+
+## The return reply began with "Subject: none needed" (2026-11-13)
+
+Seen in the tour video: the AI-drafted return reply started with "Subject: none needed. Writing the message now." The prompt ended with "No subject line", and the model answered that instruction in the message itself. A negative instruction about form invites a remark about it.
+- **The prompt now says what to write:** only the message, beginning with the greeting and ending with the signature, with nothing before or after it.
+- **The microflow drops such lines anyway** (`SUB_Return_CleanReply`): any leading line that starts like a subject, title or remark ("Subject:", "Re:", "Here is the reply:"). If nothing is left, it uses the fallback text.
+- Two new microflow tests: the stray lines are dropped, and a reply that starts with the greeting is kept unchanged. The tour's approval beat now also checks that the draft starts with "Dear".
