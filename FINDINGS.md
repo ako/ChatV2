@@ -1555,3 +1555,19 @@ Gates:
 **`mxcli check` passes a `show message` whose text is an expression**, and mxbuild then fails with CE0117. Filed as ako/mxcli#2199. The workaround is one literal message per branch.
 
 **A manual sync can collide with the scheduled one.** `SUB_Shipments_Sync` deletes and re-imports every shipment. "Check parcels now", run just as the 15-minute event fired, failed one of the two on the TrackingCode unique constraint. The other completed, so no data was lost. Left as is: the window is small, and the scheduled event already skips its own overlaps.
+
+## Studio Pro: "unknown type 'agenteditor.agent'", and agent documents do not open (2026-11-13)
+
+Reported from Studio Pro 11.16. The project had three errors in AgentEditorCommons ("The parameter 'Agent' is of an unknown type 'agenteditor.agent'"). Every agent document showed "Waiting for the document editor to be available … extension extension/agent-editor … is not loaded".
+
+**Cause: the project, not Mendix.** The Marketplace package "Agent Editor" (257918, 2.7.0) carries two things:
+- the AgentEditorCommons module;
+- `modules/AgentEditor.mxmodule`, a protected add-on module whose package declares `<extension name="agent-editor"/>` and holds the extension's code under `extensions/agent-editor/`.
+
+Studio Pro keeps such an add-on as a file in the app's `modules/` folder, with no unit in the `.mpr`. `mxcli marketplace install` imported only the AgentEditorCommons module, so the extension was never in the project. Studio Pro then knows neither the `agenteditor.agent` type nor the editor for the documents of that type.
+
+`mx check` and the build stay green either way: neither checks the extension. Only Studio Pro shows it.
+
+**Fix:** `modules/AgentEditor.mxmodule` taken from the 2.7.0 package (the version of the installed AgentEditorCommons) and committed. Afterwards `mxcli show modules` lists AgentEditor 2.7.0 as a packaged, protected add-on, `docker check` reports 0 errors, and the app builds and runs.
+
+When Agent Editor is updated, the `.mxmodule` has to be updated with it. Updating through Studio Pro's Marketplace does both. The installer gap is filed as ako/mxcli#2205.
