@@ -96,6 +96,30 @@ Demo users:
 | demo_administrator | DemoAdmin1234! | Administrator |
 | demo_catalog | DemoCatalog123! | Catalog manager (support agent who maintains the product catalog) |
 
+## Studio Pro on your laptop
+
+The project has a **Local PostgreSQL** configuration for running from Studio Pro 11.16 against a PostgreSQL on your own machine (`mdlsource/98-local-configuration.mdl`). The Default configuration uses Mendix's in-memory database, which this app cannot run on: the wiki's full-text search and the product graph's SPARQL engine need PostgreSQL.
+
+1. **The database.** The configuration expects PostgreSQL at `localhost:5432`, database `servicedeskcopilot`, user `mendix`, password `mendix`. Either create that user and database:
+
+   ```bash
+   psql -U postgres -c "create role mendix login createdb password 'mendix'" -c "create database servicedeskcopilot owner mendix"
+   ```
+
+   or point the configuration at your own: **App > Settings > Configurations > Local PostgreSQL > Database**.
+2. **Make it active.** In the same dialog, choose **Local PostgreSQL** as the active configuration, then Run locally. On first start the runtime creates the tables, and the app seeds the demo data, the product catalog and the bikes' BOM. Sign in with the demo users below.
+3. **The keys, on the configuration's Constants tab.**
+   - Without them the app starts, but the assistant cannot answer.
+   - `ServiceDesk.MxGenAIKey` (and `MxGenAIKnowledgeBaseKey`, `MxGenAIEmbeddingsKey` for the knowledge base): your Mendix Cloud GenAI keys.
+   - `Encryption.EncryptionKey`: any 32 characters. The runtime agent stores its keys encrypted with it.
+   - `ServiceDesk.OpenRouterApiKey`: optional, for "Assistant (OpenRouter)".
+   - Studio Pro keeps these values in the project, so do not commit the project with your keys in it.
+4. **The product graph** runs inside the runtime. On first use DuckDB downloads its `rdf` and `postgres` extensions for your platform (Windows, macOS or Linux), so the first query needs internet access.
+5. **Optional extras.** These are not needed to run the app; each feature degrades with a log line:
+   - parcel tracking and delivery notices: start the fake carrier with `python3 tools/carrier-mcp/server.py`;
+   - the PgVector knowledge base: create a `servicedesk_vectors` database with the `vector` extension, and set `ServiceDesk.PgVectorPassword`;
+   - OAuth on the MCP server: Keycloak, see the MCP section.
+
 ## What to try
 
 | As | Where | What happens |

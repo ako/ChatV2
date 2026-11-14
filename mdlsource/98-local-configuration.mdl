@@ -1,0 +1,25 @@
+mdl 1;
+
+-- A run configuration for Studio Pro on a developer laptop with a local
+-- PostgreSQL. The Default configuration uses Mendix's in-memory HSQLDB, which
+-- this app outgrew: the wiki's full-text search and the product graph's SPARQL
+-- engine (DuckDB attaching the app's own database) need PostgreSQL.
+--
+-- In Studio Pro: App > Settings > Configurations > "Local PostgreSQL", set it
+-- as the active configuration, and change the database user and password to
+-- your own. Secrets (GenAI keys, the encryption key) are not set here; see the
+-- README section "Studio Pro on your laptop".
+
+create or modify configuration 'Local PostgreSQL' (
+  DatabaseType: 'PostgreSql',
+  DatabaseUrl: 'localhost:5432',
+  DatabaseName: 'servicedeskcopilot',
+  DatabaseUserName: 'mendix',
+  DatabasePassword: 'mendix',
+  HttpPortNumber: 8080,
+  ServerPortNumber: 8090,
+  ApplicationRootUrl: 'http://localhost:8080/'
+);
+
+alter settings constant @GenAICommons.StoreTraces value 'True'
+  in configuration 'Local PostgreSQL';
