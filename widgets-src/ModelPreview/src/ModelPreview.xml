@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget id="com.servicedesk.widgets.modelpreview.ModelPreview" pluginWidget="true" needsEntityContext="true" offlineCapable="false"
+        supportedPlatform="Web"
+        xmlns="http://www.mendix.com/widget/1.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.mendix.com/widget/1.0/ ../node_modules/mendix/custom_widget.xsd">
+    <name>Bike model preview</name>
+    <description>A 3D preview of a bike assembled from the app's BOM data, with parts highlighted; redrawn whenever the version changes.</description>
+    <properties>
+        <propertyGroup caption="General">
+            <propertyGroup caption="Model">
+                <property key="bikeRef" type="expression" required="true">
+                    <caption>Bike SKU</caption>
+                    <description>The bike to show, e.g. $currentObject/Sku.</description>
+                    <returnType type="String"/>
+                </property>
+                <property key="highlight" type="expression" required="false">
+                    <caption>Highlight</caption>
+                    <description>SKUs of parts to highlight, separated by commas.</description>
+                    <returnType type="String"/>
+                </property>
+                <property key="version" type="expression" required="false">
+                    <caption>Version</caption>
+                    <description>Anything that changes when the model data changes (a change date); the preview reloads the model when it does.</description>
+                    <returnType type="String"/>
+                </property>
+                <property key="height" type="integer" defaultValue="360">
+                    <caption>Height</caption>
+                    <description>Height of the 3D view in pixels.</description>
+                </property>
+            </propertyGroup>
+        </propertyGroup>
+    </properties>
+</widget>

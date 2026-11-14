@@ -7,6 +7,7 @@ mdl 1;
 create or modify module role "ServiceDesk"."Customer" description 'Chats with the support agent; sees only their own orders and tickets';
 create or modify module role "ServiceDesk"."SupportAgent" description 'Sees all tickets, approves agent actions and handles workflow tasks';
 create or modify module role "ServiceDesk"."Admin" description 'Configures agents, models, keys, MCP and knowledge bases';
+create or modify module role "ServiceDesk"."CatalogManager" description 'Maintains the product catalog: products, compatibility, bills of materials, mount points and 3D models';
 
 -- Customer: own records only
 grant read * on entity "ServiceDesk"."Customer" to "ServiceDesk"."Customer"
@@ -53,7 +54,7 @@ create or modify user role "SupportAgent" (
 );
 
 create or modify user role Administrator (
-  ModuleRoles: (System.Administrator, Administration.Administrator, MyFirstModule.User,
+  ModuleRoles: (System.Administrator, Administration.Administrator, MyFirstModule.User, "ServiceDesk"."CatalogManager",
                 "ServiceDesk"."Admin", "ServiceDesk"."SupportAgent",
                 GenAICommons.Administrator, GenAICommons.UsageMonitoring, GenAICommons.TraceMonitoring,
                 ConversationalUI.User, ConversationalUI.UsageMonitoring, ConversationalUI.TraceMonitoring,
@@ -63,6 +64,15 @@ create or modify user role Administrator (
   CheckSecurity: true
 );
 
+create or modify user role "CatalogManager" (
+  ModuleRoles: (System.User, Administration.User, "ServiceDesk"."SupportAgent", "ServiceDesk"."CatalogManager",
+                GenAICommons.User, ConversationalUI.User, MxGenAIConnector.User,
+                MCPClient.User, Encryption.User),
+  Description: 'Service-desk staff who also maintain the product catalog',
+  CheckSecurity: true
+);
+
+create or modify demo user 'demo_catalog' ( Password: 'DemoCatalog123!', UserRoles: ("CatalogManager") );
 create or modify demo user 'demo_administrator' ( Password: 'DemoAdmin1234!', UserRoles: (Administrator) );
 create or modify demo user 'demo_customer' ( Password: 'DemoCustomer1!', UserRoles: ("Customer") );
 create or modify demo user 'demo_agent' ( Password: 'DemoAgent1234!', UserRoles: ("SupportAgent") );

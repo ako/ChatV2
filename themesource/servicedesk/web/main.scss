@@ -496,3 +496,30 @@
 .sd-wiki-search input.form-control {
     min-height: 38px;
 }
+
+// ---- Catalog workspace (27-catalog-workspace.mdl) ----------------------------
+.catalog-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-small, 8px);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(127, 140, 160, 0.2);
+}
+.catalog-issue {
+    padding: var(--spacing-small, 8px) 0;
+    border-bottom: 1px solid rgba(127, 140, 160, 0.2);
+}
+// the data grid's selected row: the light Atlas default hides the light text of the dark theme
+.widget-datagrid .tr.tr-selected > .td,
+.widget-datagrid.widget-datagrid-selection-method-click .tr.tr-selected .td {
+    background-color: rgba(79, 209, 197, 0.16);
+    color: inherit;
+}
+.widget-datagrid .tr.tr-selected > .td:first-child {
+    box-shadow: inset 3px 0 0 #4fd1c5;
+}
+// the combo box's text input: transparent on its dark container (Atlas paints it white, under light text)
+.widget-combobox .widget-combobox-input {
+    background-color: transparent;
+}

@@ -1761,3 +1761,35 @@ Measured:
 Gotcha: dropping a microflow parameter that other flows still pass is refused (MDL-V1-REBUILD). Here, `SUB_Product_SeedLink` lost `IsComponent`. Executing the regenerated callers first (`24b`) and then the helper (`24`) let both splice without a rebuild.
 
 Lint: 54 warnings, up from 48. They are ARCH003 "no business key" on BomLine, MountSlot, PartModel and ShapePart (child records identified by their parent, as OrderLine is), and DESIGN001 on ShapePart's 19 attributes, a flat primitive spec. Report: 36/100, down from 41.
+
+## Catalog workspace: master data maintenance with a live 3D preview (2026-11-14)
+
+`mdlsource/27-catalog-workspace.mdl` adds a catalog manager role (module role CatalogManager, on the Administrator user role and on a new "CatalogManager" user role with demo user `demo_catalog`), and these pages:
+- **Catalog:** products in a Data grid 2 with row-click selection; the selected product's tabs come from a snippet with a `$Product` parameter, reused by the Product_Detail page.
+- **Part model editor.**
+- **Catalog quality:** `CatalogQuality.java`, six SPARQL rules over the catalog dataset plus a wiki scan.
+
+The catalog entities gained `ChangedDate`/`ChangedBy` and a `ModelVersion` that the 3D preview watches. The new **ModelPreview** pluggable widget wraps the shared viewer: bike SKU, highlight and version come from expressions. Whenever the version changes it fetches the model again (and once per page visit, so a part edit made elsewhere shows on the next visit).
+
+Measured, live, as `demo_catalog` (Playwright):
+- **Workspace:** shows 21 products. Selecting EB-200 fills the tabs. The 3D tab draws its 11 parts from the BOM.
+- **Bad link caught:** linking SSP-31 (30.9 mm) as fitting EB-200 through the Compatibility tab makes the quality page report "Fit size conflict … needs 30.9 mm and the bike's seat tube is 27.2 mm". The bike's 3D view, with "Show what fits" on, lists "SSP-31 (needs 30.9 mm; this bike's seat tube is 27.2 mm)". Removing the link through the UI empties the quality page again.
+- **Part model editing:** changing SSP-27's spring colour in the shape popup changes the model endpoint's data, and the preview redraws (a fresh viewer, checked by marking the old one). The colour was restored afterwards.
+- **Explorer freshness:** the reference API behind the explorer shows the new SSP-31 → EB-200 link immediately after the save, and no link after the removal.
+- **Access:** a plain support agent has no Catalog menu items, and `/p/catalog` sends them to sign-in.
+
+**Bug found by a test: SPARQL cannot see the current transaction.** The first version rebuilt the graph snapshot inside each save. SPARQL runs through DuckDB's own PostgreSQL connection, so it only sees committed data, and the snapshot would always lag one change behind. A throwaway microflow test proved it: after `SUB_Product_SeedLink` in the same transaction, an XPath retrieve sees the link and `JA_Sparql_Query` (ASK) says false. Saves now discard the snapshot instead, and the next explorer or API call rebuilds it after the commit. The quality test therefore checks the wiki rule, which reads with XPath in the test's own transaction, plus "no errors" on the seeded catalog. It cannot plant a SPARQL-visible defect inside a test. Wiki search does not have this problem: it uses `executeWithConnection(getContext())`.
+
+mxcli notes:
+- **Four mistakes passed `check` and failed the build:**
+  - a fully qualified association path in a column or text parameter (CE1613), filed as ako/mxcli#2252;
+  - the same through `System.changedBy` in a snippet, which made mxbuild abort, also #2252;
+  - `$currentObject/ChangedDate` for an AutoChangedDate attribute in a visibility expression (CE0117; the member is `changedDate`), filed as ako/mxcli#2253;
+  - a flow argument naming the enclosing dataview (`Product = $dvProduct`) silently dropped (CE0115), known as ako/mxcli#2095.
+- **`docker check` is the gate that catches these;** run it before restarting the app.
+- **Grants are additive:** narrowing `grant create, delete, read, write` to `grant read, write` in the script leaves create and delete in place; `revoke create, delete … from …` removed them.
+- **Two buttons on the same entity:** a list of Products inside a Product dataview cannot pass both to one microflow. The compatibility lists use non-persistent link rows (CatalogPick) that carry both.
+
+Gates: every touched script's second exec writes nothing. `lint` is 0 errors and 53 warnings, down from 54: ACT_ flows now only call SUB_ flows (CONV010), change+commit are one activity (CONV021), and the role no longer has create/delete (CONV006). `report` is 36/100 (unchanged). `docker check` reports 0 errors. `test` passes 63/63.
+
+Theme: the Data grid 2 row-click selection painted the selected row light lavender under the dark theme's light text, and the combo box input was white under light text. Both are fixed in `themesource/servicedesk/web/main.scss`, and the combo box fix applies app-wide.

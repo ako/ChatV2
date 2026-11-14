@@ -1,0 +1,901 @@
+mdl 1;
+
+-- The catalog workspace: where catalog managers maintain the master data the
+-- chat, the graph and the 3D viewer are built on (24-product-catalog.mdl,
+-- 26-bike-bom.mdl).
+--
+--   * Catalog (Catalog_Workspace): products on the left, the selected product's
+--     tabs on the right: details, compatibility, bill of materials, mount
+--     points and 3D model. The bike tabs show a live 3D preview (ModelPreview
+--     widget) that is redrawn after every saved change.
+--   * A part's 3D model (PartModel_Edit): where it mounts, its fit size, its
+--     shape primitives, previewed on a bike that carries it.
+--   * Catalog quality (Catalog_Quality): checks the catalog through the graph
+--     (JA_Catalog_Quality): parts with no 3D model, compatibility that
+--     contradicts fit sizes or mount points, products without supplier or
+--     price, recalls without a batch, wiki pages naming SKUs that do not exist.
+--
+-- Only catalog managers (and administrators) edit, through the pages' flows:
+-- the role reads and writes, and the flows create and delete. Everything records
+-- when it changed. A save discards the product graph snapshot; the next page or
+-- API call rebuilds it after the save has committed, because SPARQL reads
+-- through its own database connection and cannot see uncommitted changes. The
+-- AI's tools query the database directly and always see the committed state.
+
+/** A data quality finding about the catalog. */
+create or modify non-persistent entity "ServiceDesk"."CatalogIssue" (
+  "Severity": String(10),
+  "Rule": String(60),
+  "Sku": String(30),
+  "Name": String(200),
+  "Message": String(500)
+);
+
+/** A choice made in a popup: which product to link to another (compatibility). */
+create or modify non-persistent entity "ServiceDesk"."CatalogPick" (
+  "Direction": String(10)
+);
+create or modify association "ServiceDesk"."CatalogPick_Product" from "ServiceDesk"."CatalogPick" to "ServiceDesk"."Product";
+create or modify association "ServiceDesk"."CatalogPick_Target" from "ServiceDesk"."CatalogPick" to "ServiceDesk"."Product";
+
+grant read * on entity "ServiceDesk"."CatalogIssue" to "ServiceDesk"."CatalogManager";
+grant create, read *, write * on entity "ServiceDesk"."CatalogPick" to "ServiceDesk"."CatalogManager";
+
+grant read *, write * on entity "ServiceDesk"."Product" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."Supplier" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."KnownIssue" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."BomLine" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."MountSlot" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."PartModel" to "ServiceDesk"."CatalogManager";
+grant read *, write * on entity "ServiceDesk"."ShapePart" to "ServiceDesk"."CatalogManager";
+
+-- ---- Saving --------------------------------------------------------------
+-- Page actions (ACT_) only open and close pages; the work is in the SUB_ flows.
+
+/** After a catalog change: the bike's 3D preview reloads (its model version goes up), and the graph snapshot is discarded. It is rebuilt by the next page or API call, after this transaction has committed: SPARQL reads through its own database connection and cannot see uncommitted changes. */
+create or modify microflow "ServiceDesk"."SUB_Catalog_Changed" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  if $Product != empty then
+    change $Product ("ModelVersion" = $Product/ModelVersion + 1) commit refresh;
+  end if;
+  retrieve $Snapshot from "ServiceDesk"."GraphNode";
+  delete $Snapshot;
+end;
+
+/** Saves a product's details. */
+create or modify microflow "ServiceDesk"."SUB_Product_Save" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  commit $Product refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
+end;
+
+/** A new, unsaved product with defaults. */
+create or modify microflow "ServiceDesk"."SUB_Product_CreateDraft" ()
+returns "ServiceDesk"."Product" as $Product
+folder 'Catalog workspace'
+begin
+  $Product = create "ServiceDesk"."Product" ("Kind" = ServiceDesk.ENUM_ProductKind.Part, "WarrantyYears" = 2);
+  return $Product;
+end;
+
+/** Save on the Details tab. */
+create or modify microflow "ServiceDesk"."ACT_Product_Save" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_Product_Save" (Product = $Product);
+end;
+
+/** New product: opens the details popup for it. */
+create or modify microflow "ServiceDesk"."ACT_Product_New" ()
+folder 'Catalog workspace'
+begin
+  $Product = call microflow "ServiceDesk"."SUB_Product_CreateDraft" ();
+  show page "ServiceDesk"."Product_NewPopup" ("Product" = $Product);
+end;
+
+/** Save in the new-product popup. */
+create or modify microflow "ServiceDesk"."ACT_Product_SaveNew" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_Product_Save" (Product = $Product);
+  close page;
+end;
+
+-- ---- Compatibility -------------------------------------------------------
+
+/** A pick for the add-compatibility popup: Direction 'on' (what the product fits on) or 'it' (what fits it). */
+create or modify microflow "ServiceDesk"."SUB_CatalogPick_Create" ($Product: "ServiceDesk"."Product", $Direction: String)
+returns "ServiceDesk"."CatalogPick" as $Pick
+folder 'Catalog workspace'
+begin
+  $Pick = create "ServiceDesk"."CatalogPick" ("Direction" = $Direction, "ServiceDesk"."CatalogPick_Product" = $Product);
+  return $Pick;
+end;
+
+/** Adds the chosen compatibility link; false (with feedback) when no other product was chosen. */
+create or modify microflow "ServiceDesk"."SUB_Compat_Add" ($CatalogPick: "ServiceDesk"."CatalogPick")
+returns Boolean as $Added
+folder 'Catalog workspace'
+begin
+  retrieve $Product from $CatalogPick/"ServiceDesk"."CatalogPick_Product";
+  retrieve $Target from $CatalogPick/"ServiceDesk"."CatalogPick_Target";
+  if $Target = empty then
+    validation feedback $CatalogPick/"ServiceDesk"."CatalogPick_Target" message 'Choose a product.';
+    return false;
+  end if;
+  if $Target = $Product then
+    validation feedback $CatalogPick/"ServiceDesk"."CatalogPick_Target" message 'A product cannot fit on itself.';
+    return false;
+  end if;
+  if $CatalogPick/Direction = 'on' then
+    change $Product ("ServiceDesk"."Product_CompatibleWith" += $Target) commit refresh;
+  else
+    change $Target ("ServiceDesk"."Product_CompatibleWith" += $Product) commit refresh;
+  end if;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
+  return true;
+end;
+
+/** Removes a compatibility link shown in one of the two lists. */
+create or modify microflow "ServiceDesk"."SUB_Compat_Remove" ($CatalogPick: "ServiceDesk"."CatalogPick")
+folder 'Catalog workspace'
+begin
+  retrieve $Product from $CatalogPick/"ServiceDesk"."CatalogPick_Product";
+  retrieve $Other from $CatalogPick/"ServiceDesk"."CatalogPick_Target";
+  if $CatalogPick/Direction = 'on' then
+    change $Product ("ServiceDesk"."Product_CompatibleWith" -= $Other) commit refresh;
+  else
+    change $Other ("ServiceDesk"."Product_CompatibleWith" -= $Product) commit refresh;
+  end if;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
+end;
+
+/** The products this one fits on, as links the list can remove. */
+create or modify microflow "ServiceDesk"."DS_Compat_FitsOn" ($Product: "ServiceDesk"."Product")
+returns List of "ServiceDesk"."CatalogPick" as $Links
+folder 'Catalog workspace'
+begin
+  $Links = create list of "ServiceDesk"."CatalogPick";
+  retrieve $Targets from $Product/"ServiceDesk"."Product_CompatibleWith";
+  $Sorted = sort $Targets by Sku asc;
+  loop $Target in $Sorted begin
+    $Link = create "ServiceDesk"."CatalogPick" ("Direction" = 'on', "ServiceDesk"."CatalogPick_Product" = $Product, "ServiceDesk"."CatalogPick_Target" = $Target);
+    add $Link to $Links;
+  end loop;
+  return $Links;
+end;
+
+/** The products that fit on this one, as links the list can remove. */
+create or modify microflow "ServiceDesk"."DS_Compat_FitsIt" ($Product: "ServiceDesk"."Product")
+returns List of "ServiceDesk"."CatalogPick" as $Links
+folder 'Catalog workspace'
+begin
+  $Links = create list of "ServiceDesk"."CatalogPick";
+  retrieve $Sources from "ServiceDesk"."Product" where ["ServiceDesk"."Product_CompatibleWith" = $Product] sort by "Sku" asc;
+  loop $Source in $Sources begin
+    $Link = create "ServiceDesk"."CatalogPick" ("Direction" = 'it', "ServiceDesk"."CatalogPick_Product" = $Product, "ServiceDesk"."CatalogPick_Target" = $Source);
+    add $Link to $Links;
+  end loop;
+  return $Links;
+end;
+
+/** Opens the popup to add what a product fits on (Direction 'on') or what fits it ('it'). */
+create or modify microflow "ServiceDesk"."ACT_Compat_Open" ($Product: "ServiceDesk"."Product", $Direction: String)
+folder 'Catalog workspace'
+begin
+  $Pick = call microflow "ServiceDesk"."SUB_CatalogPick_Create" (Product = $Product, Direction = $Direction);
+  show page "ServiceDesk"."Compat_AddPopup" ("CatalogPick" = $Pick);
+end;
+
+/** Add in the compatibility popup. */
+create or modify microflow "ServiceDesk"."ACT_Compat_Add" ($CatalogPick: "ServiceDesk"."CatalogPick")
+folder 'Catalog workspace'
+begin
+  $Added = call microflow "ServiceDesk"."SUB_Compat_Add" (CatalogPick = $CatalogPick);
+  if $Added then
+    close page;
+  end if;
+end;
+
+/** Remove in a compatibility list. */
+create or modify microflow "ServiceDesk"."ACT_Compat_Remove" ($CatalogPick: "ServiceDesk"."CatalogPick")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_Compat_Remove" (CatalogPick = $CatalogPick);
+end;
+
+-- ---- Bill of materials and mount points ----------------------------------
+
+/** A new, unsaved BOM line for a bike. */
+create or modify microflow "ServiceDesk"."SUB_BomLine_CreateDraft" ($Product: "ServiceDesk"."Product")
+returns "ServiceDesk"."BomLine" as $Line
+folder 'Catalog workspace'
+begin
+  $Line = create "ServiceDesk"."BomLine" ("Quantity" = 1, "Role" = ServiceDesk.ENUM_BomRole.Fitted, "ServiceDesk"."BomLine_Bike" = $Product);
+  return $Line;
+end;
+
+/** Saves a BOM line: it needs a part, at least one, and a part only once per bike. False (with feedback) when it is not valid. */
+create or modify microflow "ServiceDesk"."SUB_BomLine_Save" ($BomLine: "ServiceDesk"."BomLine")
+returns Boolean as $Saved
+folder 'Catalog workspace'
+begin
+  retrieve $Part from $BomLine/"ServiceDesk"."BomLine_Part";
+  retrieve $Bike from $BomLine/"ServiceDesk"."BomLine_Bike";
+  if $Part = empty then
+    validation feedback $BomLine/"ServiceDesk"."BomLine_Part" message 'Choose a part.';
+    return false;
+  end if;
+  if $BomLine/Quantity < 1 then
+    validation feedback $BomLine/Quantity message 'At least one.';
+    return false;
+  end if;
+  retrieve $Twin from "ServiceDesk"."BomLine" where ["ServiceDesk"."BomLine_Bike" = $Bike]["ServiceDesk"."BomLine_Part" = $Part][id != $BomLine] first;
+  if $Twin != empty then
+    validation feedback $BomLine/"ServiceDesk"."BomLine_Part" message 'This bike already has a line for this part.';
+    return false;
+  end if;
+  commit $BomLine refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Bike);
+  return true;
+end;
+
+/** Deletes a BOM line. */
+create or modify microflow "ServiceDesk"."SUB_BomLine_Delete" ($BomLine: "ServiceDesk"."BomLine")
+folder 'Catalog workspace'
+begin
+  retrieve $Bike from $BomLine/"ServiceDesk"."BomLine_Bike";
+  delete $BomLine refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Bike);
+end;
+
+/** New BOM line for a bike. */
+create or modify microflow "ServiceDesk"."ACT_BomLine_New" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  $Line = call microflow "ServiceDesk"."SUB_BomLine_CreateDraft" (Product = $Product);
+  show page "ServiceDesk"."BomLine_EditPopup" ("BomLine" = $Line);
+end;
+
+/** Save in the BOM line popup. */
+create or modify microflow "ServiceDesk"."ACT_BomLine_Save" ($BomLine: "ServiceDesk"."BomLine")
+folder 'Catalog workspace'
+begin
+  $Saved = call microflow "ServiceDesk"."SUB_BomLine_Save" (BomLine = $BomLine);
+  if $Saved then
+    close page;
+  end if;
+end;
+
+/** Delete in the BOM grid. */
+create or modify microflow "ServiceDesk"."ACT_BomLine_Delete" ($BomLine: "ServiceDesk"."BomLine")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_BomLine_Delete" (BomLine = $BomLine);
+end;
+
+/** A new, unsaved mount point on a bike. */
+create or modify microflow "ServiceDesk"."SUB_MountSlot_CreateDraft" ($Product: "ServiceDesk"."Product")
+returns "ServiceDesk"."MountSlot" as $Slot
+folder 'Catalog workspace'
+begin
+  $Slot = create "ServiceDesk"."MountSlot" ("X" = 0, "Y" = 0.5, "Z" = 0, "ServiceDesk"."MountSlot_Product" = $Product);
+  return $Slot;
+end;
+
+/** Saves a mount point: a code that is unique on the bike. False (with feedback) when it is not valid. */
+create or modify microflow "ServiceDesk"."SUB_MountSlot_Save" ($MountSlot: "ServiceDesk"."MountSlot")
+returns Boolean as $Saved
+folder 'Catalog workspace'
+begin
+  retrieve $Bike from $MountSlot/"ServiceDesk"."MountSlot_Product";
+  if $MountSlot/Code = empty or trim($MountSlot/Code) = '' then
+    validation feedback $MountSlot/Code message 'Enter a code, e.g. rear_rack.';
+    return false;
+  end if;
+  retrieve $Twin from "ServiceDesk"."MountSlot" where ["ServiceDesk"."MountSlot_Product" = $Bike][Code = $MountSlot/Code][id != $MountSlot] first;
+  if $Twin != empty then
+    validation feedback $MountSlot/Code message 'This bike already has a mount point with this code.';
+    return false;
+  end if;
+  commit $MountSlot refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Bike);
+  return true;
+end;
+
+/** Deletes a mount point. */
+create or modify microflow "ServiceDesk"."SUB_MountSlot_Delete" ($MountSlot: "ServiceDesk"."MountSlot")
+folder 'Catalog workspace'
+begin
+  retrieve $Bike from $MountSlot/"ServiceDesk"."MountSlot_Product";
+  delete $MountSlot refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Bike);
+end;
+
+/** New mount point on a bike. */
+create or modify microflow "ServiceDesk"."ACT_MountSlot_New" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  $Slot = call microflow "ServiceDesk"."SUB_MountSlot_CreateDraft" (Product = $Product);
+  show page "ServiceDesk"."MountSlot_EditPopup" ("MountSlot" = $Slot);
+end;
+
+/** Save in the mount point popup. */
+create or modify microflow "ServiceDesk"."ACT_MountSlot_Save" ($MountSlot: "ServiceDesk"."MountSlot")
+folder 'Catalog workspace'
+begin
+  $Saved = call microflow "ServiceDesk"."SUB_MountSlot_Save" (MountSlot = $MountSlot);
+  if $Saved then
+    close page;
+  end if;
+end;
+
+/** Delete in the mount point grid. */
+create or modify microflow "ServiceDesk"."ACT_MountSlot_Delete" ($MountSlot: "ServiceDesk"."MountSlot")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_MountSlot_Delete" (MountSlot = $MountSlot);
+end;
+
+-- ---- A part's 3D model -----------------------------------------------------
+
+/** A part's 3D model, created empty when it has none; its preview bike is one that carries or takes the part. */
+create or modify microflow "ServiceDesk"."SUB_PartModel_GetOrCreate" ($Product: "ServiceDesk"."Product")
+returns "ServiceDesk"."PartModel" as $Model
+folder 'Catalog workspace'
+begin
+  retrieve $Found from "ServiceDesk"."PartModel" where ["ServiceDesk"."PartModel_Product" = $Product] first;
+  if $Found = empty then
+    $New = create "ServiceDesk"."PartModel" ("ExplodeX" = 0, "ExplodeY" = 0.3, "ExplodeZ" = 0.3, "PreviewBikeSku" = 'EB-200', "ServiceDesk"."PartModel_Product" = $Product) commit;
+    return $New;
+  end if;
+  if $Found/PreviewBikeSku != empty and $Found/PreviewBikeSku != '' then
+    return $Found;
+  end if;
+  retrieve $Line from "ServiceDesk"."BomLine" where ["ServiceDesk"."BomLine_Part" = $Product] first;
+  if $Line != empty then
+    retrieve $Bike from $Line/"ServiceDesk"."BomLine_Bike";
+    change $Found ("PreviewBikeSku" = $Bike/Sku);
+    return $Found;
+  end if;
+  retrieve $FitsOn from $Product/"ServiceDesk"."Product_CompatibleWith";
+  $FirstBike = find $FitsOn where $currentObject/Kind = ServiceDesk.ENUM_ProductKind.Bike or $currentObject/Kind = ServiceDesk.ENUM_ProductKind.EBike;
+  change $Found ("PreviewBikeSku" = (if $FirstBike = empty then 'EB-200' else $FirstBike/Sku));
+  return $Found;
+end;
+
+/** Saves a part model and redraws its preview (its version goes up). */
+create or modify microflow "ServiceDesk"."SUB_PartModel_Save" ($PartModel: "ServiceDesk"."PartModel")
+folder 'Catalog workspace'
+begin
+  change $PartModel ("ModelVersion" = $PartModel/ModelVersion + 1) commit refresh;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = empty);
+end;
+
+/** A new, unsaved shape part for a part model. */
+create or modify microflow "ServiceDesk"."SUB_ShapePart_CreateDraft" ($PartModel: "ServiceDesk"."PartModel")
+returns "ServiceDesk"."ShapePart" as $Shape
+folder 'Catalog workspace'
+begin
+  retrieve $Shapes from $PartModel/"ServiceDesk"."ShapePart_PartModel";
+  $Count = count $Shapes;
+  $Shape = create "ServiceDesk"."ShapePart" ("Seq" = $Count + 1, "Kind" = ServiceDesk.ENUM_ShapeKind.Box, "Finish" = ServiceDesk.ENUM_ShapeFinish.Matte, "Color" = '#9b5bb5', "Opacity" = 1,
+    "SizeA" = 0.1, "SizeB" = 0.1, "SizeC" = 0.1, "X" = 0, "Y" = 0, "Z" = 0, "RotX" = 0, "RotY" = 0, "RotZ" = 0, "Segments" = 24, "Detail" = 12, "ServiceDesk"."ShapePart_PartModel" = $PartModel);
+  return $Shape;
+end;
+
+/** Saves a shape part and redraws the preview. False (with feedback) when the colour is not a hex colour. */
+create or modify microflow "ServiceDesk"."SUB_ShapePart_Save" ($ShapePart: "ServiceDesk"."ShapePart")
+returns Boolean as $Saved
+folder 'Catalog workspace'
+begin
+  if $ShapePart/Color = empty or not(isMatch($ShapePart/Color, '#[0-9a-fA-F]{6}')) then
+    validation feedback $ShapePart/Color message 'A colour like #4fd1c5.';
+    return false;
+  end if;
+  commit $ShapePart refresh;
+  retrieve $Model from $ShapePart/"ServiceDesk"."ShapePart_PartModel";
+  call microflow "ServiceDesk"."SUB_PartModel_Save" (PartModel = $Model);
+  return true;
+end;
+
+/** Deletes a shape part and redraws the preview. */
+create or modify microflow "ServiceDesk"."SUB_ShapePart_Delete" ($ShapePart: "ServiceDesk"."ShapePart")
+folder 'Catalog workspace'
+begin
+  retrieve $Model from $ShapePart/"ServiceDesk"."ShapePart_PartModel";
+  delete $ShapePart refresh;
+  call microflow "ServiceDesk"."SUB_PartModel_Save" (PartModel = $Model);
+end;
+
+/** Opens a part's 3D model. */
+create or modify microflow "ServiceDesk"."ACT_PartModel_Open" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  $Model = call microflow "ServiceDesk"."SUB_PartModel_GetOrCreate" (Product = $Product);
+  show page "ServiceDesk"."PartModel_Edit" ("PartModel" = $Model);
+end;
+
+/** Save and redraw on the part model page. */
+create or modify microflow "ServiceDesk"."ACT_PartModel_Save" ($PartModel: "ServiceDesk"."PartModel")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_PartModel_Save" (PartModel = $PartModel);
+end;
+
+/** New shape part. */
+create or modify microflow "ServiceDesk"."ACT_ShapePart_New" ($PartModel: "ServiceDesk"."PartModel")
+folder 'Catalog workspace'
+begin
+  $Shape = call microflow "ServiceDesk"."SUB_ShapePart_CreateDraft" (PartModel = $PartModel);
+  show page "ServiceDesk"."ShapePart_EditPopup" ("ShapePart" = $Shape);
+end;
+
+/** Save in the shape popup. */
+create or modify microflow "ServiceDesk"."ACT_ShapePart_Save" ($ShapePart: "ServiceDesk"."ShapePart")
+folder 'Catalog workspace'
+begin
+  $Saved = call microflow "ServiceDesk"."SUB_ShapePart_Save" (ShapePart = $ShapePart);
+  if $Saved then
+    close page;
+  end if;
+end;
+
+/** Delete in the shapes grid. */
+create or modify microflow "ServiceDesk"."ACT_ShapePart_Delete" ($ShapePart: "ServiceDesk"."ShapePart")
+folder 'Catalog workspace'
+begin
+  call microflow "ServiceDesk"."SUB_ShapePart_Delete" (ShapePart = $ShapePart);
+end;
+
+-- ---- Data quality ----------------------------------------------------------
+
+/** Checks the catalog through the graph and the wiki; one row per finding, errors first. */
+create or modify java action "ServiceDesk"."JA_Catalog_Quality" folder 'Catalog workspace' () returns List of "ServiceDesk"."CatalogIssue" as $Issues
+not exposed
+as $$
+return servicedesk.graph.CatalogQuality.check(getContext());
+$$;
+
+/** Data source of the quality page. */
+create or modify microflow "ServiceDesk"."DS_Catalog_Quality" ()
+returns List of "ServiceDesk"."CatalogIssue" as $Issues
+folder 'Catalog workspace'
+begin
+  $Found = call java action "ServiceDesk"."JA_Catalog_Quality" () on error without rollback begin
+    log error node 'ServiceDesk' 'Catalog quality check failed: {1}' with ({1} = $latestError/Message);
+    $Failed = create "ServiceDesk"."CatalogIssue" ("Severity" = 'Error', "Rule" = 'Check failed', "Message" = 'The quality check could not run: ' + $latestError/Message);
+    $One = create list of "ServiceDesk"."CatalogIssue";
+    add $Failed to $One;
+    return $One;
+  end error;
+  return $Found;
+end;
+
+/** The product a finding is about, or empty. */
+create or modify microflow "ServiceDesk"."SUB_CatalogIssue_Product" ($CatalogIssue: "ServiceDesk"."CatalogIssue")
+returns "ServiceDesk"."Product" as $Product
+folder 'Catalog workspace'
+begin
+  retrieve $Found from "ServiceDesk"."Product" where [Sku = $CatalogIssue/Sku] first;
+  return $Found;
+end;
+
+/** Opens the product a finding is about. */
+create or modify microflow "ServiceDesk"."ACT_CatalogIssue_Open" ($CatalogIssue: "ServiceDesk"."CatalogIssue")
+folder 'Catalog workspace'
+begin
+  $Product = call microflow "ServiceDesk"."SUB_CatalogIssue_Product" (CatalogIssue = $CatalogIssue);
+  if $Product = empty then
+    show message 'This finding is not about a product in the catalog.' type Information;
+    return;
+  end if;
+  show page "ServiceDesk"."Product_Detail" ("Product" = $Product);
+end;
+
+-- ---- Pages ------------------------------------------------------------------
+
+/** Popup: a new product's SKU, name and kind; the rest is filled in on its tabs. */
+create or modify page "ServiceDesk"."Product_NewPopup" folder 'Catalog workspace'
+(
+  params: ( $Product: "ServiceDesk"."Product" ),
+  title: 'New product',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgProduct_NewPopup {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvNewProduct (datasource: $Product) {
+          textbox tbNewSku (label: 'SKU', attribute: "Sku")
+          textbox tbNewName (label: 'Name', attribute: "Name")
+          combobox cbNewKind (label: 'Kind', attribute: "Kind")
+          combobox cbNewSupplier (label: 'Supplier', Association: "ServiceDesk"."Product_Supplier", datasource: database "ServiceDesk"."Supplier", CaptionAttribute: "Name")
+          textbox tbNewPrice (label: 'Price (EUR)', attribute: "Price")
+          footer {
+            actionbutton btnSaveNew (caption: 'Save', action: call microflow "ServiceDesk"."ACT_Product_SaveNew" (Product = $currentObject), buttonstyle: primary)
+            actionbutton btnCancelNew (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup: pick the product to link. */
+create or modify page "ServiceDesk"."Compat_AddPopup" folder 'Catalog workspace'
+(
+  params: ( $CatalogPick: "ServiceDesk"."CatalogPick" ),
+  title: 'Add compatibility',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgCompat_AddPopup {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvPick (datasource: $CatalogPick) {
+          dynamictext txtPickOn (content: 'Choose a product this one fits on or works with.', rendermode: Paragraph, Visible: $currentObject/Direction = 'on')
+          dynamictext txtPickIt (content: 'Choose a product that fits on or works with this one.', rendermode: Paragraph, Visible: $currentObject/Direction = 'it')
+          combobox cbPickTarget (label: 'Product', Association: "ServiceDesk"."CatalogPick_Target", datasource: database "ServiceDesk"."Product", CaptionAttribute: "Name")
+          footer {
+            actionbutton btnPickAdd (caption: 'Add', action: call microflow "ServiceDesk"."ACT_Compat_Add" (CatalogPick = $currentObject), buttonstyle: primary)
+            actionbutton btnPickCancel (caption: 'Cancel', action: close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup: one BOM line. */
+create or modify page "ServiceDesk"."BomLine_EditPopup" folder 'Catalog workspace'
+(
+  params: ( $BomLine: "ServiceDesk"."BomLine" ),
+  title: 'Bill of materials line',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgBomLine_EditPopup {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvBomLine (datasource: $BomLine) {
+          combobox cbBomPart (label: 'Part', Association: "ServiceDesk"."BomLine_Part", datasource: database "ServiceDesk"."Product", CaptionAttribute: "Name")
+          textbox tbBomQty (label: 'Quantity', attribute: "Quantity")
+          radiobuttons rbBomRole (label: 'Role', attribute: "Role")
+          dynamictext txtBomHelp (content: 'Fitted: the bike ships with it (its components). Standard: tyres, tubes, brakes and seat post.', rendermode: Paragraph, class: 'text-muted')
+          footer {
+            actionbutton btnSaveBom (caption: 'Save', action: call microflow "ServiceDesk"."ACT_BomLine_Save" (BomLine = $currentObject), buttonstyle: primary)
+            actionbutton btnCancelBom (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup: one mount point. */
+create or modify page "ServiceDesk"."MountSlot_EditPopup" folder 'Catalog workspace'
+(
+  params: ( $MountSlot: "ServiceDesk"."MountSlot" ),
+  title: 'Mount point',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgMountSlot_EditPopup {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvSlot (datasource: $MountSlot) {
+          textbox tbSlotCode (label: 'Code', attribute: "Code")
+          textbox tbSlotName (label: 'Name', attribute: "Name")
+          textbox tbSlotFit (label: 'Fit size (mm)', attribute: "FitDiameterMm")
+          textbox tbSlotX (label: 'X (m, along the bike)', attribute: "X")
+          textbox tbSlotY (label: 'Y (m, height)', attribute: "Y")
+          textbox tbSlotZ (label: 'Z (m, across)', attribute: "Z")
+          dynamictext txtSlotHelp (content: 'Parts mount at a code (down_tube, rear_hub, bottom_bracket, floor, wheels, seat_tube, rear_rack, handlebar, frame). A fit size, when both the slot and the part have one, must match.', rendermode: Paragraph, class: 'text-muted')
+          footer {
+            actionbutton btnSaveSlot (caption: 'Save', action: call microflow "ServiceDesk"."ACT_MountSlot_Save" (MountSlot = $currentObject), buttonstyle: primary)
+            actionbutton btnCancelSlot (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+/** Popup: one shape primitive. */
+create or modify page "ServiceDesk"."ShapePart_EditPopup" folder 'Catalog workspace'
+(
+  params: ( $ShapePart: "ServiceDesk"."ShapePart" ),
+  title: 'Shape',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  layoutgrid lgShapePart_EditPopup {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvShape (datasource: $ShapePart) {
+          combobox cbShapeKind (label: 'Kind', attribute: "Kind")
+          combobox cbShapeFinish (label: 'Finish', attribute: "Finish")
+          textbox tbShapeColor (label: 'Colour', attribute: "Color")
+          textbox tbShapeEmissive (label: 'Glow colour', attribute: "Emissive")
+          textbox tbShapeGlow (label: 'Glow strength', attribute: "Glow")
+          textbox tbShapeOpacity (label: 'Opacity (0-1)', attribute: "Opacity")
+          checkbox cbShapeWire (label: 'Wireframe', attribute: "Wireframe")
+          textbox tbShapeX (label: 'X', attribute: "X")
+          textbox tbShapeY (label: 'Y', attribute: "Y")
+          textbox tbShapeZ (label: 'Z', attribute: "Z")
+          textbox tbShapeA (label: 'Size A', attribute: "SizeA")
+          textbox tbShapeB (label: 'Size B', attribute: "SizeB")
+          textbox tbShapeC (label: 'Size C', attribute: "SizeC")
+          textbox tbShapeRX (label: 'Rotate X (°)', attribute: "RotX")
+          textbox tbShapeRY (label: 'Rotate Y (°)', attribute: "RotY")
+          textbox tbShapeRZ (label: 'Rotate Z (°)', attribute: "RotZ")
+          textbox tbShapeSeg (label: 'Segments', attribute: "Segments")
+          textbox tbShapeDetail (label: 'Detail', attribute: "Detail")
+          footer {
+            actionbutton btnSaveShape (caption: 'Save', action: call microflow "ServiceDesk"."ACT_ShapePart_Save" (ShapePart = $currentObject), buttonstyle: primary)
+            actionbutton btnCancelShape (caption: 'Cancel', action: cancel changes close page)
+          }
+        }
+      }
+    }
+  }
+};
+
+
+/** A product's tabs: details, compatibility, bill of materials, mount points and 3D model. Used by the workspace and the product page. */
+create or modify snippet "ServiceDesk"."Product_Tabs" folder 'Catalog workspace'
+(
+  Params: ( $Product: "ServiceDesk"."Product" )
+)
+{
+  layoutgrid lgProductTabs {
+    row {
+      column (desktopwidth: autofill) {
+        dataview dvProduct (datasource: $Product) {
+          dynamictext txtProductTitle (content: '{1} · {2}', contentparams: ({1} = "Sku", {2} = "Name"), rendermode: H3)
+          dynamictext txtChanged (content: 'Last changed {1}', contentparams: ({1} = "ChangedDate"), rendermode: Paragraph, class: 'text-muted', Visible: $currentObject/changedDate != empty)
+          tabcontainer tcProduct {
+            tabpage tpDetails (Caption: 'Details') {
+              textbox tbSku (label: 'SKU', attribute: "Sku")
+              textbox tbName (label: 'Name', attribute: "Name")
+              combobox cbKind (label: 'Kind', attribute: "Kind")
+              combobox cbSupplier (label: 'Supplier', Association: "ServiceDesk"."Product_Supplier", datasource: database "ServiceDesk"."Supplier", CaptionAttribute: "Name")
+              textbox tbPrice (label: 'Price (EUR)', attribute: "Price")
+              textbox tbWarranty (label: 'Warranty (years)', attribute: "WarrantyYears")
+              container ctBikeFacts (Visible: $currentObject/Kind = ServiceDesk.ENUM_ProductKind.Bike or $currentObject/Kind = ServiceDesk.ENUM_ProductKind.EBike) {
+                textbox tbWheel (label: 'Wheel size', attribute: "WheelSize")
+                textbox tbSeatPost (label: 'Seat post diameter', attribute: "SeatPostDiameter")
+                textbox tbBrakes (label: 'Brakes', attribute: "Brakes")
+                checkbox cbRack (label: 'Rack mount', attribute: "RackMount")
+              }
+              actionbutton btnSaveProduct (caption: 'Save', action: call microflow "ServiceDesk"."ACT_Product_Save" (Product = $currentObject), buttonstyle: primary)
+            }
+            tabpage tpCompat (Caption: 'Compatibility') {
+              dynamictext txtFitsOnHead (content: 'Fits on / works with', rendermode: H4)
+              listview lvFitsOn (datasource: microflow "ServiceDesk"."DS_Compat_FitsOn" (Product = $currentObject)) {
+          container ctFitsOn (class: 'catalog-row') {
+            dynamictext txtFitsOn (content: '{1} · {2}', contentparams: ({1} = CatalogPick_Target/"Sku", {2} = CatalogPick_Target/"Name"))
+            actionbutton btnRemoveFitsOn (caption: 'Remove', action: call microflow "ServiceDesk"."ACT_Compat_Remove" (CatalogPick = $currentObject), buttonstyle: default)
+          }
+        }
+        actionbutton btnAddFitsOn (caption: 'Add what it fits on', action: call microflow "ServiceDesk"."ACT_Compat_Open" (Product = $currentObject, Direction = 'on'), buttonstyle: default)
+              dynamictext txtFitsItHead (content: 'Fits it', rendermode: H4)
+              listview lvFitsIt (datasource: microflow "ServiceDesk"."DS_Compat_FitsIt" (Product = $currentObject)) {
+          container ctFitsIt (class: 'catalog-row') {
+            dynamictext txtFitsIt (content: '{1} · {2}', contentparams: ({1} = CatalogPick_Target/"Sku", {2} = CatalogPick_Target/"Name"))
+            actionbutton btnRemoveFitsIt (caption: 'Remove', action: call microflow "ServiceDesk"."ACT_Compat_Remove" (CatalogPick = $currentObject), buttonstyle: default)
+          }
+        }
+        actionbutton btnAddFitsIt (caption: 'Add what fits it', action: call microflow "ServiceDesk"."ACT_Compat_Open" (Product = $currentObject, Direction = 'it'), buttonstyle: default)
+            }
+            tabpage tpBom (Caption: 'Bill of materials') {
+              container ctBomNone (Visible: $currentObject/Kind != ServiceDesk.ENUM_ProductKind.Bike and $currentObject/Kind != ServiceDesk.ENUM_ProductKind.EBike) {
+                dynamictext txtBomNone (content: 'Only bikes have a bill of materials.', rendermode: Paragraph)
+              }
+              container ctBom (Visible: $currentObject/Kind = ServiceDesk.ENUM_ProductKind.Bike or $currentObject/Kind = ServiceDesk.ENUM_ProductKind.EBike) {
+                datagrid dgBom (datasource: database from "ServiceDesk"."BomLine" where ["ServiceDesk"."BomLine_Bike" = $currentObject] sort by "Role" asc) {
+                  column (attribute: BomLine_Part/"Sku", caption: 'Part')
+                  column (attribute: BomLine_Part/"Name", caption: 'Name')
+                  column (attribute: "Quantity", caption: 'Qty')
+                  column (attribute: "Role", caption: 'Role')
+                  column (caption: '') {
+                    actionbutton btnEditBom (caption: 'Edit', action: show page "ServiceDesk"."BomLine_EditPopup" ("BomLine" = $currentObject))
+                    actionbutton btnDeleteBom (caption: 'Delete', action: call microflow "ServiceDesk"."ACT_BomLine_Delete" (BomLine = $currentObject) with (Confirmation: 'Delete this BOM line?'))
+                  }
+                }
+                actionbutton btnNewBom (caption: 'Add a part', action: call microflow "ServiceDesk"."ACT_BomLine_New" (Product = $currentObject), buttonstyle: primary)
+              }
+            }
+            tabpage tpSlots (Caption: 'Mount points') {
+              container ctSlotsNone (Visible: $currentObject/Kind != ServiceDesk.ENUM_ProductKind.Bike and $currentObject/Kind != ServiceDesk.ENUM_ProductKind.EBike) {
+                dynamictext txtSlotsNone (content: 'Only bikes have mount points. A part says where it mounts in its 3D model.', rendermode: Paragraph)
+              }
+              container ctSlots (Visible: $currentObject/Kind = ServiceDesk.ENUM_ProductKind.Bike or $currentObject/Kind = ServiceDesk.ENUM_ProductKind.EBike) {
+                datagrid dgSlots (datasource: database from "ServiceDesk"."MountSlot" where ["ServiceDesk"."MountSlot_Product" = $currentObject] sort by "Code" asc) {
+                  column (attribute: "Code", caption: 'Code')
+                  column (attribute: "Name", caption: 'Name')
+                  column (attribute: "FitDiameterMm", caption: 'Fit (mm)')
+                  column (attribute: "X", caption: 'X')
+                  column (attribute: "Y", caption: 'Y')
+                  column (attribute: "Z", caption: 'Z')
+                  column (caption: '') {
+                    actionbutton btnEditSlot (caption: 'Edit', action: show page "ServiceDesk"."MountSlot_EditPopup" ("MountSlot" = $currentObject))
+                    actionbutton btnDeleteSlot (caption: 'Delete', action: call microflow "ServiceDesk"."ACT_MountSlot_Delete" (MountSlot = $currentObject) with (Confirmation: 'Delete this mount point? Parts that mount here will no longer show on this bike.'))
+                  }
+                }
+                actionbutton btnNewSlot (caption: 'Add a mount point', action: call microflow "ServiceDesk"."ACT_MountSlot_New" (Product = $currentObject), buttonstyle: primary)
+              }
+            }
+            tabpage tp3d (Caption: '3D model') {
+              container ctBike3d (Visible: $currentObject/Kind = ServiceDesk.ENUM_ProductKind.Bike or $currentObject/Kind = ServiceDesk.ENUM_ProductKind.EBike) {
+                dynamictext txtBike3d (content: 'The bike as assembled from its mount points, bill of materials and the parts that fit it. It is redrawn after every saved change.', rendermode: Paragraph)
+                modelpreview mpBike (bikeRef: $currentObject/Sku, version: toString($currentObject/ModelVersion), height: 420)
+              }
+              container ctPart3d (Visible: $currentObject/Kind != ServiceDesk.ENUM_ProductKind.Bike and $currentObject/Kind != ServiceDesk.ENUM_ProductKind.EBike) {
+                dynamictext txtPart3d (content: 'Where this part mounts on a bike, the fit size it needs, and its shape.', rendermode: Paragraph)
+                actionbutton btnOpenPartModel (caption: 'Edit the 3D model', action: call microflow "ServiceDesk"."ACT_PartModel_Open" (Product = $currentObject), buttonstyle: primary)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+/** The catalog workspace: products on the left, the selected product's tabs on the right. */
+create or modify page "ServiceDesk"."Catalog_Workspace" folder 'Catalog workspace'
+(
+  title: 'Catalog',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'catalog'
+)
+{
+  layoutgrid lgCatalog {
+    row {
+      column (desktopwidth: 4) {
+        dynamictext txtCatalogHeading (content: 'Catalog', rendermode: H2)
+        actionbutton btnNewProduct (caption: 'New product', action: call microflow "ServiceDesk"."ACT_Product_New", buttonstyle: primary)
+        datagrid dgProducts (
+          datasource: database from "ServiceDesk"."Product" sort by "Sku" asc,
+          Selection: Single,
+          itemSelectionMethod: rowClick,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "Sku", caption: 'SKU') { textfilter tfSku }
+          column (attribute: "Name", caption: 'Name') { textfilter tfName }
+          column (attribute: "Kind", caption: 'Kind') { dropdownfilter dfKind }
+        }
+      }
+      column (desktopwidth: 8) {
+        dynamictext txtPickProduct (content: 'Choose a product on the left to see and edit it.', rendermode: Paragraph, class: 'text-muted')
+        dataview dvSelected (datasource: selection dgProducts) {
+          snippetcall scProductTabs (snippet: "ServiceDesk"."Product_Tabs", params: (Product = $currentObject))
+        }
+      }
+    }
+  }
+};
+
+/** One product's tabs on a page of its own (opened from the quality page). */
+create or modify page "ServiceDesk"."Product_Detail" folder 'Catalog workspace'
+(
+  params: ( $Product: "ServiceDesk"."Product" ),
+  title: 'Product',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgProduct {
+    row {
+      column (desktopwidth: autofill) {
+        snippetcall scProductDetail (snippet: "ServiceDesk"."Product_Tabs", params: (Product = $Product))
+      }
+    }
+  }
+};
+
+/** A part's 3D model: where it mounts, its fit size and explode direction, its shapes, and a live preview on a bike. */
+create or modify page "ServiceDesk"."PartModel_Edit" folder 'Catalog workspace'
+(
+  params: ( $PartModel: "ServiceDesk"."PartModel" ),
+  title: '3D model',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  layoutgrid lgPartModel {
+    row {
+      column (desktopwidth: 5) {
+        dataview dvPartModel (datasource: $PartModel) {
+          dynamictext txtPartModelHead (content: '3D model of {1} · {2}', contentparams: ({1} = PartModel_Product/"Sku", {2} = PartModel_Product/"Name"), rendermode: H3)
+          textbox tbMountsAt (label: 'Mounts at (slot code)', attribute: "MountsAt")
+          textbox tbPartFit (label: 'Fit size (mm)', attribute: "FitDiameterMm")
+          textbox tbExX (label: 'Explode X', attribute: "ExplodeX")
+          textbox tbExY (label: 'Explode Y', attribute: "ExplodeY")
+          textbox tbExZ (label: 'Explode Z', attribute: "ExplodeZ")
+          textbox tbPreviewOn (label: 'Preview on bike', attribute: "PreviewBikeSku")
+          actionbutton btnSavePartModel (caption: 'Save and redraw', action: call microflow "ServiceDesk"."ACT_PartModel_Save" (PartModel = $currentObject), buttonstyle: primary)
+          dynamictext txtShapesHead (content: 'Shapes', rendermode: H4)
+          dynamictext txtShapesHelp (content: 'Positions are metres from the mount point; angles are degrees. Box: width, height, depth. Cylinder: top radius, bottom radius, length. Torus: radius, tube. Dome: radius.', rendermode: Paragraph, class: 'text-muted')
+          datagrid dgShapes (datasource: database from "ServiceDesk"."ShapePart" where ["ServiceDesk"."ShapePart_PartModel" = $currentObject] sort by "Seq" asc) {
+            column (attribute: "Seq", caption: '#')
+            column (attribute: "Kind", caption: 'Kind')
+            column (attribute: "Color", caption: 'Colour')
+            column (attribute: "SizeA", caption: 'A')
+            column (attribute: "SizeB", caption: 'B')
+            column (attribute: "SizeC", caption: 'C')
+            column (caption: '') {
+              actionbutton btnEditShape (caption: 'Edit', action: show page "ServiceDesk"."ShapePart_EditPopup" ("ShapePart" = $currentObject))
+              actionbutton btnDeleteShape (caption: 'Delete', action: call microflow "ServiceDesk"."ACT_ShapePart_Delete" (ShapePart = $currentObject) with (Confirmation: 'Delete this shape?'))
+            }
+          }
+          actionbutton btnNewShape (caption: 'Add a shape', action: call microflow "ServiceDesk"."ACT_ShapePart_New" (PartModel = $currentObject), buttonstyle: default)
+        }
+      }
+      column (desktopwidth: 7) {
+        dataview dvPartPreview (datasource: $PartModel) {
+          modelpreview mpPart (bikeRef: $currentObject/PreviewBikeSku, highlight: $currentObject/"ServiceDesk"."PartModel_Product"/"ServiceDesk"."Product"/"Sku", version: toString($currentObject/ModelVersion), height: 460)
+        }
+      }
+    }
+  }
+};
+
+/** Catalog quality: findings about the catalog, errors first, each linked to its product. */
+create or modify page "ServiceDesk"."Catalog_Quality" folder 'Catalog workspace'
+(
+  title: 'Catalog quality',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'catalog-quality'
+)
+{
+  layoutgrid lgQuality {
+    row {
+      column (desktopwidth: autofill) {
+        dynamictext txtQualityHeading (content: 'Catalog quality', rendermode: H2)
+        dynamictext txtQualityIntro (content: 'Checks the catalog as the chat and the 3D viewer see it: parts without a 3D model, compatibility that contradicts fit sizes or mount points, products without supplier or price, recalls without a batch, and wiki pages that name SKUs the catalog does not have.', rendermode: Paragraph)
+        listview lvIssues (datasource: microflow "ServiceDesk"."DS_Catalog_Quality") {
+          container ctIssue (class: 'catalog-issue') {
+            dynamictext txtIssueHead (content: '{1} · {2} · {3}', contentparams: ({1} = "Severity", {2} = "Rule", {3} = "Sku"), rendermode: H5)
+            dynamictext txtIssueMessage (content: '{1}', contentparams: ({1} = "Message"))
+            actionbutton btnOpenIssue (caption: 'Open product', action: call microflow "ServiceDesk"."ACT_CatalogIssue_Open" (CatalogIssue = $currentObject), Visible: $currentObject/Sku != empty and $currentObject/Sku != '')
+          }
+        }
+      }
+    }
+  }
+};
+
+grant execute on microflow "ServiceDesk"."ACT_Product_Save" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_Product_New" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_Product_SaveNew" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_Compat_Open" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_Compat_Add" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."DS_Compat_FitsOn" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."DS_Compat_FitsIt" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_Compat_Remove" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_BomLine_New" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_BomLine_Save" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_BomLine_Delete" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_MountSlot_New" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_MountSlot_Save" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_MountSlot_Delete" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_PartModel_Open" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_PartModel_Save" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_ShapePart_New" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_ShapePart_Save" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_ShapePart_Delete" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."DS_Catalog_Quality" to "ServiceDesk"."CatalogManager";
+grant execute on microflow "ServiceDesk"."ACT_CatalogIssue_Open" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."Catalog_Workspace" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."Product_Detail" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."Product_NewPopup" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."Compat_AddPopup" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."BomLine_EditPopup" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."MountSlot_EditPopup" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."PartModel_Edit" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."ShapePart_EditPopup" to "ServiceDesk"."CatalogManager";
+grant view on page "ServiceDesk"."Catalog_Quality" to "ServiceDesk"."CatalogManager";

@@ -41,6 +41,10 @@
   rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
   rr:predicateObjectMap [ rr:predicate shop:mountPoint ; rr:objectMap [ rr:column "name" ] ] .
 
+<#MountCode> rr:logicalTable [ rr:tableName "mount_point" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:mountCode ; rr:objectMap [ rr:column "code" ] ] .
+
 <#SeatTubeFit> rr:logicalTable [ rr:tableName "mount_point" ] ;
   rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
   rr:predicateObjectMap [ rr:predicate shop:seatTubeFitMm ; rr:objectMap [ rr:column "fit" ] ] .

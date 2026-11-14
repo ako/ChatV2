@@ -68,3 +68,19 @@ declare $Ok Boolean = contains($Json, '"code":"seat_tube"') and contains($Json, 
   and contains($Json, '"ref":"LGT-USB"') and contains($Json, '"role":"fits"') and contains($Json, '"kind":"Torus"')
   and $Part = empty;
 /
+
+/**
+ * @test The catalog quality check finds nothing wrong in the seeded catalog, and reports a wiki page that names an SKU the catalog does not have
+ * @expect $Ok = true
+ */
+$Seeded = call microflow ServiceDesk.SUB_ProductCatalog_Seed();
+$BomSeeded = call microflow ServiceDesk.SUB_BikeBom_Seed();
+$Page = create ServiceDesk.WikiPage (Slug = 'test-unknown-sku', Title = 'Test page', Body = 'The BAT-999 battery replaces the BAT-418.');
+commit $Page;
+$Found = call java action ServiceDesk.JA_Catalog_Quality();
+$Errors = filter $Found where $currentObject/Severity = 'Error';
+$ErrorCount = count $Errors;
+$Unknown = find $Found where $currentObject/Rule = 'Unknown SKU in the wiki' and $currentObject/Sku = 'BAT-999';
+$Known = find $Found where $currentObject/Rule = 'Unknown SKU in the wiki' and $currentObject/Sku = 'BAT-418';
+declare $Ok Boolean = $ErrorCount = 0 and $Unknown != empty and $Known = empty and contains($Unknown/Message, 'test-unknown-sku');
+/

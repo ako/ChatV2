@@ -94,6 +94,7 @@ Demo users:
 | demo_customer | DemoCustomer1! | Customer, linked to Ada Jansen |
 | demo_agent | DemoAgent1234! | SupportAgent |
 | demo_administrator | DemoAdmin1234! | Administrator |
+| demo_catalog | DemoCatalog123! | Catalog manager (support agent who maintains the product catalog) |
 
 ## What to try
 
@@ -206,6 +207,25 @@ The catalog is seeded once from `tools/product-catalog/products.ttl`, the Turtle
 Support agents and administrators also get a **Product graph** page: an outline of the whole graph, built with the Tree node widget. Open a class (Part, Order, Supplier, Wiki page...) to see its members, and a member to see its facts. → is a link to another node, and ← is a node that links here, such as the orders containing a part or the recall affecting it.
 
 The app reads the graph itself (`mdlsource/14-product-graph-outline.mdl`). It runs one SPARQL SELECT (`tools/product-catalog/queries/outline.rq`) on the `products` dataset with `JA_Sparql_Query`. A JSLT data transformer flattens the SPARQL JSON results, and an import mapping stores the rows as `GraphNode` objects; each row carries its parent's key. The outline loads the first time the page opens. **Reload from graph** replaces it, and keeps the last snapshot (with a message) when the query fails.
+
+## Catalog workspace (maintaining the master data)
+
+Catalog managers maintain the master data the chat, the graph and the 3D viewer are built on (`mdlsource/27-catalog-workspace.mdl`). Sign in as `demo_catalog` / `DemoCatalog123!` (role **Catalog manager**: a support agent who also edits the catalog). Administrators can edit too; support agents and customers cannot open these pages.
+
+- **Catalog** (`/p/catalog`): the products on the left (filter by SKU, name or kind), and the selected product's tabs on the right:
+  - **Details:** name, kind, supplier, price, warranty; wheel size, seat post diameter, brakes and rack mount for bikes.
+  - **Compatibility:** what it fits on, and what fits it, with Add and Remove.
+  - **Bill of materials** (bikes): fitted and standard parts, with quantity.
+  - **Mount points** (bikes): code, name, fit size and position.
+  - **3D model:** for a bike, a live preview that is redrawn after every saved change, using the **ModelPreview** widget (`widgets-src/ModelPreview`). For a part, **Edit the 3D model** opens where it mounts, its fit size, its explode direction and its shapes, previewed on a bike that carries it. A part a bike cannot take is listed under the preview with the reason.
+- **Catalog quality** (`/p/catalog-quality`): checks the catalog the way the chat and the viewer see it, mostly SPARQL over the graph (`CatalogQuality.java`). Each finding links to the product.
+  - Errors: a part on or for a bike with no 3D model; compatibility that contradicts the fit sizes ("needs 30.9 mm and the bike's seat tube is 27.2 mm"); compatibility with a part whose mount point the bike lacks.
+  - Warnings: a product without supplier or price, a recall that names no batch, a wiki page naming an SKU the catalog does not have.
+
+**Ground rules**
+- Every catalog record keeps when it was last changed and by whom (`ChangedDate`, `ChangedBy`).
+- The role reads and writes; the pages' flows do the creating and deleting.
+- A save discards the product graph snapshot, and the next explorer or API call rebuilds it. A SPARQL query reads through its own database connection, so it only sees committed data: rebuilding inside the save itself would always be one change behind.
 
 ## SQL to the vector database
 

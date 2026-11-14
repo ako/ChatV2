@@ -24,7 +24,9 @@ create or modify enumeration "ServiceDesk"."ENUM_ProductKind" (
 create or modify persistent entity "ServiceDesk"."Supplier" (
   "Code": String(50) not null error message 'Enter a code.' unique error message 'This supplier code already exists.',
   "Name": String(200),
-  "Country": String(100)
+  "Country": String(100),
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** A product the shop sells: a bike, a part or an accessory. Bikes also have wheel size, seat post diameter, brakes and whether a rack fits. */
@@ -37,7 +39,10 @@ create or modify persistent entity "ServiceDesk"."Product" (
   "WheelSize": String(30),
   "SeatPostDiameter": String(30),
   "Brakes": String(50),
-  "RackMount": Boolean default false
+  "RackMount": Boolean default false,
+  "ModelVersion": Integer default 0,
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 )
 index (Sku);
 
@@ -48,7 +53,9 @@ create or modify persistent entity "ServiceDesk"."KnownIssue" (
   "IsRecall": Boolean default false,
   "AffectsBatch": String(20),
   "Announced": DateTime not localized,
-  "Advice": String(2000)
+  "Advice": String(2000),
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** One line of an order: which product, how many, at what price, and the production batch of the delivered unit. */
@@ -97,8 +104,7 @@ begin
     log warning node 'ServiceDesk' 'Catalog seed: no product {1} or {2}.' with ({1} = $FromSku, {2} = $ToSku);
     return;
   end if;
-  add $To to $From/"ServiceDesk"."Product_CompatibleWith";
-  commit $From;
+  change $From ("ServiceDesk"."Product_CompatibleWith" += $To) commit;
 end;
 
 /** Seed helper: adds a line to an existing order, unless the order already has a line for that product. */
