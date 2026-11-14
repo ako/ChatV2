@@ -1793,3 +1793,12 @@ mxcli notes:
 Gates: every touched script's second exec writes nothing. `lint` is 0 errors and 53 warnings, down from 54: ACT_ flows now only call SUB_ flows (CONV010), change+commit are one activity (CONV021), and the role no longer has create/delete (CONV006). `report` is 36/100 (unchanged). `docker check` reports 0 errors. `test` passes 63/63.
 
 Theme: the Data grid 2 row-click selection painted the selected row light lavender under the dark theme's light text, and the combo box input was white under light text. Both are fixed in `themesource/servicedesk/web/main.scss`, and the combo box fix applies app-wide.
+
+## Upgraded from Mendix 11.16.0 to 11.16.1 (2026-11-14)
+
+Followed the upgrade-mendix-version skill: the schema hash decides, convert a copy first, then the project.
+- **Schema unchanged.** A blank 11.16.1 project (`mx create-project`) has the same `_SchemaHash` as this project at 11.16.0 (`{SHA256}9lKjuwyRkE4Tqa3/X7G0loWth/amC17V5RoUhqN7kok=`).
+- **Converted with Mendix's own tool anyway.** `mx convert --in-place` ran on a copy first, so the project is upgraded the supported way, not relabelled. The copy came out at 11.16.1 with the same hash, still MPR v2 (`mprcontents/` present, 2704 units before and after, `.mpr` 360 KB), and `mx check` reported 0 errors.
+- **429 units rewritten, almost all re-serialisation.** Decoded and compared field by field, they differ in byte order only. The real changes are the converter filling in properties mxcli had left out: 4 `Attribute`, 2 `MemberAccesses`, 2 `OffsetExpression`, and one `Queries` list marker. **No GUID and no `$ID` changed.** The real project converted to exactly the same bytes as the verified copy.
+- **Scripts after the conversion.** Re-running every `mdlsource` script wrote one unit. `06b` reset the database connection's `Queries` list marker (3 back to 2) to the committed pre-upgrade bytes. Further runs write nothing, so mxcli and the converter differ on that marker but do not churn.
+- **Checks on 11.16.1.** `docker check` reports 0 errors. Tests are 63/63; the order-card test needs the fake carrier running, as before. The app boots on the 11.16.1 runtime, and DuckDB attaches. `tests-live/mcp/product_graph_test.py` passes in full. The catalog workspace and 3D tab work. The model endpoint answers for all three bikes. `lint` is unchanged at 53 warnings, and `report` at 36/100.

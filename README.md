@@ -43,7 +43,7 @@ MCP and uses tools from an external MCP server.
 
 ## Build details
 
-- Mendix **11.16.0**, theme **signal**
+- Mendix **11.16.1**, theme **signal**
 - Every MDL script in `mdlsource/` starts with `mdl 1;`
 - Scope, split into slices: `docs/brain/plan/` (run `./mxcli brain plan` for progress)
 - Research findings and tooling notes: `FINDINGS.md`
@@ -98,7 +98,7 @@ Demo users:
 
 ## Studio Pro on your laptop
 
-The project has a **Local PostgreSQL** configuration for running from Studio Pro 11.16 against a PostgreSQL on your own machine (`mdlsource/98-local-configuration.mdl`). The Default configuration uses Mendix's in-memory database, which this app cannot run on: the wiki's full-text search and the product graph's SPARQL engine need PostgreSQL.
+The project has a **Local PostgreSQL** configuration for running from Studio Pro 11.16.1 against a PostgreSQL on your own machine (`mdlsource/98-local-configuration.mdl`). The Default configuration uses Mendix's in-memory database, which this app cannot run on: the wiki's full-text search and the product graph's SPARQL engine need PostgreSQL.
 
 1. **The database.** The configuration expects PostgreSQL at `localhost:5432`, database `servicedeskcopilot`, user `mendix`, password `mendix`. Either create that user and database:
 
