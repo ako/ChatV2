@@ -2,6 +2,7 @@
 // (published REST service ServiceDesk.ProductGraphApi, mdlsource/17-graph-node-api.mdl):
 //   GET rest/productgraph/v1/nodes/{ref}  one node and its facts
 //   GET rest/productgraph/v1/nodes?q=text search; the matches are the facts
+//   GET rest/productgraph/v1/models/{ref} a bike's 3D model data (its BOM, mount slots and part shapes)
 // The API authenticates with the user's own session (CSRF token) and decides
 // itself what this user may see. Shared by ChatRichText and GraphExplorer.
 
@@ -49,6 +50,26 @@ export function loadNode(ref: string): Promise<NodeDetails> {
         cache.set(ref, pending);
     }
     return pending;
+}
+
+const models = new Map<string, Promise<unknown | null>>();
+
+/** A bike's 3D model data (mdlsource/26-bike-bom.mdl), or null when the product is not a bike with mount points. */
+export function loadModel<T>(ref: string): Promise<T | null> {
+    let pending = models.get(ref);
+    if (!pending) {
+        const headers: Record<string, string> = { Accept: "application/json" };
+        const token = csrfToken();
+        if (token) headers["X-Csrf-Token"] = token;
+        pending = fetch(`rest/productgraph/v1/models/${encodeURIComponent(ref)}`, { headers, credentials: "same-origin" }).then(r => {
+            if (r.status === 404) return null;
+            if (!r.ok) throw new Error(`The 3D model service answered ${r.status}.`);
+            return r.json();
+        });
+        pending.catch(() => models.delete(ref));
+        models.set(ref, pending);
+    }
+    return pending as Promise<T | null>;
 }
 
 export function searchNodes(text: string): Promise<NodeFact[]> {

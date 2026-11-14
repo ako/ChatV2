@@ -33,6 +33,23 @@
   rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
   rr:predicateObjectMap [ rr:predicate shop:hasComponent ; rr:objectMap [ rr:template "https://example.org/bikeshop#{component}" ] ] .
 
+<#StandardPart> rr:logicalTable [ rr:tableName "product_standard" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:hasStandardPart ; rr:objectMap [ rr:template "https://example.org/bikeshop#{part}" ] ] .
+
+<#MountPoint> rr:logicalTable [ rr:tableName "mount_point" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:mountPoint ; rr:objectMap [ rr:column "name" ] ] .
+
+<#SeatTubeFit> rr:logicalTable [ rr:tableName "mount_point" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:seatTubeFitMm ; rr:objectMap [ rr:column "fit" ] ] .
+
+<#PartMount> rr:logicalTable [ rr:tableName "part_mount" ] ;
+  rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
+  rr:predicateObjectMap [ rr:predicate shop:mountsAt ; rr:objectMap [ rr:column "slot" ] ] ;
+  rr:predicateObjectMap [ rr:predicate shop:fitDiameterMm ; rr:objectMap [ rr:column "fit" ] ] .
+
 <#Compatible> rr:logicalTable [ rr:tableName "product_compatible" ] ;
   rr:subjectMap [ rr:template "https://example.org/bikeshop#{sku}" ] ;
   rr:predicateObjectMap [ rr:predicate shop:compatibleWith ; rr:objectMap [ rr:template "https://example.org/bikeshop#{target}" ] ] .

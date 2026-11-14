@@ -27,7 +27,7 @@ begin
   return true;
 end;
 
-/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data and the product catalog, syncs shipments from the carrier and reloads the product graph snapshot, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint seeds the free models' price and the places for map cards. */
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, the product catalog and the bikes' BOM, syncs shipments from the carrier and reloads the product graph snapshot, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint seeds the free models' price and the places for map cards. */
 create or modify microflow "ServiceDesk"."ASU_App" ()
 returns Boolean as $Started
 folder 'Setup'
@@ -37,6 +37,7 @@ begin
   call microflow "ServiceDesk"."SUB_SeedStaffNames" ();
   call microflow "ServiceDesk"."SUB_SeedOrderHistory" ();
   $CatalogSeeded = call microflow "ServiceDesk"."SUB_ProductCatalog_Seed" ();
+  $BomSeeded = call microflow "ServiceDesk"."SUB_BikeBom_Seed" ();
   $ShipmentsSynced = call microflow "ServiceDesk"."SUB_Shipments_Sync" ();
   if $ShipmentsSynced then
     $NoticesPosted = call microflow "ServiceDesk"."SUB_DelayNotices_Post" ();

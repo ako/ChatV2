@@ -35,3 +35,8 @@ shop:rackMount     rdfs:label "rack mount" .
 rdfs:comment       rdfs:label "summary" .
 shop:tags          rdfs:label "tags" .
 shop:updated       rdfs:label "last updated" .
+shop:hasStandardPart rdfs:label "has standard part (tyres, tubes, brakes, seat post)" .
+shop:mountPoint    rdfs:label "mount point" .
+shop:seatTubeFitMm rdfs:label "seat tube fit in mm" .
+shop:mountsAt      rdfs:label "mounts at" .
+shop:fitDiameterMm rdfs:label "fit diameter in mm" .

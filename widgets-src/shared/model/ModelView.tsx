@@ -1,20 +1,22 @@
 import { ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { loadNode, NodeDetails } from "../graph/api";
-import { buildBike, PartRef, Slot, slotKind } from "./bike";
+import { loadModel, loadNode, NodeDetails } from "../graph/api";
+import { BikeModel, buildBike, PartRef, Slot, Unplaced } from "./bike";
 import "./ModelView.css";
 
-// The 3D product viewer: a bike from the product graph, built procedurally
-// (bike.ts), with its parts highlighted, exploded and clickable. Shared by the
-// chat's model card (ChatRichText) and the Product explorer (GraphExplorer).
+// The 3D product viewer: a bike assembled from the app's BOM data (bike.ts),
+// with its parts highlighted, exploded and clickable. Shared by the chat's model
+// card (ChatRichText) and the Product explorer (GraphExplorer).
 //
-// What the bike contains comes from the graph (GET rest/productgraph/v1/nodes/
-// {ref}, with the user's session): "has component" parts are fitted; parts and
-// accessories that are "compatible with" it are shown faintly when the viewer is
+// What the bike contains and how each part looks comes from GET
+// rest/productgraph/v1/models/{ref} (with the user's session): its BOM lines
+// (fitted and standard parts), its mount slots, and each part's model; parts and
+// accessories that are compatible with it are shown faintly when the viewer is
 // asked what fits. A highlighted part glows and the rest turns see-through. A
-// card can only highlight parts this bike has or that fit it; anything else is
-// listed under the viewer instead of drawn.
+// card can only highlight parts this bike has or that fit it; anything else, and
+// a part the bike cannot take (no such mount point, another fit size), is listed
+// under the viewer with the reason instead of drawn.
 
 export type ModelTone = "accent" | "warning" | "critical";
 
@@ -26,36 +28,9 @@ export interface ModelViewProps {
     onSelectPart?: (ref: string) => void;
 }
 
-const BASE_KINDS = new Set(["tyres", "tubes", "discbrakes", "rimbrakes", "seatpost"]);
 const TONE_COLOR: Record<ModelTone, number> = { accent: 0x4fd1c5, warning: 0xf5b454, critical: 0xff6b6b };
 const FRAME_COLORS = [0x1f6f68, 0x3b4a6b, 0x7a3b4a, 0x5a5f2b];
 
-function isBike(kind: string): boolean {
-    return /bike/i.test(kind);
-}
-
-/** The bike's parts from its graph facts: components, the standard parts that fit it, and accessories. */
-export function partsOf(node: NodeDetails): { parts: PartRef[]; disc: boolean } {
-    const parts: PartRef[] = [];
-    // the graph labels nodes "SKU · name": keep the name
-    const name = (ref: string, target?: string): string => (target || ref).replace(new RegExp(`^${ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*·\\s*`), "");
-    const seen = new Set<string>();
-    for (const f of node.facts) {
-        if (!f.ref || seen.has(f.ref)) continue;
-        if (f.dir === "out" && f.relation === "has component") {
-            parts.push({ ref: f.ref, label: name(f.ref, f.target), role: "component" });
-            seen.add(f.ref);
-        }
-    }
-    for (const f of node.facts) {
-        if (!f.ref || seen.has(f.ref) || f.dir !== "in" || f.relation !== "compatible with") continue;
-        const kind = slotKind(f.ref);
-        parts.push({ ref: f.ref, label: name(f.ref, f.target), role: kind && BASE_KINDS.has(kind) ? "base" : "fits" });
-        seen.add(f.ref);
-    }
-    const brakes = node.facts.find(f => f.dir === "value" && /^brakes:/i.test(f.label));
-    return { parts, disc: brakes ? /disc/i.test(brakes.label) : true };
-}
 
 interface Look { color: THREE.Color; emissive: THREE.Color; opacity: number; transparent: boolean }
 
@@ -63,6 +38,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
     const box = useRef<HTMLDivElement>(null);
     const stage = useRef<{ slots: Slot[]; root: THREE.Group; apply: () => void } | null>(null);
     const [product, setProduct] = useState<NodeDetails | null>(null);
+    const [model, setModel] = useState<BikeModel | null>(null);
     const [status, setStatus] = useState<"loading" | "ready" | "error" | "nobike">("loading");
     const [message, setMessage] = useState("");
     const [explode, setExplode] = useState(0);
@@ -71,7 +47,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
     const [pickedInfo, setPickedInfo] = useState<NodeDetails | null>(null);
     const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
     const [slotList, setSlotList] = useState<PartRef[]>([]);
-    const [unplaced, setUnplaced] = useState<PartRef[]>([]);
+    const [unplaced, setUnplaced] = useState<Unplaced[]>([]);
     const highlightKey = (props.highlight ?? []).join("|");
     const live = useRef({ explode, showFits, picked, highlight: props.highlight ?? [], tone: props.tone ?? "accent" as ModelTone });
     live.current = { explode, showFits, picked, highlight: props.highlight ?? [], tone: props.tone ?? "accent" };
@@ -80,10 +56,11 @@ export function ModelView(props: ModelViewProps): ReactElement {
     useEffect(() => {
         let cancelled = false;
         setStatus("loading");
-        loadNode(props.productRef).then(node => {
+        Promise.all([loadNode(props.productRef), loadModel<BikeModel>(props.productRef)]).then(([node, bike]) => {
             if (cancelled) return;
             setProduct(node);
-            if (!isBike(node.kind)) { setStatus("nobike"); setMessage(`${node.label} has no 3D model: only bikes do.`); return; }
+            setModel(bike);
+            if (!bike) { setStatus("nobike"); setMessage(`${node.label} has no 3D model: only bikes with mount points do.`); return; }
             setStatus("ready");
         }).catch((e: Error) => { if (!cancelled) { setStatus("error"); setMessage(e.message); } });
         return () => { cancelled = true; };
@@ -92,15 +69,15 @@ export function ModelView(props: ModelViewProps): ReactElement {
     // build the scene once the product is known
     useEffect(() => {
         const el = box.current;
-        if (!el || !product || status !== "ready") return;
-        const { parts, disc } = partsOf(product);
+        if (!el || !product || !model || status !== "ready") return;
         // a highlight the bike does not have or fit is not drawn: list it
-        const known = new Set(parts.map(p => p.ref.toUpperCase()));
-        const foreign = (props.highlight ?? []).filter(h => !known.has(h.toUpperCase())).map(h => ({ ref: h, label: h, role: "fits" as const }));
+        const known = new Set(model.parts.map(p => p.ref.toUpperCase()));
+        const foreign: Unplaced[] = (props.highlight ?? []).filter(h => !known.has(h.toUpperCase())).map(h => ({ ref: h, label: h, role: "fits", reason: "not part of this bike and does not fit it" }));
         const color = FRAME_COLORS[[...props.productRef].reduce((a, c) => a + c.charCodeAt(0), 0) % FRAME_COLORS.length];
-        const { root, slots, unplaced: left } = buildBike({ ref: props.productRef, disc, parts }, color);
+        const { root, slots, unplaced: left } = buildBike(model, color);
         setSlotList(slots.map(s => ({ ref: s.ref, label: s.label, role: s.role })));
-        setUnplaced([...left.filter(p => p.role !== "fits"), ...foreign]);
+        const lit = new Set((props.highlight ?? []).map(h => h.toUpperCase()));
+        setUnplaced([...left.filter(p => p.role !== "fits" || lit.has(p.ref.toUpperCase())), ...foreign]);
 
         const scene = new THREE.Scene();
         scene.add(root);
@@ -231,7 +208,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
         };
     // rebuilt only for another product; highlight changes go through apply()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [product, status, props.height]);
+    }, [product, model, status, props.height]);
 
     // highlight, explode, what fits, the picked part: re-apply the look
     useEffect(() => { stage.current?.apply(); }, [explode, showFits, picked, highlightKey, props.tone]);
@@ -287,7 +264,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
                     </ul>
                 </div>
             )}
-            {unplaced.length > 0 && <p className="mv-note">Not in the 3D model: {unplaced.map(u => u.ref).join(", ")}</p>}
+            {unplaced.length > 0 && <p className="mv-note">Not in the 3D model: {unplaced.map(u => `${u.ref} (${u.reason})`).join("; ")}</p>}
         </div>
     );
 }
