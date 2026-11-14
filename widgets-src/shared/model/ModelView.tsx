@@ -25,6 +25,7 @@ export interface ModelViewProps {
     highlight?: string[];
     tone?: ModelTone;
     height: number;
+    version?: string;              // a new version fetches the model again (the catalog preview)
     onSelectPart?: (ref: string) => void;
 }
 
@@ -56,7 +57,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
     useEffect(() => {
         let cancelled = false;
         setStatus("loading");
-        Promise.all([loadNode(props.productRef), loadModel<BikeModel>(props.productRef)]).then(([node, bike]) => {
+        Promise.all([loadNode(props.productRef), loadModel<BikeModel>(props.productRef, props.version)]).then(([node, bike]) => {
             if (cancelled) return;
             setProduct(node);
             setModel(bike);
@@ -64,7 +65,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
             setStatus("ready");
         }).catch((e: Error) => { if (!cancelled) { setStatus("error"); setMessage(e.message); } });
         return () => { cancelled = true; };
-    }, [props.productRef]);
+    }, [props.productRef, props.version]);
 
     // build the scene once the product is known
     useEffect(() => {
@@ -76,8 +77,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
         const color = FRAME_COLORS[[...props.productRef].reduce((a, c) => a + c.charCodeAt(0), 0) % FRAME_COLORS.length];
         const { root, slots, unplaced: left } = buildBike(model, color);
         setSlotList(slots.map(s => ({ ref: s.ref, label: s.label, role: s.role })));
-        const lit = new Set((props.highlight ?? []).map(h => h.toUpperCase()));
-        setUnplaced([...left.filter(p => p.role !== "fits" || lit.has(p.ref.toUpperCase())), ...foreign]);
+        setUnplaced([...left, ...foreign]);
 
         const scene = new THREE.Scene();
         scene.add(root);
@@ -226,6 +226,8 @@ export function ModelView(props: ModelViewProps): ReactElement {
 
     const chips = useMemo(() => slotList.filter(s => s.role !== "fits" || showFits), [slotList, showFits]);
     const lit = new Set([...(props.highlight ?? []), ...(picked ? [picked] : [])].map(h => h.toUpperCase()));
+    // a part that fits but cannot be drawn on this bike (no such mount point, another fit size) shows with what fits
+    const shownUnplaced = unplaced.filter(u => u.role !== "fits" || showFits || lit.has(u.ref.toUpperCase()));
 
     if (status === "error" || status === "nobike") {
         return <p className="mv-note">{status === "error" ? `The 3D view could not be loaded: ${message}` : message}</p>;
@@ -264,7 +266,7 @@ export function ModelView(props: ModelViewProps): ReactElement {
                     </ul>
                 </div>
             )}
-            {unplaced.length > 0 && <p className="mv-note">Not in the 3D model: {unplaced.map(u => `${u.ref} (${u.reason})`).join("; ")}</p>}
+            {shownUnplaced.length > 0 && <p className="mv-note">Not in the 3D model: {shownUnplaced.map(u => `${u.ref} (${u.reason})`).join("; ")}</p>}
         </div>
     );
 }

@@ -40,3 +40,4 @@ shop:mountPoint    rdfs:label "mount point" .
 shop:seatTubeFitMm rdfs:label "seat tube fit in mm" .
 shop:mountsAt      rdfs:label "mounts at" .
 shop:fitDiameterMm rdfs:label "fit diameter in mm" .
+shop:mountCode     rdfs:label "mount point code" .

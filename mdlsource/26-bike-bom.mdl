@@ -43,13 +43,17 @@ create or modify persistent entity "ServiceDesk"."MountSlot" (
   "X": Decimal,
   "Y": Decimal,
   "Z": Decimal,
-  "FitDiameterMm": Decimal
+  "FitDiameterMm": Decimal,
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** One line of a bike's bill of materials. */
 create or modify persistent entity "ServiceDesk"."BomLine" (
   "Quantity": Integer default 1,
-  "Role": Enumeration(ServiceDesk.ENUM_BomRole) default ServiceDesk.ENUM_BomRole.Fitted
+  "Role": Enumeration(ServiceDesk.ENUM_BomRole) default ServiceDesk.ENUM_BomRole.Fitted,
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** How a part is drawn and where it mounts: the slot code, the fit size it needs (mm), and its explode direction. */
@@ -58,7 +62,11 @@ create or modify persistent entity "ServiceDesk"."PartModel" (
   "FitDiameterMm": Decimal,
   "ExplodeX": Decimal,
   "ExplodeY": Decimal,
-  "ExplodeZ": Decimal
+  "ExplodeZ": Decimal,
+  "PreviewBikeSku": String(30),
+  "ModelVersion": Integer default 0,
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** One primitive of a part's shape, relative to its mount slot. Size: Box w h d; Cylinder top radius, bottom radius, length; Torus radius, tube; Dome radius. Segments and Detail set the roundness. */
@@ -81,7 +89,9 @@ create or modify persistent entity "ServiceDesk"."ShapePart" (
   "RotY": Decimal,
   "RotZ": Decimal,
   "Segments": Integer,
-  "Detail": Integer
+  "Detail": Integer,
+  "ChangedDate": AutoChangedDate,
+  "ChangedBy": AutoChangedBy
 );
 
 /** The bike a mount slot is on. */

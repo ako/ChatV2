@@ -55,8 +55,9 @@ export function loadNode(ref: string): Promise<NodeDetails> {
 const models = new Map<string, Promise<unknown | null>>();
 
 /** A bike's 3D model data (mdlsource/26-bike-bom.mdl), or null when the product is not a bike with mount points. */
-export function loadModel<T>(ref: string): Promise<T | null> {
-    let pending = models.get(ref);
+export function loadModel<T>(ref: string, version = ""): Promise<T | null> {
+    const key = `${ref}|${version}`;
+    let pending = models.get(key);
     if (!pending) {
         const headers: Record<string, string> = { Accept: "application/json" };
         const token = csrfToken();
@@ -66,8 +67,8 @@ export function loadModel<T>(ref: string): Promise<T | null> {
             if (!r.ok) throw new Error(`The 3D model service answered ${r.status}.`);
             return r.json();
         });
-        pending.catch(() => models.delete(ref));
-        models.set(ref, pending);
+        pending.catch(() => models.delete(key));
+        models.set(key, pending);
     }
     return pending as Promise<T | null>;
 }

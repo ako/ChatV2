@@ -247,7 +247,7 @@ grant read * on entity "ServiceDesk"."CustomerDeliveryHubStats" to "ServiceDesk"
 grant read * on entity "ServiceDesk"."CustomerDeliveryTimes" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
 
 /** One line per delivery leg, with its share of the total: "At the hub: 1.8 days per parcel (52%)". */
-create or modify microflow "ServiceDesk"."SUB_DeliveryStats_LegLine" ($Leg: "ServiceDesk"."ENUM_DeliveryLeg", $Parcels: Integer, $TotalHours: Decimal, $AllHours: Decimal)
+create or modify microflow "ServiceDesk"."SUB_DeliveryStats_LegLine" ($Leg: enum "ServiceDesk"."ENUM_DeliveryLeg", $Parcels: Integer, $TotalHours: Decimal, $AllHours: Decimal)
 returns String as $Line
 folder 'Delivery'
 begin
