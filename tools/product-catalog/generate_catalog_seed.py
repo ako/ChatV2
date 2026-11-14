@@ -59,9 +59,9 @@ for s in products:
         f'WheelSize = {q(one(f, "shop:wheelSize"))}, SeatPostDiameter = {q(one(f, "shop:seatPostDiameter"))}, Brakes = {q(one(f, "shop:brakes"))}, RackMount = {"true" if one(f, "shop:rackMount") == "true" else "false"});')
 for s in products:
     f = facts[s]
-    for key, comp in (("shop:hasComponent", "true"), ("shop:compatibleWith", "false")):
-        for t in sorted(f.get(key, [])):
-            calls.append(f'call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = {q(one(f, "shop:sku"))}, ToSku = {q(one(facts[t], "shop:sku"))}, IsComponent = {comp});')
+    # what a bike is built with (shop:hasComponent) is its BOM: tools/product-catalog/bike_models.py
+    for t in sorted(f.get("shop:compatibleWith", [])):
+        calls.append(f'call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = {q(one(f, "shop:sku"))}, ToSku = {q(one(facts[t], "shop:sku"))});')
 for s in sorted(of_type("KnownIssue") + of_type("Recall")):
     f = facts[s]
     calls.append(f'call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = {q(one(f, "shop:issueId"))}, Title = {q(one(f, "rdfs:label"))}, IsRecall = {"true" if SHOP + "Recall" in f["a"] else "false"}, '

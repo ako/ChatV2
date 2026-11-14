@@ -331,17 +331,16 @@ Bikes from the product graph can be shown in 3D, with their parts highlighted (`
 - **In the chat:** a model card such as `{"type":"model","title":"The battery on your EB-200","ref":"EB-200","highlight":["BAT-418"]}`. The card's tone sets the highlight colour: teal, amber for a warning, red for critical (a recall that affects the customer's unit).
 - **In the Product explorer:** a **Graph | 3D** switch shows the last bike selected in the graph. Selecting a part in the graph highlights it on the bike, and clicking a part on the bike selects it in the graph.
 
-The bike is generated in code (`bike.ts`), not loaded from a model file:
-- a frame, wheels and controls, plus one named piece per part, placed by SKU prefix:
-  - `BAT-` battery on the down tube;
-  - `MOT-…H` hub motor in the rear wheel, `MOT-…M` mid-drive at the pedals;
-  - `CHG-` charger on the floor;
-  - tyres, inner tubes, disc or rim brakes (from the bike's `brakes` value) and the seat post;
-  - accessories: rack, basket, child seat, panniers, lights, lock, helmet.
-- What a bike contains comes from the graph:
-  - its "has component" parts are fitted;
-  - "compatible with" tyres, tubes, brakes and seat posts are its standard parts;
-  - other compatible accessories appear faintly under **Show what fits**.
+The bike is assembled from the app's **bill of materials**, not from a model file and not from rules in code (`mdlsource/26-bike-bom.mdl`):
+- **Mount slots** are named points on each bike's frame, with a fit size where one matters. Examples: the down tube (battery), the rear hub or bottom bracket (motor), the seat tube (27.2 or 30.9 mm), the rear rack mount and the handlebar. A bike without a rack mount has no rear rack slot.
+- **BOM lines** say what a bike is built with: **fitted** parts it ships with (the graph's "has component") and **standard** parts (tyres, tubes, disc or rim brakes, seat post), with quantities.
+- **Part models** say where a part mounts, the fit size it needs, which way it moves when the bike is exploded, and its shape. The shape is a few primitives (box, cylinder, torus, dome) with colour and finish, placed relative to the slot.
+- The viewer gets all of this in one call, `GET rest/productgraph/v1/models/{ref}` (`JA_BikeModel_Json`, with the user's own access), and builds the bike from it (`widgets-src/shared/model/bike.ts`). A new part needs data, not code.
+- **What fits:** parts and accessories that are compatible with the bike appear faintly under **Show what fits**.
+- **What the bike cannot take** is listed under the viewer with the reason: a part for a mount the bike does not have ("this bike has no rear rack mount"), or another fit size ("needs 27.2 mm; this bike's seat tube is 30.9 mm").
+- **The graph has the BOM too:** `shop:hasComponent` (fitted), `shop:hasStandardPart`, `shop:mountPoint`, `shop:mountsAt` and `shop:fitDiameterMm`, so the AI's `sparql_query` can ask which bikes have a rack mount or which seat post fits.
+
+The seed is generated from `tools/product-catalog/bike_models.py`, which holds the geometry of the three demo bikes; `mdlsource/26b-bike-bom-seed.mdl` is its output. The frame, wheels and controls are still drawn in code. They are the same for every bike and are not parts.
 
 A highlight names parts. Only parts the graph links to that bike can light up, and anything else is listed under the viewer. An **Exploded** slider pulls the parts apart, hovering a part names it, and clicking a part shows its details.
 

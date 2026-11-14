@@ -1740,3 +1740,24 @@ Gates for this change:
 - **report:** 41/100, down from 43.
 - **docker check:** 0 errors.
 - **test:** 61/61.
+
+## The 3D bikes come from a bill of materials, not from rules in code (2026-11-13)
+
+The viewer used to place parts by SKU prefix (`BAT-` on the down tube, `MOT-…H` in the rear hub…), with every shape hard-coded in `bike.ts`. It guessed the standard parts from "compatible with" and the brakes from the bike's `brakes` text. Now the app stores the data (`mdlsource/26-bike-bom.mdl`):
+- **MountSlot** per bike: code, name, position, and a fit size (the seat tube: 27.2 or 30.9 mm).
+- **BomLine:** bike, part, quantity, Fitted or Standard.
+- **PartModel** per part: the slot it mounts at, its fit size and its explode direction.
+- **ShapePart** primitives: box, cylinder, torus or dome, with size, offset from the slot, rotation, colour, finish, glow, opacity and wireframe.
+
+`JA_BikeModel_Json` serves a bike as one JSON document at `GET rest/productgraph/v1/models/{ref}`, and `bike.ts` is now a generic assembler. The BOM also replaced the `Product_Component` association, so there is one source: the graph's `shop:hasComponent` is the BOM's fitted lines, and `shop:hasStandardPart`, `shop:mountPoint`, `shop:mountsAt` and `shop:fitDiameterMm` are new.
+
+Measured:
+- **Same look, in code and live.** `tools/product-catalog/bike_models.py` translated the old geometry into data. Before any change, the old `bike.ts` (compiled with tsc, run in Node with three.js) recorded every part type's world bounding box, mesh count, colours, emissive, opacity and explode direction, for a disc-brake and a rim-brake bike. The new assembler, fed the generated data, gives the same values for all 17 types: boxes within 1.5 mm, everything else exact. A one-digit colour change in the data shows up as a difference, so the comparison detects something. Live, the Product explorer's EB-200 has the same 11 parts with the same bounding boxes, colours and roles before and after (`__model` read in Playwright).
+- **The endpoint, as a customer:** EB-200, EB-500 and BK-100 return their slots (EB-500 has no rear rack mount and a 30.9 mm seat tube) and their parts: fitted, standard and what fits, with shape counts. BAT-418 answers 404, "not a bike with mount points".
+- **The fit check (offline):** SSP-27 on the EB-500 gives "needs 27.2 mm; this bike's seat tube is 30.9 mm". A rack on the EB-500 gives "this bike has no rear rack mount", a battery on the BK-100 "this bike has no down tube mount", and SSP-31 on the EB-500 fits.
+- **The graph:** `tests-live/mcp/product_graph_test.py` is 12/12, including the recall reached through a bike's component, which now comes from the BOM. A SPARQL query lists each bike's standard parts with their mount and fit size.
+- **Microflow tests:** 62/62. Two new tests: a BOM line seeded twice stays one line, and the EB-500's model JSON has its 30.9 mm seat tube, its fitted mid-drive motor, its standard SSP-31 and what fits.
+
+Gotcha: dropping a microflow parameter that other flows still pass is refused (MDL-V1-REBUILD). Here, `SUB_Product_SeedLink` lost `IsComponent`. Executing the regenerated callers first (`24b`) and then the helper (`24`) let both splice without a rebuild.
+
+Lint: 54 warnings, up from 48. They are ARCH003 "no business key" on BomLine, MountSlot, PartModel and ShapePart (child records identified by their parent, as OrderLine is), and DESIGN001 on ShapePart's 19 attributes, a flat primitive spec. Report: 36/100, down from 41.

@@ -18,23 +18,21 @@ declare $Ok Boolean = $Count = 1 and $Product/Name = 'Test bike' and $Supplier/C
 /
 
 /**
- * @test Linking a part as compatible twice keeps one link, and a component link is separate
+ * @test Linking a part as compatible twice keeps one link, and a BOM line seeded twice keeps one line
  * @expect $Ok = true
  */
 call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-B', Name = 'Test e-bike', Kind = ServiceDesk.ENUM_ProductKind.EBike, Price = 1000, WarrantyYears = 5, SupplierCode = 'none', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
 call microflow ServiceDesk.SUB_Product_SeedOne(Sku = 'TST-P', Name = 'Test battery', Kind = ServiceDesk.ENUM_ProductKind.Part, Price = 10, WarrantyYears = 2, SupplierCode = 'none', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
-call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B', IsComponent = false);
-call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B', IsComponent = false);
-call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-B', ToSku = 'TST-P', IsComponent = true);
+call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B');
+call microflow ServiceDesk.SUB_Product_SeedLink(FromSku = 'TST-P', ToSku = 'TST-B');
+call microflow ServiceDesk.SUB_BomLine_SeedOne(BikeSku = 'TST-B', PartSku = 'TST-P', Quantity = 1, Role = ServiceDesk.ENUM_BomRole.Fitted);
+call microflow ServiceDesk.SUB_BomLine_SeedOne(BikeSku = 'TST-B', PartSku = 'TST-P', Quantity = 1, Role = ServiceDesk.ENUM_BomRole.Fitted);
 retrieve $Part from ServiceDesk.Product where [Sku = 'TST-P'] first;
-retrieve $Bike from ServiceDesk.Product where [Sku = 'TST-B'] first;
 retrieve $FitsOn from $Part/ServiceDesk.Product_CompatibleWith;
-retrieve $Components from $Bike/ServiceDesk.Product_Component;
-retrieve $PartComponents from $Part/ServiceDesk.Product_Component;
+retrieve $Lines from ServiceDesk.BomLine where [ServiceDesk.BomLine_Bike/ServiceDesk.Product/Sku = 'TST-B'];
 $FitsCount = count $FitsOn;
-$ComponentCount = count $Components;
-$PartComponentCount = count $PartComponents;
-declare $Ok Boolean = $FitsCount = 1 and $ComponentCount = 1 and $PartComponentCount = 0;
+$LineCount = count $Lines;
+declare $Ok Boolean = $FitsCount = 1 and $LineCount = 1;
 /
 
 /**
@@ -54,4 +52,19 @@ declare $Ok Boolean = $Catalog = '{"head":{},"boolean":false}' and contains($Pro
 $Update = call microflow ServiceDesk.Tool_Product_Sparql(Query = 'INSERT DATA { <urn:a> <urn:b> "c" }');
 $Broken = call microflow ServiceDesk.Tool_Product_Sparql(Query = 'SELECT ?x WHERE { ?x }');
 declare $Ok Boolean = startsWith($Update, 'Refused') and startsWith($Broken, 'Query failed');
+/
+
+/**
+ * @test A bike's 3D model comes from its BOM data: mount slots, fitted and standard parts with their shapes, and what fits
+ * @expect $Ok = true
+ */
+$Seeded = call microflow ServiceDesk.SUB_ProductCatalog_Seed();
+$BomSeeded = call microflow ServiceDesk.SUB_BikeBom_Seed();
+$Json = call java action ServiceDesk.JA_BikeModel_Json(Sku = 'EB-500');
+$Part = call java action ServiceDesk.JA_BikeModel_Json(Sku = 'BAT-418');
+declare $Ok Boolean = contains($Json, '"code":"seat_tube"') and contains($Json, '"fit":30.9')
+  and contains($Json, '{"ref":"MOT-250M","label":"Mid-drive motor 250 W","role":"component","quantity":1,"slot":"bottom_bracket"')
+  and contains($Json, '"ref":"SSP-31","label":"Suspension seat post 30.9 mm","role":"base"')
+  and contains($Json, '"ref":"LGT-USB"') and contains($Json, '"role":"fits"') and contains($Json, '"kind":"Torus"')
+  and $Part = empty;
 /

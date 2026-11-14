@@ -39,57 +39,51 @@ begin
   call microflow "ServiceDesk"."SUB_Product_SeedOne" (Sku = 'SSP-31', Name = 'Suspension seat post 30.9 mm', Kind = ServiceDesk.ENUM_ProductKind.Part, Price = 139.00, WarrantyYears = 2, SupplierCode = 'LumaParts', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
   call microflow "ServiceDesk"."SUB_Product_SeedOne" (Sku = 'TUB-28', Name = 'Inner tube 28 inch', Kind = ServiceDesk.ENUM_ProductKind.Part, Price = 9.00, WarrantyYears = 2, SupplierCode = 'LumaParts', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
   call microflow "ServiceDesk"."SUB_Product_SeedOne" (Sku = 'TYR-28', Name = 'Tyre 28 inch', Kind = ServiceDesk.ENUM_ProductKind.Part, Price = 27.10, WarrantyYears = 2, SupplierCode = 'LumaParts', WheelSize = empty, SeatPostDiameter = empty, Brakes = empty, RackMount = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BAT-418', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BAT-500', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-PAD', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-PAD', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-RIM', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BSK-FR', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BSK-FR', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-2A', ToSku = 'BAT-418', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-4A', ToSku = 'BAT-418', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-4A', ToSku = 'BAT-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'RCK-26', IsComponent = false);
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BAT-418', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BAT-500', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-PAD', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-PAD', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BRK-RIM', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BSK-FR', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'BSK-FR', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-2A', ToSku = 'BAT-418');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-4A', ToSku = 'BAT-418');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHG-4A', ToSku = 'BAT-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CHS-MAXI', ToSku = 'RCK-26');
 end;
 
 /** Seeds part 3 of 5 of the product catalog. Generated. */
 create or modify microflow "ServiceDesk"."SUB_ProductCatalog_Seed_3" ()
 folder 'Product catalog'
 begin
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CVR-500', ToSku = 'BAT-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-200', ToSku = 'BAT-418', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-200', ToSku = 'CHG-2A', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-200', ToSku = 'MOT-250H', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-500', ToSku = 'BAT-500', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-500', ToSku = 'CHG-4A', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'EB-500', ToSku = 'MOT-250M', IsComponent = true);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'MOT-250H', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'MOT-250M', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'PAN-20', ToSku = 'RCK-26', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'RCK-26', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'RCK-26', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-27', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-27', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-31', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'EB-200', IsComponent = false);
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'CVR-500', ToSku = 'BAT-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'LGT-USB', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'MOT-250H', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'MOT-250M', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'PAN-20', ToSku = 'RCK-26');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'RCK-26', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'RCK-26', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-27', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-27', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'SSP-31', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'BK-100');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'EB-200');
+  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'EB-500');
+  call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = 'ISS-CHG-80', Title = 'Fast charger stops at 80% on older 418 Wh batteries', IsRecall = false, AffectsBatch = empty, Announced = parseDateTimeUTC('2026-09-02', 'yyyy-MM-dd'), Advice = 'Batteries 418 Wh with firmware below 2.1 stop charging at 80% on the fast charger. A dealer updates the battery firmware in 10 minutes, free of charge.', Sku = 'CHG-4A');
+  call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = 'ISS-EB500-LIGHT', Title = 'Trekking e-bike rear light flickers', IsRecall = false, AffectsBatch = empty, Announced = parseDateTimeUTC('2026-08-20', 'yyyy-MM-dd'), Advice = 'A loose connector under the rear rack. Reseat the connector; covered by warranty if it recurs.', Sku = 'EB-500');
 end;
 
 /** Seeds part 4 of 5 of the product catalog. Generated. */
 create or modify microflow "ServiceDesk"."SUB_ProductCatalog_Seed_4" ()
 folder 'Product catalog'
 begin
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TUB-28', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'BK-100', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'EB-200', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_Product_SeedLink" (FromSku = 'TYR-28', ToSku = 'EB-500', IsComponent = false);
-  call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = 'ISS-CHG-80', Title = 'Fast charger stops at 80% on older 418 Wh batteries', IsRecall = false, AffectsBatch = empty, Announced = parseDateTimeUTC('2026-09-02', 'yyyy-MM-dd'), Advice = 'Batteries 418 Wh with firmware below 2.1 stop charging at 80% on the fast charger. A dealer updates the battery firmware in 10 minutes, free of charge.', Sku = 'CHG-4A');
-  call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = 'ISS-EB500-LIGHT', Title = 'Trekking e-bike rear light flickers', IsRecall = false, AffectsBatch = empty, Announced = parseDateTimeUTC('2026-08-20', 'yyyy-MM-dd'), Advice = 'A loose connector under the rear rack. Reseat the connector; covered by warranty if it recurs.', Sku = 'EB-500');
   call microflow "ServiceDesk"."SUB_KnownIssue_SeedOne" (IssueId = 'REC-2026-07', Title = 'Battery 418 Wh, batch B2603: cells may swell', IsRecall = true, AffectsBatch = 'B2603', Announced = parseDateTimeUTC('2026-07-14', 'yyyy-MM-dd'), Advice = 'Stop charging and riding with the battery. CellPower replaces it free of charge; the shop arranges collection. Other batches are not affected.', Sku = 'BAT-418');
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10001', Sku = 'CHS-MAXI', Quantity = 1, UnitPrice = 249.95, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10002', Sku = 'CHG-4A', Quantity = 1, UnitPrice = 89.50, Batch = empty);
@@ -104,18 +98,18 @@ begin
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10010', Sku = 'BK-100', Quantity = 1, UnitPrice = 899.00, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10011', Sku = 'SSP-27', Quantity = 1, UnitPrice = 129.00, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10012', Sku = 'LGT-USB', Quantity = 1, UnitPrice = 44.90, Batch = empty);
-end;
-
-/** Seeds part 5 of 5 of the product catalog. Generated. */
-create or modify microflow "ServiceDesk"."SUB_ProductCatalog_Seed_5" ()
-folder 'Product catalog'
-begin
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10013', Sku = 'RCK-26', Quantity = 1, UnitPrice = 59.95, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10013', Sku = 'PAN-20', Quantity = 1, UnitPrice = 99.95, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10013', Sku = 'LCK-CHAIN', Quantity = 1, UnitPrice = 75.00, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10013', Sku = 'BSK-FR', Quantity = 1, UnitPrice = 80.70, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10014', Sku = 'TUB-28', Quantity = 2, UnitPrice = 9.00, Batch = empty);
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10015', Sku = 'EB-500', Quantity = 1, UnitPrice = 2150.00, Batch = 'C2604');
+end;
+
+/** Seeds part 5 of 5 of the product catalog. Generated. */
+create or modify microflow "ServiceDesk"."SUB_ProductCatalog_Seed_5" ()
+folder 'Product catalog'
+begin
   call microflow "ServiceDesk"."SUB_OrderLine_SeedOne" (OrderNumber = 'SO-10016', Sku = 'LGT-USB', Quantity = 1, UnitPrice = 44.90, Batch = empty);
 end;
 

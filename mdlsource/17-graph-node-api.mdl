@@ -195,6 +195,9 @@ create or modify published rest service "ServiceDesk"."ProductGraphApi" (
     get '' microflow "ServiceDesk"."REST_SearchGraphNodes" export mapping "ServiceDesk"."EMM_GraphNodeDetails";
     get '{ref}' microflow "ServiceDesk"."REST_GetGraphNode" export mapping "ServiceDesk"."EMM_GraphNodeDetails";
   }
+  resource 'models' {
+    get '{ref}' microflow "ServiceDesk"."REST_GetBikeModel";
+  }
 };
 
 grant execute on microflow "ServiceDesk"."REST_SearchGraphNodes" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

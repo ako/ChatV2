@@ -28,11 +28,32 @@ create or replace view product as
   from app.public."servicedesk$product" p
   left join app.public."servicedesk$supplier" s on s.id = p."servicedesk$product_supplier";
 
+-- A bike's bill of materials (26-bike-bom.mdl): fitted parts are what it ships
+-- with (shop:hasComponent), standard parts its tyres, tubes, brakes and seat post.
 create or replace view product_component as
   select a.sku as sku, b.sku as component
-  from app.public."servicedesk$product_component" j
-  join app.public."servicedesk$product" a on a.id = j."servicedesk$productid1"
-  join app.public."servicedesk$product" b on b.id = j."servicedesk$productid2";
+  from app.public."servicedesk$bomline" l
+  join app.public."servicedesk$product" a on a.id = l."servicedesk$bomline_bike"
+  join app.public."servicedesk$product" b on b.id = l."servicedesk$bomline_part"
+  where l.role = 'Fitted';
+
+create or replace view product_standard as
+  select a.sku as sku, b.sku as part
+  from app.public."servicedesk$bomline" l
+  join app.public."servicedesk$product" a on a.id = l."servicedesk$bomline_bike"
+  join app.public."servicedesk$product" b on b.id = l."servicedesk$bomline_part"
+  where l.role = 'Standard';
+
+-- Where a bike takes parts, and the fit size a part needs (3D viewer data, 26-bike-bom.mdl)
+create or replace view mount_point as
+  select p.sku, s.code, s.name, cast(s.fitdiametermm as decimal(6, 1)) as fit
+  from app.public."servicedesk$mountslot" s
+  join app.public."servicedesk$product" p on p.id = s."servicedesk$mountslot_product";
+
+create or replace view part_mount as
+  select p.sku, m.mountsat as slot, cast(m.fitdiametermm as decimal(6, 1)) as fit
+  from app.public."servicedesk$partmodel" m
+  join app.public."servicedesk$product" p on p.id = m."servicedesk$partmodel_product";
 
 create or replace view product_compatible as
   select a.sku as sku, b.sku as target

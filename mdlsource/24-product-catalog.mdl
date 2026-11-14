@@ -60,8 +60,6 @@ create or modify persistent entity "ServiceDesk"."OrderLine" (
 
 /** Who supplies the product. */
 create or modify association "ServiceDesk"."Product_Supplier" from "ServiceDesk"."Product" to "ServiceDesk"."Supplier";
-/** The parts a bike ships with (shop:hasComponent). */
-create or modify association "ServiceDesk"."Product_Component" from "ServiceDesk"."Product" to "ServiceDesk"."Product" type ReferenceSet;
 /** What a part or accessory fits on or works with (shop:compatibleWith). */
 create or modify association "ServiceDesk"."Product_CompatibleWith" from "ServiceDesk"."Product" to "ServiceDesk"."Product" type ReferenceSet;
 /** The product a known issue affects (shop:affects). */
@@ -89,8 +87,8 @@ begin
   $Product = create "ServiceDesk"."Product" ("Sku" = $Sku, "Name" = $Name, "Kind" = $Kind, "Price" = $Price, "WarrantyYears" = $WarrantyYears, "WheelSize" = $WheelSize, "SeatPostDiameter" = $SeatPostDiameter, "Brakes" = $Brakes, "RackMount" = $RackMount, "ServiceDesk"."Product_Supplier" = $Supplier) commit;
 end;
 
-/** Seed helper: links two products by SKU, as a component (IsComponent) or as compatible. */
-create or modify microflow "ServiceDesk"."SUB_Product_SeedLink" ($FromSku: String, $ToSku: String, $IsComponent: Boolean)
+/** Seed helper: records that one product fits on or works with another, by SKU. What a bike is built with is its BOM (26-bike-bom.mdl). */
+create or modify microflow "ServiceDesk"."SUB_Product_SeedLink" ($FromSku: String, $ToSku: String)
 folder 'Product catalog'
 begin
   retrieve $From from "ServiceDesk"."Product" where [Sku = $FromSku] first;
@@ -99,11 +97,7 @@ begin
     log warning node 'ServiceDesk' 'Catalog seed: no product {1} or {2}.' with ({1} = $FromSku, {2} = $ToSku);
     return;
   end if;
-  if $IsComponent then
-    add $To to $From/"ServiceDesk"."Product_Component";
-  else
-    add $To to $From/"ServiceDesk"."Product_CompatibleWith";
-  end if;
+  add $To to $From/"ServiceDesk"."Product_CompatibleWith";
   commit $From;
 end;
 

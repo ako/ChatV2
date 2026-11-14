@@ -1,10 +1,15 @@
 import * as THREE from "three";
 
-// A procedural, low-poly bike for the 3D product viewer. No model files: the
-// bike is built from simple shapes, and every part the product graph names gets
-// a SLOT, a group of meshes named after the part's SKU, so it can be highlighted,
-// exploded and clicked. What a bike contains comes from the graph; this file
-// only knows where each kind of part sits (by SKU prefix) and how it looks.
+// A low-poly bike for the 3D product viewer, assembled from the app's BOM data
+// (GET rest/productgraph/v1/models/{ref}, mdlsource/26-bike-bom.mdl). The frame,
+// wheels and controls are drawn here; every part comes from data: the bike's
+// MOUNT SLOTS (named points on the frame, with fit sizes), its BOM LINES (fitted
+// and standard parts) and each part's MODEL (the slot it mounts at, its fit size,
+// its explode direction and its shape as primitives placed relative to the slot).
+// Each placed part becomes a SLOT here: a group of meshes named after its SKU, so
+// it can be highlighted, exploded and clicked. A part this bike cannot take (no
+// such mount point, a different fit size, no shape) is returned as unplaced, with
+// the reason.
 //
 // Side view in the XY plane (metres, wheels on the ground at y = 0), Z across.
 
@@ -12,11 +17,35 @@ export type SlotRole = "base" | "component" | "fits";
 
 export interface PartRef { ref: string; label: string; role: SlotRole }
 
-export interface BikeSpec {
-    ref: string;
-    disc: boolean;                 // disc brakes (else rim brakes)
-    parts: PartRef[];              // what the graph says, with the slot role
+/** One primitive of a part's shape; position relative to the part's mount slot, angles in degrees. */
+export interface ShapeSpec {
+    kind: "Box" | "Cylinder" | "Torus" | "Dome";
+    finish: "Matte" | "Metal" | "Rubber";
+    color: string;
+    emissive?: string;
+    glow?: number;
+    opacity?: number;
+    wireframe?: boolean;
+    pos: number[];
+    size: number[];                 // Box: w h d; Cylinder: top radius, bottom radius, length; Torus: radius, tube; Dome: radius
+    rot: number[];
+    segments?: number;
+    detail?: number;
 }
+
+export interface MountSlot { code: string; name: string; pos: number[]; fit?: number }
+
+export interface PartModel extends PartRef {
+    quantity?: number;
+    slot?: string;                  // the mount slot code; none when the part has no 3D model
+    fit?: number;                   // the fit size it needs, mm (a seat post's diameter)
+    explode?: number[];
+    shapes: ShapeSpec[];
+}
+
+export interface BikeModel { ref: string; label: string; slots: MountSlot[]; parts: PartModel[] }
+
+export interface Unplaced extends PartRef { reason: string }
 
 export interface Slot {
     ref: string;
@@ -36,28 +65,11 @@ const SEAT = new THREE.Vector3(-0.13, 0.86, 0); // top of the seat tube
 const HEAD_TOP = new THREE.Vector3(0.42, 0.93, 0);
 const HEAD_LOW = new THREE.Vector3(0.46, 0.76, 0);
 
-/** The slot a SKU belongs in, by its prefix; undefined when the viewer has no shape for it. */
-export function slotKind(ref: string): string | undefined {
-    const r = ref.toUpperCase();
-    if (r.startsWith("BAT-")) return "battery";
-    if (r.startsWith("CVR-")) return "cover";
-    if (/^MOT-.*H$/.test(r)) return "hubmotor";
-    if (/^MOT-.*M$/.test(r)) return "midmotor";
-    if (r.startsWith("CHG-")) return "charger";
-    if (r.startsWith("TYR-")) return "tyres";
-    if (r.startsWith("TUB-")) return "tubes";
-    if (r.startsWith("BRK-PAD")) return "discbrakes";
-    if (r.startsWith("BRK-RIM")) return "rimbrakes";
-    if (r.startsWith("SSP-")) return "seatpost";
-    if (r.startsWith("RCK-")) return "rack";
-    if (r.startsWith("BSK-")) return "basket";
-    if (r.startsWith("CHS-")) return "childseat";
-    if (r.startsWith("PAN-")) return "panniers";
-    if (r.startsWith("LGT-")) return "lights";
-    if (r.startsWith("LCK-")) return "lock";
-    if (r.startsWith("HLM-")) return "helmet";
-    return undefined;
-}
+const FINISH: Record<string, { roughness: number; metalness: number }> = {
+    Matte: { roughness: 0.55, metalness: 0.25 },
+    Metal: { roughness: 0.35, metalness: 0.7 },
+    Rubber: { roughness: 0.9, metalness: 0 }
+};
 
 function mat(color: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.25, ...opts });
@@ -72,130 +84,47 @@ function tube(a: THREE.Vector3, b: THREE.Vector3, radius: number, material: THRE
     return m;
 }
 
-/** A box along the line from a to b, raised `lift` above it. */
-function along(a: THREE.Vector3, b: THREE.Vector3, w: number, h: number, d: number, lift: number, material: THREE.Material): THREE.Mesh {
-    const dir = new THREE.Vector3().subVectors(b, a);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(dir.length() * w, h, d), material);
-    m.position.copy(a).addScaledVector(dir, 0.5);
-    m.rotation.z = Math.atan2(dir.y, dir.x);
-    m.translateY(lift);
-    return m;
-}
-
 function torus(center: THREE.Vector3, radius: number, tubeR: number, material: THREE.Material, z = 0): THREE.Mesh {
     const m = new THREE.Mesh(new THREE.TorusGeometry(radius, tubeR, 12, 48), material);
     m.position.set(center.x, center.y, center.z + z);
     return m;
 }
 
-/** The meshes of one kind of part, in bike coordinates, and the direction it moves when exploded. */
-function partShape(kind: string): { meshes: THREE.Mesh[]; explode: THREE.Vector3 } | undefined {
-    const dark = mat(0x2a3142);
-    const metal = mat(0xb9c2cf, { metalness: 0.7, roughness: 0.35 });
-    const rubber = mat(0x1a1d24, { roughness: 0.9, metalness: 0 });
-    switch (kind) {
-        case "battery": {
-            const b = along(BB, HEAD_LOW, 0.62, 0.075, 0.085, 0.06, mat(0x3a4256));
-            const cap = along(BB, HEAD_LOW, 0.12, 0.078, 0.088, 0.06, mat(0x4fd1c5, { emissive: 0x0d3b37 }));
-            cap.position.lerp(HEAD_LOW, 0.12);
-            return { meshes: [b, cap], explode: new THREE.Vector3(0.05, 0.35, 0.35) };
-        }
-        case "cover":
-            return { meshes: [along(BB, HEAD_LOW, 0.66, 0.1, 0.11, 0.06, mat(0x5b6680, { transparent: true, opacity: 0.55 }))], explode: new THREE.Vector3(0.1, 0.55, 0.5) };
-        case "hubmotor": {
-            const m = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.075, 28), dark);
-            m.rotation.x = Math.PI / 2; m.position.copy(REAR);
-            const ring = torus(REAR, 0.085, 0.008, metal);
-            return { meshes: [m, ring], explode: new THREE.Vector3(-0.25, 0.25, 0.45) };
-        }
-        case "midmotor": {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.15, 0.1), dark);
-            m.position.set(BB.x + 0.03, BB.y - 0.02, 0);
-            m.rotation.z = -0.35;
-            return { meshes: [m], explode: new THREE.Vector3(0.1, -0.2, 0.45) };
-        }
-        case "charger": {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.08), dark);
-            body.position.set(-0.15, 0.02, 0.42);
-            const cable = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.006, 6, 24), rubber);
-            cable.rotation.x = Math.PI / 2; cable.position.set(-0.32, 0.01, 0.42);
-            return { meshes: [body, cable], explode: new THREE.Vector3(0, 0.15, 0.3) };
-        }
-        case "tyres":
-            return { meshes: [torus(REAR, R - 0.02, 0.026, rubber), torus(FRONT, R - 0.02, 0.026, rubber)], explode: new THREE.Vector3(0, 0, 0.45) };
-        case "tubes":
-            return { meshes: [torus(REAR, R - 0.022, 0.014, mat(0x7a4b2a)), torus(FRONT, R - 0.022, 0.014, mat(0x7a4b2a))], explode: new THREE.Vector3(0, 0, 0.8) };
-        case "discbrakes": {
-            const meshes: THREE.Mesh[] = [];
-            for (const c of [REAR, FRONT]) {
-                const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.004, 32), metal);
-                rotor.rotation.x = Math.PI / 2; rotor.position.set(c.x, c.y, 0.055);
-                const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.03), mat(0xd4682a));
-                caliper.position.set(c.x - 0.06, c.y + 0.05, 0.055);
-                meshes.push(rotor, caliper);
-            }
-            return { meshes, explode: new THREE.Vector3(0, 0, -0.45) };
-        }
-        case "rimbrakes": {
-            const pad = (x: number, y: number): THREE.Mesh => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.06), mat(0xd4682a)); m.position.set(x, y, 0); return m; };
-            return { meshes: [pad(REAR.x + 0.12, REAR.y + R - 0.03), pad(FRONT.x - 0.06, FRONT.y + R - 0.03)], explode: new THREE.Vector3(0, 0.25, -0.4) };
-        }
-        case "seatpost": {
-            const top = SEAT.clone().add(new THREE.Vector3(-0.04, 0.16, 0));
-            const post = tube(SEAT.clone().add(new THREE.Vector3(0.02, -0.08, 0)), top, 0.016, metal);
-            const spring = torus(SEAT.clone().add(new THREE.Vector3(-0.02, 0.07, 0)), 0.022, 0.006, mat(0xd4682a));
-            spring.rotation.x = Math.PI / 2;
-            return { meshes: [post, spring], explode: new THREE.Vector3(-0.1, 0.35, 0) };
-        }
-        case "rack": {
-            const y = REAR.y + R + 0.06;
-            const top = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.015, 0.14), metal);
-            top.position.set(REAR.x + 0.02, y, 0);
-            const strut1 = tube(new THREE.Vector3(REAR.x + 0.1, y, 0.06), REAR.clone().setZ(0.06), 0.008, metal);
-            const strut2 = tube(new THREE.Vector3(REAR.x + 0.1, y, -0.06), REAR.clone().setZ(-0.06), 0.008, metal);
-            const stay = tube(new THREE.Vector3(REAR.x + 0.2, y, 0), SEAT.clone().add(new THREE.Vector3(0, -0.06, 0)), 0.007, metal);
-            return { meshes: [top, strut1, strut2, stay], explode: new THREE.Vector3(-0.2, 0.35, 0) };
-        }
-        case "basket": {
-            const b = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.3), mat(0x9b5bb5, { wireframe: true }));
-            b.position.set(HEAD_TOP.x + 0.22, HEAD_TOP.y - 0.02, 0);
-            return { meshes: [b], explode: new THREE.Vector3(0.35, 0.15, 0) };
-        }
-        case "childseat": {
-            const seat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.28), mat(0x9b5bb5));
-            seat.position.set(REAR.x + 0.02, REAR.y + R + 0.12, 0);
-            const back = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.28), mat(0x9b5bb5));
-            back.position.set(REAR.x - 0.14, REAR.y + R + 0.28, 0);
-            return { meshes: [seat, back], explode: new THREE.Vector3(-0.15, 0.55, 0) };
-        }
-        case "panniers": {
-            const bag = (z: number): THREE.Mesh => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.09), mat(0x2f6f5e)); m.position.set(REAR.x + 0.02, REAR.y + R - 0.12, z); return m; };
-            return { meshes: [bag(0.13), bag(-0.13)], explode: new THREE.Vector3(-0.1, 0.1, 0.4) };
-        }
-        case "lights": {
-            const front = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.06, 16), mat(0xfff3c4, { emissive: 0xffe08a, emissiveIntensity: 0.6 }));
-            front.rotation.z = Math.PI / 2; front.position.set(HEAD_TOP.x + 0.08, HEAD_TOP.y + 0.02, 0);
-            const rear = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.03), mat(0xff5a5a, { emissive: 0xc62828, emissiveIntensity: 0.6 }));
-            rear.position.copy(SEAT).add(new THREE.Vector3(-0.06, 0.02, 0));
-            return { meshes: [front, rear], explode: new THREE.Vector3(0.2, 0.25, 0) };
-        }
-        case "lock": {
-            const coil = torus(new THREE.Vector3(BB.x - 0.06, BB.y + 0.28, 0), 0.06, 0.012, mat(0xd4682a));
-            coil.rotation.y = Math.PI / 2;
-            return { meshes: [coil], explode: new THREE.Vector3(-0.3, 0.1, 0.25) };
-        }
-        case "helmet": {
-            const h = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x4f6bd8));
-            h.position.set(HEAD_TOP.x - 0.04, HEAD_TOP.y + 0.08, 0.2);
-            return { meshes: [h], explode: new THREE.Vector3(0, 0.3, 0.3) };
-        }
-        default:
-            return undefined;
+/** One primitive of a part, in bike coordinates. */
+export function shapeMesh(s: ShapeSpec, anchor: THREE.Vector3): THREE.Mesh {
+    const [a = 0, b = 0, c = 0] = s.size;
+    let geometry: THREE.BufferGeometry;
+    switch (s.kind) {
+        case "Box": geometry = new THREE.BoxGeometry(a, b, c); break;
+        case "Cylinder": geometry = new THREE.CylinderGeometry(a, b, c, s.segments || 16); break;
+        case "Torus": geometry = new THREE.TorusGeometry(a, b, s.detail || 12, s.segments || 48); break;
+        default: geometry = new THREE.SphereGeometry(a, s.segments || 24, s.detail || 12, 0, Math.PI * 2, 0, Math.PI / 2); break;
     }
+    const opacity = s.opacity ?? 1;
+    const material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(s.color),
+        ...(FINISH[s.finish] ?? FINISH.Matte),
+        ...(s.emissive ? { emissive: new THREE.Color(s.emissive), emissiveIntensity: s.glow ?? 1 } : {}),
+        ...(opacity < 1 ? { transparent: true, opacity } : {}),
+        ...(s.wireframe ? { wireframe: true } : {})
+    });
+    const m = new THREE.Mesh(geometry, material);
+    m.position.set(anchor.x + (s.pos[0] ?? 0), anchor.y + (s.pos[1] ?? 0), anchor.z + (s.pos[2] ?? 0));
+    m.rotation.set(THREE.MathUtils.degToRad(s.rot[0] ?? 0), THREE.MathUtils.degToRad(s.rot[1] ?? 0), THREE.MathUtils.degToRad(s.rot[2] ?? 0));
+    return m;
+}
+
+/** Why this bike cannot take the part, or undefined when it can. */
+export function whyNot(part: PartModel, slots: Map<string, MountSlot>): string | undefined {
+    if (!part.slot || part.shapes.length === 0) return "has no 3D model";
+    const slot = slots.get(part.slot);
+    if (!slot) return `this bike has no ${part.slot.replace(/_/g, " ")} mount`;
+    if (part.fit != null && slot.fit != null && Math.abs(part.fit - slot.fit) > 0.05) return `needs ${part.fit} mm; this bike's ${slot.name.replace(/ \(.*\)$/, "").toLowerCase()} is ${slot.fit} mm`;
+    return undefined;
 }
 
 /** The bike's own frame, wheels and controls: not parts of the graph, not selectable. */
-function frame(spec: BikeSpec, color: number): THREE.Group {
+function frame(color: number, plainSeatPost: boolean): THREE.Group {
     const g = new THREE.Group();
     const paint = mat(color, { metalness: 0.45, roughness: 0.4 });
     const metal = mat(0xb9c2cf, { metalness: 0.7, roughness: 0.35 });
@@ -234,31 +163,30 @@ function frame(spec: BikeSpec, color: number): THREE.Group {
     const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.13), dark);
     saddle.position.copy(SEAT).add(new THREE.Vector3(-0.06, 0.18, 0));
     g.add(saddle);
-    // a plain seat post when the graph names none
-    if (!spec.parts.some(p => slotKind(p.ref) === "seatpost")) g.add(tube(SEAT, SEAT.clone().add(new THREE.Vector3(-0.04, 0.16, 0)), 0.014, metal));
+    // a plain seat post when no seat post is mounted
+    if (plainSeatPost) g.add(tube(SEAT, SEAT.clone().add(new THREE.Vector3(-0.04, 0.16, 0)), 0.014, metal));
     return g;
 }
 
-/** Builds the bike: its frame plus one slot per part with a shape. Parts without a shape come back in `unplaced`. */
-export function buildBike(spec: BikeSpec, frameColor: number): { root: THREE.Group; slots: Slot[]; unplaced: PartRef[] } {
+/** Builds the bike: its frame plus one slot per part it can take. The others come back in `unplaced`, with the reason. */
+export function buildBike(model: BikeModel, frameColor: number): { root: THREE.Group; slots: Slot[]; unplaced: Unplaced[] } {
+    const mounts = new Map(model.slots.map(s => [s.code, s]));
     const root = new THREE.Group();
-    root.add(frame(spec, frameColor));
     const slots: Slot[] = [];
-    const unplaced: PartRef[] = [];
-    const used = new Set<string>();
-    for (const p of spec.parts) {
-        let kind = slotKind(p.ref);
-        if (kind === "discbrakes" && !spec.disc) kind = undefined;
-        if (kind === "rimbrakes" && spec.disc) kind = undefined;
-        if (!kind || used.has(kind)) { unplaced.push(p); continue; }
-        const shape = partShape(kind);
-        if (!shape) { unplaced.push(p); continue; }
-        used.add(kind);
+    const unplaced: Unplaced[] = [];
+    for (const p of model.parts) {
+        const reason = whyNot(p, mounts);
+        if (reason) { unplaced.push({ ref: p.ref, label: p.label, role: p.role, reason }); continue; }
+        const mount = mounts.get(p.slot as string) as MountSlot;
+        const anchor = new THREE.Vector3(mount.pos[0], mount.pos[1], mount.pos[2]);
         const group = new THREE.Group();
         group.name = p.ref;
-        for (const m of shape.meshes) { m.userData.ref = p.ref; group.add(m); }
+        const meshes = p.shapes.map(s => shapeMesh(s, anchor));
+        for (const m of meshes) { m.userData.ref = p.ref; group.add(m); }
         root.add(group);
-        slots.push({ ref: p.ref, label: p.label, role: p.role, group, home: group.position.clone(), explode: shape.explode, meshes: shape.meshes });
+        const e = p.explode ?? [0, 0.3, 0.3];
+        slots.push({ ref: p.ref, label: p.label, role: p.role, group, home: group.position.clone(), explode: new THREE.Vector3(e[0], e[1], e[2]), meshes });
     }
+    root.add(frame(frameColor, !slots.some(s => model.parts.find(p => p.ref === s.ref)?.slot === "seat_tube")));
     return { root, slots, unplaced };
 }

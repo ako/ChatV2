@@ -44,3 +44,7 @@ Anchors: none · id `d3f527` · 2026-11-12
 ## The product graph is SPARQL over the app database, run inside the Mendix runtime (DuckDB via duckdb_jdbc + rdf extension + R2RML mapping in resources/sparql; 25-sparql-in-runtime.mdl), not a separate triple store or sidecar; catalog data lives in Product/Supplier/KnownIssue/OrderLine
 
 Anchors: none · id `e316af` · 2026-11-13
+
+## A bike's 3D model is data: MountSlot (per bike, fit size), BomLine (Fitted/Standard), PartModel + ShapePart primitives (26-bike-bom.mdl), served by GET rest/productgraph/v1/models/{ref}; the BOM is also the single source of shop:hasComponent. Change a part's look or mount in data (tools/product-catalog/bike_models.py seed), never by SKU rules in bike.ts
+
+Anchors: none · id `f0ee5b` · 2026-11-14
