@@ -1802,3 +1802,25 @@ Followed the upgrade-mendix-version skill: the schema hash decides, convert a co
 - **429 units rewritten, almost all re-serialisation.** Decoded and compared field by field, they differ in byte order only. The real changes are the converter filling in properties mxcli had left out: 4 `Attribute`, 2 `MemberAccesses`, 2 `OffsetExpression`, and one `Queries` list marker. **No GUID and no `$ID` changed.** The real project converted to exactly the same bytes as the verified copy.
 - **Scripts after the conversion.** Re-running every `mdlsource` script wrote one unit. `06b` reset the database connection's `Queries` list marker (3 back to 2) to the committed pre-upgrade bytes. Further runs write nothing, so mxcli and the converter differ on that marker but do not churn.
 - **Checks on 11.16.1.** `docker check` reports 0 errors. Tests are 63/63; the order-card test needs the fake carrier running, as before. The app boots on the 11.16.1 runtime, and DuckDB attaches. `tests-live/mcp/product_graph_test.py` passes in full. The catalog workspace and 3D tab work. The model endpoint answers for all three bikes. `lint` is unchanged at 53 warnings, and `report` at 36/100.
+
+## mxcli upgraded to nightly-20261113-df9084d41 (2026-11-14)
+
+The binary came from the `nightly` release of ako/mxcli. Its SHA-256 matched the release asset's digest, and the old binary is kept as `/usr/local/bin/mxcli.nightly-174`. `mxcli init` then refreshed 42 tool-provided files (skills, commands, the VS Code extension, `.ai-context/mxcli-tooling.json`) and touched nothing project-specific: `CLAUDE.md` is unchanged.
+
+The new version disagreed with four scripts that nightly-174 had in sync. Scripts and model were unchanged; nothing was written. Filed as ako/mxcli#2259.
+- **Three flows refused with MDL-V1-REBUILD.** `SUB_Wiki_Search`, `WFA_Return_DraftReply` and `SUB_ServiceSlots_Free` were all written by mxcli from these scripts. One cause, for example: `describe` shows the stored error-handler `if` with an explicit empty `else`, and the new splicer counts that as a different shape. I dropped and recreated them in one script with the new version, and they are in sync again.
+- **E009 on a bare enumeration type.** In `16-delivery-statistics.mdl`, the parameter `$Leg: "ServiceDesk"."ENUM_DeliveryLeg"` was read as an object. It is now written `enum "ServiceDesk"."ENUM_DeliveryLeg"`, as `describe` prints it.
+
+Proof the rebuilt flows behave the same:
+- The wiki search is covered by `Tool_WikiSearch`'s two tests, and the return reply flow by its tests.
+- `SUB_ServiceSlots_Free` had no test. `tests/11-chat-actions.test.mdl` now checks it: 40 slots (4 a day on the 10 weekdays of the next two weeks) minus bookings, none at a weekend.
+
+Gates with the new version:
+- Every script re-executes without writing.
+- `lint`: 0 errors, 52 warnings (was 53).
+- `report`: 36/100.
+- `docker check`: 0 errors.
+- `test`: 64/64.
+- Live: `product_graph_test.py` ALL PASS, `wiki_test.py` 0 failed, and the catalog flow (bad link flagged, then removed) passes.
+
+The new test first used `[%BeginOfCurrentDayPlus15Days%]`, which is not a Mendix token. `check` passed it; it is now `'[%BeginOfCurrentDay%] + 15 * [%DayLength%]'`.

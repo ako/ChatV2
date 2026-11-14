@@ -1,0 +1,17 @@
+mdl 1;
+
+-- Chat actions (23-chat-actions.mdl): the free workshop slots offered in a booking card.
+
+/**
+ * @test The free service slots are the 4 daily slots on the 10 weekdays of the next two weeks, minus the booked ones, all on weekdays
+ * @expect $Ok = true
+ */
+retrieve $Booked from ServiceDesk.ServiceAppointment where [Status = 'Booked'][SlotStart > '[%BeginOfCurrentDay%]'][SlotStart < '[%BeginOfCurrentDay%] + 15 * [%DayLength%]'];
+$BookedCount = count $Booked;
+$Slots = call microflow ServiceDesk.SUB_ServiceSlots_Free();
+retrieve $Views from $Slots/ServiceDesk.SlotView_SlotList;
+$Count = count $Views;
+$Weekend = filter $Views where formatDateTime($currentObject/Start, 'u') = '6' or formatDateTime($currentObject/Start, 'u') = '7';
+$WeekendCount = count $Weekend;
+declare $Ok Boolean = $Count = 40 - $BookedCount and $WeekendCount = 0;
+/
