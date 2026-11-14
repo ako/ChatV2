@@ -1824,3 +1824,23 @@ Gates with the new version:
 - Live: `product_graph_test.py` ALL PASS, `wiki_test.py` 0 failed, and the catalog flow (bad link flagged, then removed) passes.
 
 The new test first used `[%BeginOfCurrentDayPlus15Days%]`, which is not a Mendix token. `check` passed it; it is now `'[%BeginOfCurrentDay%] + 15 * [%DayLength%]'`.
+
+## Studio Pro 11.16.1 one-time conversion (branch mx11161)
+
+Opening the project in Studio Pro 11.16.1 asked to convert it, although `_MetaData` was identical to a blank 11.16.1 project. The prompt comes from a one-time conversion that headless `mx convert --in-place` does not run: `UseMeToSetupNodeConversion` (one new entry in `Projects$ProjectConversion.OneTimeConversions`). It adds 10 `Projects$SetupSettings` units, one per marketplace module, holding the "Setup" shortcuts that replace the USE_ME folders: PgVectorKnowledgeBase, OpenAIConnector, Encryption, MCPClient, MCPServer, FeedbackModule, AgentCommons, AgentEditorCommons, ConversationalUI and MxGenAIConnector. Their ids are name-based (v5) UUIDs.
+
+Studio Pro also re-saved the three flows the newer mxcli rebuilt; their content is unchanged. It also set the VectorDatabase connection's `Queries` list marker from 2 to 3.
+
+How this was checked: the units were decoded and diffed against main. On the converted branch, `docker check` reports 0 errors. Re-running every script in `mdlsource/` keeps all of Studio Pro's changes except that list marker, which mxcli nightly-20261113 writes back as 2. That is ako/mxcli#2256, fixed in ako/mxcli#2260 after this nightly was built. Until the next nightly, an exec of `06b-vector-db-sql.mdl` flips the marker and Studio Pro flips it back. Both are harmless.
+
+None of this explains the extension-host errors (`ApiAccessApi` / `CustomBlobDocumentApi` timeouts, App Explorer not opening). Those come from Studio Pro's web-extension host, not from model content: all custom blob documents are valid and their references resolve.
+
+### What the headless tools run, and what only Studio Pro runs
+
+These were measured by running `mx convert --in-place` on main before the Studio Pro upgrade (4a4a042), then a full `mxbuild --target=deploy`.
+
+- **Core one-time conversions are not all headless.** `mx convert` re-saved the same four units Studio Pro did: the three flows and the VectorDatabase connection. It did not add `UseMeToSetupNodeConversion` or the 10 Setup units. That conversion's provider (`UseMeToSetupNodeConversionProvider`) lives in `Mendix.Modeler.Core.View.dll`, the UI layer, so only Studio Pro runs it. A headless upgrade is therefore not finished until the project has been opened once in Studio Pro and the result committed.
+- **Extensions have no upgrade hook.** The public `Mendix.StudioPro.ExtensionsAPI` (11.16.1) offers `ConsistencyCheckExtension`, but nothing for migration, upgrade or conversion. Agent Editor 2.7.0 contains no document migration either: its documents carry `version: "1.0.0"`, and it calls `updateDocumentContent` only from its editors and from `documentReferenceSync`. That class listens for `documentAdded` / `documentsChanged` and rewrites agent JSON when a referenced microflow or document is renamed or moved.
+- **The headless tools don't load the project's extensions.** `mx` has no extension loading at all. `mxbuild` starts a web-extension host, but it lists only built-in components (`mapping-editor`, `page-editor`, `custom-blob-documents`, ...). It never loads `agent-editor` from the AgentEditor add-on. So Agent Editor's consistency checks, its Compatibility Overview and its reference sync run only in Studio Pro.
+- **Consequence for mxcli edits:** when MDL renames or moves a microflow, entity or document that an agent, tool or knowledge base references, nothing rewrites the agent JSON headlessly. The script has to update it.
+- **Agent Editor 2.7.0's module requirements are met.** It requires GenAICommons [7.3,8), AgentCommons [4.4,5), ConversationalUI [7.4,8), MCPClient [4.4,5), MxGenAIConnector [7.4,8), OpenAIConnector [9.4,10), MCPServer [5.4,6), CommunityCommons >= 11.5.1 and Encryption >= 11.1.2. The installed modules are exactly the lower bounds, so its Compatibility Overview should report compatible.
