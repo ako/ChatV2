@@ -1824,3 +1824,13 @@ Gates with the new version:
 - Live: `product_graph_test.py` ALL PASS, `wiki_test.py` 0 failed, and the catalog flow (bad link flagged, then removed) passes.
 
 The new test first used `[%BeginOfCurrentDayPlus15Days%]`, which is not a Mendix token. `check` passed it; it is now `'[%BeginOfCurrentDay%] + 15 * [%DayLength%]'`.
+
+## Studio Pro 11.16.1 one-time conversion (branch mx11161)
+
+Opening the project in Studio Pro 11.16.1 asked to convert it, although `_MetaData` was identical to a blank 11.16.1 project. The prompt comes from a one-time conversion that headless `mx convert --in-place` does not run: `UseMeToSetupNodeConversion` (one new entry in `Projects$ProjectConversion.OneTimeConversions`). It adds 10 `Projects$SetupSettings` units, one per marketplace module, holding the "Setup" shortcuts that replace the USE_ME folders: PgVectorKnowledgeBase, OpenAIConnector, Encryption, MCPClient, MCPServer, FeedbackModule, AgentCommons, AgentEditorCommons, ConversationalUI and MxGenAIConnector. Their ids are name-based (v5) UUIDs.
+
+Studio Pro also re-saved the three flows the newer mxcli rebuilt; their content is unchanged. It also set the VectorDatabase connection's `Queries` list marker from 2 to 3.
+
+How this was checked: the units were decoded and diffed against main. On the converted branch, `docker check` reports 0 errors. Re-running every script in `mdlsource/` keeps all of Studio Pro's changes except that list marker, which mxcli nightly-20261113 writes back as 2. That is ako/mxcli#2256, fixed in ako/mxcli#2260 after this nightly was built. Until the next nightly, an exec of `06b-vector-db-sql.mdl` flips the marker and Studio Pro flips it back. Both are harmless.
+
+None of this explains the extension-host errors (`ApiAccessApi` / `CustomBlobDocumentApi` timeouts, App Explorer not opening). Those come from Studio Pro's web-extension host, not from model content: all custom blob documents are valid and their references resolve.
