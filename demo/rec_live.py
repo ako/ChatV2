@@ -193,7 +193,7 @@ def main(spec_path, silent=False):
                 pg.click(s["click"]); pg.wait_for_timeout(s.get("then_ms", 1500))
             elif "check_setup" in s:
                 if not pg.evaluate(s["check_setup"]):
-                    raise SystemExit("INVALID take: setup did not reach its starting state")
+                    raise SystemExit("INVALID take: setup did not reach its starting state: " + s["check_setup"][:120])
             elif "wait_ms" in s:
                 pg.wait_for_timeout(s["wait_ms"])
             elif "js" in s:
