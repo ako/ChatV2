@@ -1873,3 +1873,27 @@ Still open:
 - [ako/mxcli#2265](https://github.com/ako/mxcli/issues/2265): `rename`/`move` leave Agent Editor documents naming the old microflow, and the dry run does not list them. Measured here: renaming `ServiceDesk.Tool_GetOrderStatus` misses `SupportAgent`'s tool.
 - [ako/mxcli#2266](https://github.com/ako/mxcli/issues/2266): no MDL for Agent Editor's evaluator documents or for test sets and test cases in an agent. Its first point matters before anyone authors test sets in Studio Pro: whether `create or modify agent` keeps a `testSets` array it does not model. If it does not, re-running `07-agents.mdl` would delete them.
 - Not filed: `check` passed `[%BeginOfCurrentDayPlus15Days%]` in the slots test, which is not a Mendix token (see the 2026-11-14 nightly section). Same class as ako/mxcli#2189 (an unknown token in an access-rule constraint).
+
+## Demo: 46 beats, and a catalog panel that went blank
+
+- **The catalog detail panel blanked after every save.** Add/remove compatibility and Save on the Details tab committed the product with *refresh in client*. That reloaded the product Data grid 2, which clears its single selection, so the selection-bound data view emptied. Data grid 2's `keepSelection` exists only for multi-select.
+  - **Fix:** commit product changes without refresh. The changed object still reaches the page: "Last changed" updates, and the 3D preview re-fetches its model.
+  - The compatibility lists reload by refreshing their own `CatalogPick` rows.
+  - Only saving a new product reloads the grid.
+  - **Verified in the browser:** before the fix, the selected-row count drops to 0 after Remove. After it, the count stays 1 and the lists update.
+- **The recorder's beat marker had 5 bits**, which capped a take at 32 beats. It now has 6 bits: 7 squares, with a wider sampled row and cover box.
+- **A take needs a reset first** (`demo/reset-take.sh`). The delay notice is posted once per carrier scan (`ChatNotice.NoticeKey`), so the previous take's row must go. The trial licence also allows only a few sessions; scouting scripts that never logged out hit "Maximum number of sessions exceeded", which shows on the login page as a plain "Sign in failed".
+- **AI answers vary in shape between takes.** The same question got two cards in rehearsal, then one graph card plus a table in the take, with the graph card rendering after the text had settled. Beats that point at parts of an AI answer must wait for them (`wait_js`) and accept either shape.
+
+## ako/mxcli main (fe9d92c74, nightly-494) against this project
+
+Tested on a worktree of HEAD, comparing against the installed nightly-20261113:
+
+- **`check --references`:** every script passes, with the same issue counts as the nightly.
+- **Exec:** every script, twice, writes nothing. That includes the `.mpr` and the Studio Pro-converted VectorDatabase connection.
+- **#2256 fixed.** Control: the nightly flips `Queries` 3→2, and main writes it back to 3.
+- **#2239 fixed.** `alter module … add jar dependency if not exists (…)` is re-runnable ("Unchanged" twice). After a drop, it adds the dependency back, identical except for the new element `$ID`. The DuckDB dependency can move from `tools/product-catalog/add-duckdb-dependency.mdl` into a project script once main is the installed mxcli.
+- **#2253 fixed.** `check` now refuses `$currentObject/ChangedDate` in a visibility expression. The nightly passed it, and the build then failed with CE0117.
+- **#2252 fixed, in `exec`.** `check` still passes a fully qualified page attribute path, but `exec` now writes the short form (`ServiceDesk.BomLine_Part/Sku`), and `docker check` reports 0 errors where it used to fail with CE1613.
+- **Other gates:** `lint` 0 errors / 52 warnings, `report` 36/100 (both unchanged), `docker check` 0 errors, `test` 64/64.
+- **Still open:** #2265 (rename/move doesn't update Agent Editor references) and #2266 (evaluators and test sets).
