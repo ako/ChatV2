@@ -13,9 +13,17 @@ mdl 1;
 -- they are bundled there (tools/product-catalog/bundle-extensions.sh, for
 -- servers without internet), otherwise DuckDB installs them once on first use.
 
--- The module depends on org.duckdb:duckdb_jdbc 2.0.0.1, added once by
--- tools/product-catalog/add-duckdb-dependency.mdl: adding a jar dependency is
--- not re-runnable yet (ako/mxcli#2239), so it cannot live in this script.
+-- The module depends on DuckDB's JDBC driver, which the SPARQL engine runs on.
+-- The extensions in resources/sparql/extensions must match its engine version;
+-- to change the version, use
+--   alter module "ServiceDesk" set jar dependency 'org.duckdb:duckdb_jdbc' version '<v>';
+alter module "ServiceDesk"
+  add jar dependency if not exists (
+    group = 'org.duckdb',
+    artifact = 'duckdb_jdbc',
+    version = '2.0.0.1',
+    included = true,
+  );
 
 /** Runs a read-only SPARQL SELECT or ASK on a dataset of the app's own data (catalog, products or app) and returns the SPARQL 1.1 JSON results. Raises an error when the query fails. Only for server-side use after the caller has decided what the user may see. */
 create or modify java action "ServiceDesk"."JA_Sparql_Query" folder 'Product graph' (
