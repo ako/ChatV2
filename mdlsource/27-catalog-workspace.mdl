@@ -57,14 +57,22 @@ create or modify microflow "ServiceDesk"."SUB_Catalog_Changed" ($Product: "Servi
 folder 'Catalog workspace'
 begin
   if $Product != empty then
-    change $Product ("ModelVersion" = $Product/ModelVersion + 1) commit refresh;
+    change $Product ("ModelVersion" = $Product/ModelVersion + 1) commit;
   end if;
   retrieve $Snapshot from "ServiceDesk"."GraphNode";
   delete $Snapshot;
 end;
 
-/** Saves a product's details. */
+/** Saves a product's details. No refresh in client: the change reaches the page anyway, and reloading the product grid would clear its selection and blank the detail panel. */
 create or modify microflow "ServiceDesk"."SUB_Product_Save" ($Product: "ServiceDesk"."Product")
+folder 'Catalog workspace'
+begin
+  commit $Product;
+  call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
+end;
+
+/** Saves a new product and reloads the product grid, so the new row appears. */
+create or modify microflow "ServiceDesk"."SUB_Product_SaveNew" ($Product: "ServiceDesk"."Product")
 folder 'Catalog workspace'
 begin
   commit $Product refresh;
@@ -99,7 +107,7 @@ end;
 create or modify microflow "ServiceDesk"."ACT_Product_SaveNew" ($Product: "ServiceDesk"."Product")
 folder 'Catalog workspace'
 begin
-  call microflow "ServiceDesk"."SUB_Product_Save" (Product = $Product);
+  call microflow "ServiceDesk"."SUB_Product_SaveNew" (Product = $Product);
   close page;
 end;
 
@@ -130,10 +138,12 @@ begin
     return false;
   end if;
   if $CatalogPick/Direction = 'on' then
-    change $Product ("ServiceDesk"."Product_CompatibleWith" += $Target) commit refresh;
+    change $Product ("ServiceDesk"."Product_CompatibleWith" += $Target) commit;
   else
-    change $Target ("ServiceDesk"."Product_CompatibleWith" += $Product) commit refresh;
+    change $Target ("ServiceDesk"."Product_CompatibleWith" += $Product) commit;
   end if;
+  /* Reloads the two compatibility lists (rows are CatalogPick objects) without reloading the product grid, whose selection a refresh would clear. */
+  change $CatalogPick ("Direction" = $CatalogPick/Direction) refresh;
   call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
   return true;
 end;
@@ -145,10 +155,12 @@ begin
   retrieve $Product from $CatalogPick/"ServiceDesk"."CatalogPick_Product";
   retrieve $Other from $CatalogPick/"ServiceDesk"."CatalogPick_Target";
   if $CatalogPick/Direction = 'on' then
-    change $Product ("ServiceDesk"."Product_CompatibleWith" -= $Other) commit refresh;
+    change $Product ("ServiceDesk"."Product_CompatibleWith" -= $Other) commit;
   else
-    change $Other ("ServiceDesk"."Product_CompatibleWith" -= $Product) commit refresh;
+    change $Other ("ServiceDesk"."Product_CompatibleWith" -= $Product) commit;
   end if;
+  /* Reloads the two compatibility lists (rows are CatalogPick objects) without reloading the product grid, whose selection a refresh would clear. */
+  change $CatalogPick ("Direction" = $CatalogPick/Direction) refresh;
   call microflow "ServiceDesk"."SUB_Catalog_Changed" (Product = $Product);
 end;
 

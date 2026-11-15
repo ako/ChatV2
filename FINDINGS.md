@@ -1782,10 +1782,10 @@ Measured, live, as `demo_catalog` (Playwright):
 
 mxcli notes:
 - **Four mistakes passed `check` and failed the build:**
-  - a fully qualified association path in a column or text parameter (CE1613), filed as ako/mxcli#2252;
+  - a fully qualified association path in a column or text parameter (CE1613), filed as ako/mxcli#2252 (fixed in [ako/mxcli#2255](https://github.com/ako/mxcli/pull/2255));
   - the same through `System.changedBy` in a snippet, which made mxbuild abort, also #2252;
-  - `$currentObject/ChangedDate` for an AutoChangedDate attribute in a visibility expression (CE0117; the member is `changedDate`), filed as ako/mxcli#2253;
-  - a flow argument naming the enclosing dataview (`Product = $dvProduct`) silently dropped (CE0115), known as ako/mxcli#2095.
+  - `$currentObject/ChangedDate` for an AutoChangedDate attribute in a visibility expression (CE0117; the member is `changedDate`), filed as ako/mxcli#2253 (fixed in [ako/mxcli#2255](https://github.com/ako/mxcli/pull/2255));
+  - a flow argument naming the enclosing dataview (`Product = $dvProduct`) silently dropped (CE0115), known as ako/mxcli#2095 (fixed on 2026-11-11, after nightly-174).
 - **`docker check` is the gate that catches these;** run it before restarting the app.
 - **Grants are additive:** narrowing `grant create, delete, read, write` to `grant read, write` in the script leaves create and delete in place; `revoke create, delete … from …` removed them.
 - **Two buttons on the same entity:** a list of Products inside a Product dataview cannot pass both to one microflow. The compatibility lists use non-persistent link rows (CatalogPick) that carry both.
@@ -1831,7 +1831,7 @@ Opening the project in Studio Pro 11.16.1 asked to convert it, although `_MetaDa
 
 Studio Pro also re-saved the three flows the newer mxcli rebuilt; their content is unchanged. It also set the VectorDatabase connection's `Queries` list marker from 2 to 3.
 
-How this was checked: the units were decoded and diffed against main. On the converted branch, `docker check` reports 0 errors. Re-running every script in `mdlsource/` keeps all of Studio Pro's changes except that list marker, which mxcli nightly-20261113 writes back as 2. That is ako/mxcli#2256, fixed in ako/mxcli#2260 after this nightly was built. Until the next nightly, an exec of `06b-vector-db-sql.mdl` flips the marker and Studio Pro flips it back. Both are harmless.
+How this was checked: the units were decoded and diffed against main. On the converted branch, `docker check` reports 0 errors. Re-running every script in `mdlsource/` keeps all of Studio Pro's changes except that list marker, which mxcli nightly-20261113 writes back as 2. This is **not** fixed by ako/mxcli#2260: that PR fixed the other three property gaps in #2256 and deliberately left the `Queries` marker at 2, because no Studio Pro-written connection had been measured then. This branch's converted connection is that measurement; see the section at the end. Until the next nightly, an exec of `06b-vector-db-sql.mdl` flips the marker and Studio Pro flips it back. Both are harmless.
 
 None of this explains the extension-host errors (`ApiAccessApi` / `CustomBlobDocumentApi` timeouts, App Explorer not opening). Those come from Studio Pro's web-extension host, not from model content: all custom blob documents are valid and their references resolve.
 
@@ -1842,5 +1842,58 @@ These were measured by running `mx convert --in-place` on main before the Studio
 - **Core one-time conversions are not all headless.** `mx convert` re-saved the same four units Studio Pro did: the three flows and the VectorDatabase connection. It did not add `UseMeToSetupNodeConversion` or the 10 Setup units. That conversion's provider (`UseMeToSetupNodeConversionProvider`) lives in `Mendix.Modeler.Core.View.dll`, the UI layer, so only Studio Pro runs it. A headless upgrade is therefore not finished until the project has been opened once in Studio Pro and the result committed.
 - **Extensions have no upgrade hook.** The public `Mendix.StudioPro.ExtensionsAPI` (11.16.1) offers `ConsistencyCheckExtension`, but nothing for migration, upgrade or conversion. Agent Editor 2.7.0 contains no document migration either: its documents carry `version: "1.0.0"`, and it calls `updateDocumentContent` only from its editors and from `documentReferenceSync`. That class listens for `documentAdded` / `documentsChanged` and rewrites agent JSON when a referenced microflow or document is renamed or moved.
 - **The headless tools don't load the project's extensions.** `mx` has no extension loading at all. `mxbuild` starts a web-extension host, but it lists only built-in components (`mapping-editor`, `page-editor`, `custom-blob-documents`, ...). It never loads `agent-editor` from the AgentEditor add-on. So Agent Editor's consistency checks, its Compatibility Overview and its reference sync run only in Studio Pro.
-- **Consequence for mxcli edits:** when MDL renames or moves a microflow, entity or document that an agent, tool or knowledge base references, nothing rewrites the agent JSON headlessly. The script has to update it.
+- **Consequence for mxcli edits:** when MDL renames or moves a microflow, entity or document that an agent, tool or knowledge base references, nothing rewrites the agent JSON headlessly. The script has to update it. Filed as [ako/mxcli#2265](https://github.com/ako/mxcli/issues/2265).
 - **Agent Editor 2.7.0's module requirements are met.** It requires GenAICommons [7.3,8), AgentCommons [4.4,5), ConversationalUI [7.4,8), MCPClient [4.4,5), MxGenAIConnector [7.4,8), OpenAIConnector [9.4,10), MCPServer [5.4,6), CommunityCommons >= 11.5.1 and Encryption >= 11.1.2. The installed modules are exactly the lower bounds, so its Compatibility Overview should report compatible.
+
+## mxcli: fixes merged since the 2026-11-13 review, and what is still open (2026-11-14)
+
+**Not in `nightly-20261113-df9084d41`.** That nightly was built from mxcli main at `df9084d41`. Every PR below was merged after it (checked with `git merge-base --is-ancestor`), so the binary this project runs has none of them. They arrive with the next nightly, or with a build of current main.
+
+Merged:
+
+| Issue | PR | What changes for this project |
+|---|---|---|
+| ako/mxcli#2208 | [ako/mxcli#2216](https://github.com/ako/mxcli/pull/2216) | `check` refuses `!= empty` in view OQL and reports an unquoted `Order` (and 17 more OQL keywords measured on mxbuild) used as a name |
+| ako/mxcli#2205 | [ako/mxcli#2217](https://github.com/ako/mxcli/pull/2217) | `marketplace install`/`update` write `modules/AgentEditor.mxmodule`; the hand-committed file is then what the installer writes too |
+| ako/mxcli#2210 | [ako/mxcli#2218](https://github.com/ako/mxcli/pull/2218) | `theme create --from` keeps JetBrains Mono while `--mxt-font-mono` still names it |
+| ako/mxcli#2209 | [ako/mxcli#2219](https://github.com/ako/mxcli/pull/2219) | `revoke … from Admin` no longer refuses because of a shared rule it would not change |
+| ako/mxcli#2211 | [ako/mxcli#2220](https://github.com/ako/mxcli/pull/2220) | MDL-AGENT04 warns on an agent description over 200 characters or a name over 50 |
+| ako/mxcli#2176 | [ako/mxcli#2227](https://github.com/ako/mxcli/pull/2227) | `check` refuses `set` on an object a list `find` returned, as `exec` does |
+| ako/mxcli#2199 | [ako/mxcli#2228](https://github.com/ako/mxcli/pull/2228) | `check` refuses `show message information (…)` (the type before the message, read as a call to `information()`) and gives the form that builds |
+| ako/mxcli#2156 | [ako/mxcli#2230](https://github.com/ako/mxcli/pull/2230) | re-running an applied `alter snippet`/`alter page` prints "Unchanged" |
+| ako/mxcli#2155 | [ako/mxcli#2231](https://github.com/ako/mxcli/pull/2231) | a widget `.mpk` copied in after `widget init` is extracted by `check`/`exec` on demand |
+| ako/mxcli#2174 | [ako/mxcli#2232](https://github.com/ako/mxcli/pull/2232) | `describe` prints an icon image's `Icon:` and create/alter write it back; `ImageType: icon` without an icon is now a `check` error |
+| ako/mxcli#2239 | [ako/mxcli#2243](https://github.com/ako/mxcli/pull/2243) | `add jar dependency if not exists (…)`: the DuckDB dependency can move back from the run-once script into a re-runnable one |
+| ako/mxcli#2256 | [ako/mxcli#2260](https://github.com/ako/mxcli/pull/2260) | mxcli writes `ValidationFeedbackAction.Attribute`, `CustomRange.OffsetExpression` and an empty `AccessRule.MemberAccesses`, the three keys the 11.16.1 converter added |
+| ako/mxcli#2252, #2253 | [ako/mxcli#2255](https://github.com/ako/mxcli/pull/2255) | entity-first attribute paths and audit field names in expressions |
+
+Still open:
+- **The `Queries` list marker.** Studio Pro 11.16.1 writes 3 (this project's VectorDatabase connection, merged in ChatV2#10); mxcli writes 2 (`MandatoryListMarkers {"Queries": 2}` in `db_write.go`). Until mxcli changes, every exec of `06b-vector-db-sql.mdl` writes 2 back, and the next Studio Pro save writes 3 again. Harmless, but it shows as a diff each time. The measurement for the fix now exists here.
+- [ako/mxcli#2259](https://github.com/ako/mxcli/issues/2259): the newer nightly refuses three flows mxcli itself wrote (MDL-V1-REBUILD) and misreads a bare enumeration parameter type (E009).
+- [ako/mxcli#2265](https://github.com/ako/mxcli/issues/2265): `rename`/`move` leave Agent Editor documents naming the old microflow, and the dry run does not list them. Measured here: renaming `ServiceDesk.Tool_GetOrderStatus` misses `SupportAgent`'s tool.
+- [ako/mxcli#2266](https://github.com/ako/mxcli/issues/2266): no MDL for Agent Editor's evaluator documents or for test sets and test cases in an agent. Its first point matters before anyone authors test sets in Studio Pro: whether `create or modify agent` keeps a `testSets` array it does not model. If it does not, re-running `07-agents.mdl` would delete them.
+- Not filed: `check` passed `[%BeginOfCurrentDayPlus15Days%]` in the slots test, which is not a Mendix token (see the 2026-11-14 nightly section). Same class as ako/mxcli#2189 (an unknown token in an access-rule constraint).
+
+## Demo: 46 beats, and a catalog panel that went blank
+
+- **The catalog detail panel blanked after every save.** Add/remove compatibility and Save on the Details tab committed the product with *refresh in client*. That reloaded the product Data grid 2, which clears its single selection, so the selection-bound data view emptied. Data grid 2's `keepSelection` exists only for multi-select.
+  - **Fix:** commit product changes without refresh. The changed object still reaches the page: "Last changed" updates, and the 3D preview re-fetches its model.
+  - The compatibility lists reload by refreshing their own `CatalogPick` rows.
+  - Only saving a new product reloads the grid.
+  - **Verified in the browser:** before the fix, the selected-row count drops to 0 after Remove. After it, the count stays 1 and the lists update.
+- **The recorder's beat marker had 5 bits**, which capped a take at 32 beats. It now has 6 bits: 7 squares, with a wider sampled row and cover box.
+- **A take needs a reset first** (`demo/reset-take.sh`). The delay notice is posted once per carrier scan (`ChatNotice.NoticeKey`), so the previous take's row must go. The trial licence also allows only a few sessions; scouting scripts that never logged out hit "Maximum number of sessions exceeded", which shows on the login page as a plain "Sign in failed".
+- **AI answers vary in shape between takes.** The same question got two cards in rehearsal, then one graph card plus a table in the take, with the graph card rendering after the text had settled. Beats that point at parts of an AI answer must wait for them (`wait_js`) and accept either shape.
+
+## ako/mxcli main (fe9d92c74, nightly-494) against this project
+
+Tested on a worktree of HEAD, comparing against the installed nightly-20261113:
+
+- **`check --references`:** every script passes, with the same issue counts as the nightly.
+- **Exec:** every script, twice, writes nothing. That includes the `.mpr` and the Studio Pro-converted VectorDatabase connection.
+- **#2256 fixed.** Control: the nightly flips `Queries` 3→2, and main writes it back to 3.
+- **#2239 fixed.** `alter module … add jar dependency if not exists (…)` is re-runnable ("Unchanged" twice). After a drop, it adds the dependency back, identical except for the new element `$ID`. The DuckDB dependency can move from `tools/product-catalog/add-duckdb-dependency.mdl` into a project script once main is the installed mxcli.
+- **#2253 fixed.** `check` now refuses `$currentObject/ChangedDate` in a visibility expression. The nightly passed it, and the build then failed with CE0117.
+- **#2252 fixed, in `exec`.** `check` still passes a fully qualified page attribute path, but `exec` now writes the short form (`ServiceDesk.BomLine_Part/Sku`), and `docker check` reports 0 errors where it used to fail with CE1613.
+- **Other gates:** `lint` 0 errors / 52 warnings, `report` 36/100 (both unchanged), `docker check` 0 errors, `test` 64/64.
+- **Still open:** #2265 (rename/move doesn't update Agent Editor references) and #2266 (evaluators and test sets).

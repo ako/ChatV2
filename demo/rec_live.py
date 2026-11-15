@@ -56,11 +56,11 @@ if (!window.__recReady) { window.__recReady = true;
   Object.assign(ka.style, {position: 'absolute', right: '0', bottom: '0', width: '1px', height: '1px', background: 'rgba(0,0,0,.02)', animation: 'recka 1s linear infinite'});
   const kst = document.createElement('style'); kst.textContent = '@keyframes recka { 50% { opacity: .2 } }';
   document.head.append(kst); st.append(ka);
-  // beat marker: a row of six squares in the top-left corner. The first is
-  // green while a beat is filmed, the other five spell the beat's number in
+  // beat marker: a row of seven squares in the top-left corner. The first is
+  // green while a beat is filmed, the other six spell the beat's number in
   // binary (white = 1). The cut is found from it in the video itself, and the
   // film covers it. Black and white survive video compression; shades do not.
-  for (let k = 0; k < 6; k++) { const mk = document.createElement('div'); mk.id = '__mark' + k;
+  for (let k = 0; k < 7; k++) { const mk = document.createElement('div'); mk.id = '__mark' + k;
     Object.assign(mk.style, {position: 'absolute', left: (12 * k) + 'px', top: '0', width: '12px', height: '12px', background: '#000', zIndex: 2147483647});
     st.append(mk); }
   let n = 0;
@@ -72,7 +72,7 @@ if (!window.__recReady) { window.__recReady = true;
     Object.assign(s.style, {position: 'absolute', left: (r.left / k - 6) + 'px', top: (r.top / k - 6) + 'px', width: (r.width / k + 12) + 'px', height: (Math.min(r.height, 900 * k - r.top) / k + 12) + 'px',
       border: '2px solid #4FD1C5', boxShadow: '0 0 0 4px rgba(79,209,197,.18)', borderRadius: '10px', opacity: '0', transition: 'opacity .35s ease'});
     st.append(s); requestAnimationFrame(() => { s.style.opacity = '1'; }); };
-  window.__mark = i => { for (let k = 0; k < 6; k++) { const m = document.getElementById('__mark' + k); if (!m) continue;
+  window.__mark = i => { for (let k = 0; k < 7; k++) { const m = document.getElementById('__mark' + k); if (!m) continue;
     m.style.background = i < 0 ? '#000' : k === 0 ? 'rgb(0,255,0)' : ((i >> (k - 1)) & 1 ? '#fff' : '#000'); } };
   window.__unspot = () => { const s = document.getElementById('__spot'); if (s) s.remove(); };
   window.__typeTo = (sel, text) => { const el = document.querySelector(sel); if (!el) return;
@@ -193,7 +193,7 @@ def main(spec_path, silent=False):
                 pg.click(s["click"]); pg.wait_for_timeout(s.get("then_ms", 1500))
             elif "check_setup" in s:
                 if not pg.evaluate(s["check_setup"]):
-                    raise SystemExit("INVALID take: setup did not reach its starting state")
+                    raise SystemExit("INVALID take: setup did not reach its starting state: " + s["check_setup"][:120])
             elif "wait_ms" in s:
                 pg.wait_for_timeout(s["wait_ms"])
             elif "js" in s:
@@ -291,7 +291,7 @@ def cut(name, work, video, windows, voices, errs=(), t_open=0, t_close=0, lead=M
     # so a clock map drifts by seconds; the marker cannot.
     vlen = probe_duration(video)
     FPS = 30
-    W = 90   # one row through the middle of the six squares (12 CSS px x 1.2 zoom each)
+    W = 104  # one row through the middle of the seven squares (12 CSS px x 1.2 zoom each)
     raw_px = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", video, "-vf",
                              f"fps={FPS},format=rgb24,crop={W}:1:0:7", "-f", "rawvideo", "-"],
                             capture_output=True, check=True).stdout
@@ -303,7 +303,7 @@ def cut(name, work, video, windows, voices, errs=(), t_open=0, t_close=0, lead=M
         r, g, b = px(0)
         if not (g > 160 and r < 90 and b < 90):
             return -1
-        return sum((1 << (k - 1)) for k in range(1, 6) if sum(px(k)) > 3 * 128)
+        return sum((1 << (k - 1)) for k in range(1, 7) if sum(px(k)) > 3 * 128)
 
     found = {}
     for f in range(len(raw_px) // (W * 3)):
@@ -320,7 +320,7 @@ def cut(name, work, video, windows, voices, errs=(), t_open=0, t_close=0, lead=M
         take = min(dur, seen)
         part = f"{work}/beat-{j:02d}.mp4"
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{take:.3f}", "-i", video,
-                        "-vf", f"fps=30,trim=start_frame=2,setpts=PTS-STARTPTS,drawbox=x=0:y=0:w=92:h=18:color=0x070B16@1:t=fill,tpad=stop_mode=clone:stop_duration={max(0, dur - take) + 2 / 30:.3f},format=yuv420p",
+                        "-vf", f"fps=30,trim=start_frame=2,setpts=PTS-STARTPTS,drawbox=x=0:y=0:w=108:h=18:color=0x070B16@1:t=fill,tpad=stop_mode=clone:stop_duration={max(0, dur - take) + 2 / 30:.3f},format=yuv420p",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", part], check=True)
         parts.append(part)
     scale = vlen / (t_close - t_open) if t_close else None
