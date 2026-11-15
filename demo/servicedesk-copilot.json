@@ -398,7 +398,11 @@
      "wait_answer": true
     },
     {
-     "js": "__last().querySelector('.crt-graph').closest('.crt-card').scrollIntoView({block: 'start'})"
+     "wait_js": "!!__last() && !!__last().querySelector('.crt-graph canvas')",
+     "timeout": 90
+    },
+    {
+     "js": "(() => { const g = __last().querySelector('.crt-graph'); if (g) g.closest('.crt-card').scrollIntoView({block: 'start'}); })()"
     },
     {
      "wait_ms": 2500
