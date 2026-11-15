@@ -1897,3 +1897,14 @@ Tested on a worktree of HEAD, comparing against the installed nightly-20261113:
 - **#2252 fixed, in `exec`.** `check` still passes a fully qualified page attribute path, but `exec` now writes the short form (`ServiceDesk.BomLine_Part/Sku`), and `docker check` reports 0 errors where it used to fail with CE1613.
 - **Other gates:** `lint` 0 errors / 52 warnings, `report` 36/100 (both unchanged), `docker check` 0 errors, `test` 64/64.
 - **Still open:** #2265 (rename/move doesn't update Agent Editor references) and #2266 (evaluators and test sets).
+
+## Switched to mxcli main (nightly-494-gfe9d92c74)
+
+- `./mxcli` now points at the main build. The previous nightly is kept as `/usr/local/bin/mxcli.nightly-20261113`, so switching back is a copy. `mxcli init` refreshed the synced skills and commands.
+- The DuckDB JDBC dependency moved back into `mdlsource/25-sparql-in-runtime.mdl` as `add jar dependency if not exists`, now re-runnable (ako/mxcli#2239). `tools/product-catalog/add-duckdb-dependency.mdl` is gone.
+- **Gates on the real project:**
+  - `check --references`: passes on every script.
+  - `exec`: every script, twice; neither run changed any model file. Studio Pro's VectorDatabase list marker is kept (ako/mxcli#2256).
+  - `lint`: 0 errors, 52 warnings. `report`: 36/100.
+  - `docker check`: 0 errors.
+  - `test`: 64/64. One test failed at first because the carrier helper had stopped. `tools/start-helpers.sh` fixes it. That test needs the helper.
