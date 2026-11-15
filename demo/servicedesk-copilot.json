@@ -420,11 +420,11 @@
     ],
     [
      5.6,
-     "__unspot(); __last().querySelectorAll('.crt-card')[1].scrollIntoView({block: 'center'})"
+     "__unspot(); window.__mnt = __last().querySelector('.crt-md table') || __last().querySelectorAll('.crt-card')[1]; if (window.__mnt) window.__mnt.scrollIntoView({block: 'center'})"
     ],
     [
      6.4,
-     "__spot(__last().querySelectorAll('.crt-card')[1])"
+     "if (window.__mnt) __spot(window.__mnt)"
     ]
    ],
    "settle": 2.5
