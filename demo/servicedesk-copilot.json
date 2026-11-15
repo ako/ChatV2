@@ -377,6 +377,55 @@
    "settle": 2.0
   },
   {
+   "say": "Then she asks what else fits her bike.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "Which accessories fit my EB-200, and where do they mount? Show me as a graph.",
+    "at": 0.4,
+    "secs": 2.4
+   },
+   "send_at": 3.2
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "js": "__last().querySelector('.crt-graph').closest('.crt-card').scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 2500
+    }
+   ],
+   "check": {
+    "js": "!!__last().querySelector('.crt-graph canvas') && /mount/i.test(__last().innerText)",
+    "why": "the answer has a graph card and says where things mount"
+   },
+   "say": "The answer is a graph of her bike, its parts and its accessories, with where each one mounts. It comes from a sparkle query, run over the app's own Postgres database.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-graph').closest('.crt-card'))"
+    ],
+    [
+     5.6,
+     "__unspot(); __last().querySelectorAll('.crt-card')[1].scrollIntoView({block: 'center'})"
+    ],
+    [
+     6.4,
+     "__spot(__last().querySelectorAll('.crt-card')[1])"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
    "say": "Now Ada wants to return a light set she never used.",
    "type": {
     "sel": "textarea[placeholder]",
@@ -885,6 +934,325 @@
   {
    "prep": [
     {
+     "goto": "http://127.0.0.1:8080/p/product-explorer"
+    },
+    {
+     "wait_ms": 5000
+    },
+    {
+     "js": "(() => { const b = [...document.querySelectorAll('.gx-toolbar button')].find(x => x.innerText.trim() === 'Clear'); if (b) b.click(); })()"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "say": "Sam can explore the same graph in the product explorer. A search finds any product, part, supplier, order or recall.",
+   "type": {
+    "sel": ".gx-search input",
+    "text": "EB-200",
+    "at": 0.5,
+    "secs": 1.2
+   },
+   "do": [
+    [
+     3.0,
+     "__click(__sel(document.querySelector('.gx-results button')))"
+    ],
+    [
+     5.6,
+     "__spot(document.querySelector('.gx-canvas'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "check": {
+    "js": "[...document.querySelectorAll('.gx-links button')].some(b => /BAT-418/.test(b.innerText))",
+    "why": "the panel lists the battery link"
+   },
+   "say": "A click on a link expands the graph. Here, the battery, with every bike it is fitted to, and what it is compatible with.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.6,
+     "__spot([...document.querySelectorAll('.gx-links button')].find(b => /BAT-418/.test(b.innerText)).closest('li'))"
+    ],
+    [
+     2.4,
+     "__unspot(); __click(__sel([...document.querySelectorAll('.gx-links button')].find(b => /BAT-418/.test(b.innerText))))"
+    ],
+    [
+     5.0,
+     "__spot(document.querySelector('.gx-canvas'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "say": "The 3D view comes from the same data. The bike is assembled from its mount points and its bill of materials.",
+   "type": {
+    "sel": ".gx-search input",
+    "text": "EB-200",
+    "at": 0.3,
+    "secs": 0.8
+   },
+   "do": [
+    [
+     0.1,
+     "__unspot()"
+    ],
+    [
+     1.6,
+     "__click(__sel(document.querySelector('.gx-results button')))"
+    ],
+    [
+     3.4,
+     "__click(__sel([...document.querySelectorAll('.gx-view')].find(b => b.innerText.trim() === '3D')))"
+    ],
+    [
+     5.4,
+     "__spot(document.querySelector('.gx-main'))"
+    ]
+   ],
+   "settle": 3.0
+  },
+  {
+   "prep": [
+    {
+     "logout": true
+    },
+    {
+     "login": [
+      "demo_catalog",
+      "DemoCatalog123!"
+     ]
+    },
+    {
+     "goto": "http://127.0.0.1:8080/p/catalog"
+    },
+    {
+     "wait_ms": 5000
+    },
+    {
+     "wait_js": "document.querySelectorAll('.mx-name-dgProducts [role=row]').length > 5",
+     "timeout": 30
+    }
+   ],
+   "say": "Noor looks after the catalog itself. The catalog workspace lists every product, and a click opens one in tabs.",
+   "do": [
+    [
+     0.5,
+     "__spot(document.querySelector('.mx-name-dgProducts'))"
+    ],
+    [
+     3.4,
+     "__unspot(); __click(__sel([...document.querySelectorAll('.mx-name-dgProducts [role=row]')].find(r => r.innerText.trim().startsWith('EB-200')).querySelector('.td')))"
+    ],
+    [
+     5.4,
+     "__spot(document.querySelector('.mx-name-tcProduct'))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "check": {
+    "js": "/EB-200/.test(document.querySelector('.mx-name-txtProductTitle').innerText)",
+    "why": "EB-200 is open"
+   },
+   "say": "The bill of materials lists what the bike is built from: the parts fitted at the factory, and the standard parts it takes.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__click(__sel([...document.querySelectorAll('.mx-name-tcProduct .nav-tabs a')].find(a => a.innerText.trim() === 'Bill of materials')))"
+    ],
+    [
+     2.6,
+     "__spot(document.querySelector('.mx-name-tcProduct .mx-name-dgBom'))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "say": "Mount points say where each part sits on the frame.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__click(__sel([...document.querySelectorAll('.mx-name-tcProduct .nav-tabs a')].find(a => a.innerText.trim() === 'Mount points')))"
+    ],
+    [
+     2.4,
+     "__spot(document.querySelector('.mx-name-tcProduct .mx-name-dgSlots'))"
+    ]
+   ],
+   "settle": 1.8
+  },
+  {
+   "say": "The 3D model is assembled from both, and redrawn after every saved change. With Show what fits, the accessories appear on the bike too.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__click(__sel([...document.querySelectorAll('.mx-name-tcProduct .nav-tabs a')].find(a => a.innerText.trim() === '3D model')))"
+    ],
+    [
+     4.2,
+     "__click('.mx-name-tcProduct .mv-fits input')"
+    ],
+    [
+     6.0,
+     "__spot(document.querySelector('.mx-name-tcProduct canvas'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "say": "Now a mistake. Noor opens a seat post that needs a 30.9 millimetre seat tube.",
+   "type": {
+    "sel": ".mx-name-tfSku input",
+    "text": "SSP",
+    "at": 0.4,
+    "secs": 0.8
+   },
+   "do": [
+    [
+     0.1,
+     "__unspot()"
+    ],
+    [
+     2.6,
+     "__click(__sel([...document.querySelectorAll('.mx-name-dgProducts [role=row]')].find(r => r.innerText.trim().startsWith('SSP-31')).querySelector('.td')))"
+    ],
+    [
+     4.2,
+     "__click(__sel([...document.querySelectorAll('.mx-name-tcProduct .nav-tabs a')].find(a => a.innerText.trim() === 'Compatibility')))"
+    ]
+   ],
+   "settle": 1.8
+  },
+  {
+   "check": {
+    "js": "/SSP-31/.test(document.querySelector('.mx-name-txtProductTitle').innerText) && !/EB-200/.test(document.querySelector('.mx-name-lvFitsOn').innerText)",
+    "why": "SSP-31 is open and does not fit EB-200 yet"
+   },
+   "say": "And marks it as fitting the Voltera City E-bike, whose seat tube is 27.2.",
+   "do": [
+    [
+     0.3,
+     "__click('.mx-name-btnAddFitsOn')"
+    ],
+    [
+     3.6,
+     "__click(__sel([...document.querySelectorAll('.widget-combobox-item')].find(o => /Voltera City/.test(o.innerText))))"
+    ],
+    [
+     4.8,
+     "__click('.mx-name-btnPickAdd')"
+    ],
+    [
+     6.4,
+     "__spot(document.querySelector('.mx-name-lvFitsOn'))"
+    ]
+   ],
+   "type": {
+    "sel": ".mx-name-cbPickTarget input",
+    "text": "Voltera City",
+    "at": 2.0,
+    "secs": 1.0
+   },
+   "settle": 2.0
+  },
+  {
+   "prep": [
+    {
+     "goto": "http://127.0.0.1:8080/p/catalog-quality"
+    },
+    {
+     "wait_ms": 4000
+    },
+    {
+     "wait_js": "!!document.querySelector('.mx-name-lvIssues .mx-name-ctIssue')",
+     "timeout": 40
+    }
+   ],
+   "check": {
+    "js": "/Fit size conflict/.test(document.querySelector('.mx-name-lvIssues').innerText) && /SSP-31/.test(document.querySelector('.mx-name-lvIssues').innerText)",
+    "why": "the quality page reports the seat post"
+   },
+   "say": "The catalog quality page catches it. Its rules are sparkle queries, so they check the catalog the way the chat and the 3D viewer see it. They also flag wiki pages that name products the catalog doesn't have.",
+   "do": [
+    [
+     0.6,
+     "__spot(document.querySelector('.mx-name-lvIssues .mx-name-ctIssue'))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "say": "Open product goes straight to the seat post, where Noor removes the link.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.4,
+     "__click(__sel(document.querySelector('.mx-name-lvIssues .mx-name-btnOpenIssue')))"
+    ],
+    [
+     3.0,
+     "__click(__sel([...document.querySelectorAll('.mx-name-tcProduct .nav-tabs a')].find(a => a.innerText.trim() === 'Compatibility')))"
+    ],
+    [
+     4.6,
+     "__click(__sel([...document.querySelectorAll('.mx-name-lvFitsOn .catalog-row')].find(r => /EB-200/.test(r.innerText)).querySelector('.mx-name-btnRemoveFitsOn')))"
+    ],
+    [
+     6.4,
+     "__spot(document.querySelector('.mx-name-lvFitsOn'))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "prep": [
+    {
+     "goto": "http://127.0.0.1:8080/p/catalog-quality"
+    },
+    {
+     "wait_ms": 6000
+    }
+   ],
+   "check": {
+    "js": "!document.querySelector('.mx-name-lvIssues .mx-name-ctIssue')",
+    "why": "the quality page is clean again"
+   },
+   "say": "And the quality check is clean again.",
+   "do": [
+    [
+     0.5,
+     "__spot(document.querySelector('.mx-name-lvIssues'))"
+    ]
+   ],
+   "settle": 1.5
+  },
+  {
+   "prep": [
+    {
      "logout": true
     },
     {
@@ -913,7 +1281,7 @@
    ]
   },
   {
-   "say": "Proactive notices, rich cards, agents in workflows, actions, photos, a person when it matters, and a curated wiki. All in one Mendix app, grounded in the shop's own data.",
+   "say": "Proactive notices, rich cards, graphs and 3D, agents in workflows, actions, photos, a person when it matters, a curated wiki, and a catalog that checks itself. All in one Mendix app, grounded in the shop's own data.",
    "do": [
     [
      0.2,
@@ -924,7 +1292,7 @@
      "__card('ServiceDesk Copilot', 'made with mxcli')"
     ]
    ],
-   "min": 8
+   "min": 10
   }
  ]
 }
