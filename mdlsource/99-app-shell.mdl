@@ -27,7 +27,7 @@ begin
   return true;
 end;
 
-/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, the product catalog and the bikes' BOM, syncs shipments from the carrier and reloads the product graph snapshot, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint seeds the free models' price and the places for map cards. */
+/** After-startup microflow: loads the Agent Editor documents into Agent Commons, seeds demo data, the product catalog and the bikes' BOM, syncs shipments from the carrier and reloads the product graph snapshot, starts the MCP servers, then sets up the runtime agent on the OpenAI-compatible endpoint, seeds the free models' price and the places for map cards, and starts the agent bus. */
 create or modify microflow "ServiceDesk"."ASU_App" ()
 returns Boolean as $Started
 folder 'Setup'
@@ -50,10 +50,13 @@ begin
   $WikiIndexReady = call java action "ServiceDesk"."JA_Wiki_EnsureSearchIndex" () on error without rollback begin
     log warning node 'ServiceDesk' 'Wiki search index not checked: {1}' with ({1} = $latestError/Message);
   end error;
+  call microflow "ServiceDesk"."SUB_AgentBus_Startup" ();
   return true;
 end;
 
 alter settings runtime ( AfterStartupMicroflow: 'ServiceDesk.ASU_App' );
+-- Stops the agent bus's Kafka consumers cleanly.
+alter settings runtime ( BeforeShutdownMicroflow: 'BusinessEvents.BSd_ShutdownSubscribers' );
 
 /** Landing page for every role: what the app does, the assistant first, and a tile per area. Mendix hides a tile whose page or microflow the user may not open, so customers see their own areas only. Defined here, last, because it links to pages from every other script. */
 create or modify page "ServiceDesk"."Home" folder 'Home'
@@ -107,6 +110,7 @@ create or modify navigation Responsive
   menu item 'Token usage' ( OnClick: call microflow ConversationalUI.NAV_TokenConsumptionMonitor, Icon: Atlas_Core.Atlas.dashboard )
   menu item 'Traces' ( OnClick: show page ConversationalUI.Trace_Overview, Icon: Atlas_Core.Atlas.search )
   menu item 'Delivery notices' ( OnClick: show page "ServiceDesk"."ChatNotice_Overview", Icon: Atlas_Core.Atlas.megaphone )
+  menu item 'Agent bus' ( OnClick: show page "ServiceDesk"."AgentBus_Overview", Icon: Atlas_Core.Atlas."share-arrow" )
   menu item 'Live chats' ( OnClick: show page "ServiceDesk"."LiveChat_Queue", Icon: Atlas_Core.Atlas."headphones-mic" )
   menu item 'Service appointments' ( OnClick: show page "ServiceDesk"."ServiceAppointment_Overview", Icon: Atlas_Core.Atlas.dashboard )
   menu item 'Answer ratings' ( OnClick: show page "ServiceDesk"."AnswerRating_Overview", Icon: Atlas_Core.Atlas."checkmark-circle" )

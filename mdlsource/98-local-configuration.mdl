@@ -23,3 +23,12 @@ create or modify configuration 'Local PostgreSQL' (
 
 alter settings constant @GenAICommons.StoreTraces value 'True'
   in configuration 'Local PostgreSQL';
+
+-- The agent bus's broker (duckgraphlake, tools/start-helpers.sh): Business Events
+-- refuses to start without a ServerUrl (28-agent-bus.mdl).
+alter settings constant @BusinessEvents.ServerUrl value '127.0.0.1:9092'
+  in configuration 'Local PostgreSQL';
+alter settings constant @BusinessEvents.EventBrokerSpace value ''
+  in configuration 'Local PostgreSQL';
+alter settings constant @BusinessEvents.ChannelName value 'agent-bus'
+  in configuration 'Local PostgreSQL';

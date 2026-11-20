@@ -1908,3 +1908,38 @@ Tested on a worktree of HEAD, comparing against the installed nightly-20261113:
   - `lint`: 0 errors, 52 warnings. `report`: 36/100.
   - `docker check`: 0 errors.
   - `test`: 64/64. One test failed at first because the carrier helper had stopped. `tools/start-helpers.sh` fixes it. That test needs the helper.
+
+## Agent bus: A2A over Kafka with Business Events (duckgraphlake as the broker)
+
+Measured on Mendix 11.16.1, Business Events 3.12.2, duckgraphlake 7d6f97e (DuckDB 2.0.0), mxcli nightly-494-gfe9d92c74.
+
+- **Installing.** Business Events is listed in the Marketplace as a *Service*, so `marketplace install 202649` only downloads it. `marketplace install --file BusinessEvents_3.12.2.mpk` installs it (49 units, 16 jars).
+  - Its automatic widget repair (and `fix widgets` on its own) **deleted Studio Pro's `UseMeToSetupNodeConversion` record**. Restored with `git checkout` of the ProjectConversion unit, then `fix hashes --repair`. Filed as ako/mxcli#2487.
+- **One app publishing and consuming its own message** took three findings:
+  1. **A message declared twice** (publish and subscribe) in one service passes `check`, `exec` and `mx check`, but the build's Business Events extension fails with "An item with the same key has already been added". The stored model allows one message with both flags, but mxcli cannot write it (ako/mxcli#2490).
+  2. **Two services may not share a ServiceName.** So `AgentBus` publishes and `AgentBusInbox` subscribes, under different names. The consumer does not filter on the publishing service: a message stamped `ce_service: AgentBus` reached the `AgentBusInbox` handler.
+  3. **Topics.** Each service's message has its own channel. In the module's `ConfigurationProvider`, a non-blank `EventBrokerSpace` makes the topic `businessevents.<channel>.<space>` and ignores `ChannelName`. With the space blank, `ChannelName` is the topic for everything, published and consumed. So `EventBrokerSpace=''` and `ChannelName=agent-bus`.
+- **String length.** A message string attribute is stored without a length, which the build reads as 200. An entity attribute of any other length fails ("max length … is different"), and mxcli silently drops `string(n)` (ako/mxcli#2490). Long text is therefore sent as parts (`Part`/`Parts`) and joined by the handler.
+- **Startup.** The module injects `BusinessEvents.ASu_BusinessEvents` into the after-startup microflow.
+  - It **refuses to start the app without `BusinessEvents.ServerUrl`**, so both configurations set it.
+  - With the broker down, the app starts (151 s, with heartbeat errors).
+  - An explicit `StartupBusinessEvents` call only logs "started" twice, so it is gone.
+- **Task agent with tools.** `Agent_Call_WithoutHistory` on an agent whose tools are `VisibleForUser` ran the tools and then returned with no text: no second model call, and no error. With `HiddenForUser`, the right setting for an agent with no user, it answers.
+- **Waiting for an answer inside a tool.** Business Events publishes from an outbox after the publishing transaction commits, and an agent's tool call runs inside the chat's transaction.
+  - So `JA_AgentBus_Ask` sends the task in a system context with its own transaction, then polls `AgentTask`.
+  - It first checks with a 1-second TCP connect that the broker is up, so a down bus answers at once instead of after the timeout.
+- **Java pitfall.** `String.valueOf(obj.getValue(ctx, "Status"))` compiles to the `char[]` overload, because `getValue` is generic, and throws ClassCastException at runtime. Read the value into an `Object` first.
+- **Test runs share the bus.** `mxcli test --local` starts a runtime with the same constants. It joins the inbox's consumer group and is killed without leaving, which held the live consumer in PreparingRebalance until the session timed out (about 2 minutes; a task waited that long).
+  - Fix: `--constant BusinessEvents.ChannelName=agent-bus-test --constant BusinessEvents.CustomConsumerGroupIdPrefix=mxtest`. The live group stayed Stable with one member through a full test run.
+- **mxcli splice.** Appending the bus's startup call to `ASU_App` placed it before an error handler's rejoin merge, so the call was skipped on that error path, and the next exec refused the flow (ako/mxcli#2489). Fixed by dropping and recreating it once; the plain script has been idempotent since.
+- **Proved live:**
+  - **In the chat:** Ada asks for the catalog specialist. The SupportAgent's `ask_agent` publishes a task, the CatalogAgent answers in 7 to 12 s, and the reply says "I checked with the catalog specialist".
+  - **Outside agent:** `tools/agent-bus/ask.py`, over duckgraphlake MCP only, gets completed results in 4 to 10 s.
+  - **Parts:** a 210-character answer travelled as 2 parts and was joined.
+- **Gates:**
+  - `check`: every script passes.
+  - `exec`: two passes, the second writing nothing.
+  - `docker check`: 0 errors.
+  - `test`: 67/67, three new.
+  - `lint`: 0 errors, 65 warnings (was 52; 9 of the 13 new ones are in the Business Events module).
+  - `report`: 27/100 (was 36). The drop is mostly Architecture and Quality, from the module's entities and microflows.
