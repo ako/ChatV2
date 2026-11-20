@@ -119,6 +119,7 @@ The project has a **Local PostgreSQL** configuration for running from Studio Pro
    - parcel tracking and delivery notices: start the fake carrier with `python3 tools/carrier-mcp/server.py`;
    - the PgVector knowledge base: create a `servicedesk_vectors` database with the `vector` extension, and set `ServiceDesk.PgVectorPassword`;
    - OAuth on the MCP server: Keycloak, see the MCP section.
+   - the agent bus: start duckgraphlake (see the Agent bus section). Business Events refuses to start without `BusinessEvents.ServerUrl`, which the configuration sets to `127.0.0.1:9092`; with nothing listening there the app starts and logs heartbeat errors.
 
 ## What to try
 
@@ -164,6 +165,34 @@ sh tools/keycloak/start.sh
 ```
 
 MCP clients find the issuer themselves: the 401 response points to the protected-resource metadata, which names `http://localhost:8280/realms/servicedesk`. Sign in with client `mcp-client` (authorization code + PKCE, scope `mcp:tools`). Tokens without that scope, or issued to another client, get 401. `python3 tests-live/mcp/oauth_test.py` runs the whole flow headlessly. The Keycloak admin console is at http://localhost:8280/admin (admin/admin). Everything here is a local development setup: plain HTTP, and a known client secret.
+
+## Agent bus: agents asking agents (A2A over Kafka)
+
+Agents ask each other over Kafka, with Mendix Business Events, in the shape of the A2A protocol (`mdlsource/28-agent-bus.mdl`).
+
+- **The message.** An `AgentMessage` is a task or a result: task id, context id, sender, recipient, A2A status (submitted, working, completed, failed) and text. Text over 200 characters travels as parts (Part n of Parts), like A2A's message parts, and the receiver joins them.
+- **In the app.** The SupportAgent has two tools:
+  - `list_agents`: the agent cards.
+  - `ask_agent`: sends a task and waits for the result, up to `ServiceDesk.AgentBusTimeoutSeconds`.
+
+  The **CatalogAgent** answers tasks about compatibility, mount points, sizes and recalls, with the catalog tools. Ask Ada's assistant "please ask the catalog specialist whether the SSP-31 fits my EB-200" and it delegates.
+- **Outside the app.** Any agent that can use MCP can ask the app's agents through the broker:
+
+  ```bash
+  python3 tools/agent-bus/ask.py CatalogAgent "Does the SSP-31 seat post fit the EB-200?"
+  ```
+
+  It uses the broker's MCP tools `produce` and `read_topic` (at `http://127.0.0.1:9495/mcp`): post a task with the CloudEvents headers, then read the topic for the result.
+- **For staff.** The **Agent bus** page lists every task: who asked whom, the status, and the full question and answer, plus the agent cards.
+- **The broker** is duckgraphlake, a single binary. It speaks Kafka, and keeps every message as a table readable over SQL, SPARQL, OData and MCP. It is not in the repository: unpack its release archive to `/opt/duckgraphlake` (or set `DUCKGRAPHLAKE`), and `tools/start-helpers.sh` starts it on `.agentbus/` (git-ignored). Its web UI is at `http://127.0.0.1:9495/`.
+- **Configuration.** Both configurations set `BusinessEvents.ServerUrl` 127.0.0.1:9092, a blank `EventBrokerSpace` and `ChannelName` agent-bus. With the space blank, `ChannelName` is the single topic for every message, which lets the app read its own messages.
+  - Business Events will not start the app without a `ServerUrl`.
+  - With the broker down, the app starts and logs heartbeat errors, and `ask_agent` answers at once that the bus is not reachable.
+- **Tests** start a runtime of their own, which would join the bus's consumer group and stall it for a minute or two. Give it its own topic and group:
+
+  ```bash
+  ./mxcli test tests/ -p ServiceDeskCopilot.mpr --local --constant BusinessEvents.ChannelName=agent-bus-test --constant BusinessEvents.CustomConsumerGroupIdPrefix=mxtest
+  ```
 
 ## Runtime agent on OpenRouter (free models)
 

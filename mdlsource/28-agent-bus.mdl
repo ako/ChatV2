@@ -1,0 +1,441 @@
+mdl 1;
+
+-- The agent bus: agents ask each other over Kafka with Mendix Business Events,
+-- in the shape of the A2A protocol: a task (id, context id, sender, recipient,
+-- question) that goes through submitted -> working -> completed/failed, and a
+-- result message back. Locally the broker is duckgraphlake (tools/start-helpers.sh),
+-- which also keeps every message as a queryable table and lets agents outside
+-- the app ask and answer over its MCP server (produce / read_topic).
+--
+-- One app both publishes and consumes AgentMessage: AgentBus publishes it and
+-- AgentBusInbox subscribes to it, and with BusinessEvents.ChannelName set both
+-- use that one topic. A message's
+-- text fields hold at most 200 characters (mxcli cannot state a longer length on a
+-- business event attribute yet), so a long text travels as parts, like A2A's
+-- message parts: Part n of Parts, joined by the receiver.
+--
+-- The Business Events module subscribes at startup on its own and refuses to start
+-- without BusinessEvents.ServerUrl, so every configuration sets the broker: the
+-- local one is duckgraphlake on 127.0.0.1:9092 (tools/start-helpers.sh). With
+-- EventBrokerSpace blank, ChannelName is the one topic for every message.
+
+/** Lets agents ask each other over the agent bus. Off, the ask tool tells the agent to answer with its own tools. */
+create or modify constant "ServiceDesk"."AgentBusEnabled" ( Type: Boolean, DefaultValue: true );
+
+-- The broker, for the Default configuration (98-local-configuration.mdl sets the same for 'Local PostgreSQL').
+alter settings constant @BusinessEvents.ServerUrl value '127.0.0.1:9092' in configuration 'Default';
+alter settings constant @BusinessEvents.EventBrokerSpace value '' in configuration 'Default';
+alter settings constant @BusinessEvents.ChannelName value 'agent-bus' in configuration 'Default';
+
+/** How long an agent waits for another agent's answer, in seconds. */
+create or modify constant "ServiceDesk"."AgentBusTimeoutSeconds" ( Type: Integer, DefaultValue: 90 );
+
+/** A2A task states. */
+create or modify enumeration "ServiceDesk"."ENUM_AgentTaskStatus" (
+  "Submitted" 'Submitted',
+  "Working" 'Working',
+  "Completed" 'Completed',
+  "Failed" 'Failed'
+);
+
+/** One question from one agent to another, and its answer: an A2A task. Agents in this app and agents outside it (over the broker) share the same task ids. */
+create or modify persistent entity "ServiceDesk"."AgentTask" (
+  "TaskId": String(36) not null error message 'A task needs an id.' unique error message 'This task id exists.',
+  "ContextId": String(36),
+  "FromAgent": String(100),
+  "ToAgent": String(100),
+  "Question": String(unlimited),
+  "Answer": String(unlimited),
+  "Status": Enumeration(ServiceDesk.ENUM_AgentTaskStatus) default ServiceDesk.ENUM_AgentTaskStatus.Submitted,
+  "SubmittedAt": DateTime,
+  "CompletedAt": DateTime
+)
+index (TaskId);
+
+/** An agent on the bus, as in an A2A agent card: its name, what it does and its skills. Local agents run in this app (AgentDocument names their Agent Editor document); others answer from outside over the broker. */
+create or modify persistent entity "ServiceDesk"."AgentCard" (
+  "Name": String(100) not null error message 'An agent needs a name.' unique error message 'This agent exists.',
+  "Description": String(2000),
+  "Skills": String(2000),
+  "IsLocal": Boolean default false,
+  "AgentDocument": String(200)
+);
+
+/** One part of a message the app puts on the agent bus. Kind is 'task' or 'result'; Status is the A2A state; Text is part Part of Parts. */
+create or modify non-persistent entity "ServiceDesk"."PublishedAgentMessage" extends BusinessEvents.PublishedBusinessEvent (
+  "TaskId": String(200),
+  "ContextId": String(200),
+  "FromAgent": String(200),
+  "ToAgent": String(200),
+  "Kind": String(200),
+  "Status": String(200),
+  "Part": Integer,
+  "Parts": Integer,
+  "Text": String(200)
+);
+
+/** One part of a message the app takes from the agent bus. */
+create or modify persistent entity "ServiceDesk"."ConsumedAgentMessage" extends BusinessEvents.ConsumedBusinessEvent (
+  "TaskId": String(200),
+  "ContextId": String(200),
+  "FromAgent": String(200),
+  "ToAgent": String(200),
+  "Kind": String(200),
+  "Status": String(200),
+  "Part": Integer,
+  "Parts": Integer,
+  "Text": String(200)
+);
+
+grant read * on entity "ServiceDesk"."AgentTask" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."AgentCard" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant read * on entity "ServiceDesk"."ConsumedAgentMessage" to "ServiceDesk"."Admin";
+
+-- ---- Publishing --------------------------------------------------------------
+
+/** Puts one message on the agent bus, as parts of at most 200 characters of text. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_Publish" ($TaskId: String, $ContextId: String, $FromAgent: String, $ToAgent: String, $Kind: String, $Status: String, $Text: String)
+folder 'Agent bus'
+begin
+  declare $Body String = (if $Text = empty then '' else $Text);
+  declare $Parts Integer = (if length($Body) = 0 then 1 else floor((length($Body) + 199) div 200));
+  declare $Part Integer = 1;
+  while $Part <= $Parts begin
+    declare $From Integer = ($Part - 1) * 200;
+    $Message = create "ServiceDesk"."PublishedAgentMessage" ("TaskId" = $TaskId, "ContextId" = $ContextId, "FromAgent" = $FromAgent, "ToAgent" = $ToAgent, "Kind" = $Kind, "Status" = $Status, "Part" = $Part, "Parts" = $Parts, "Text" = (if length($Body) = 0 then '' else substring($Body, $From, (if $From + 200 > length($Body) then length($Body) - $From else 200))));
+    call java action BusinessEvents.PublishBusinessEvent_V2(Subject = '{1} from {2} to {3}, part {4} of {5}' with ({1} = $Kind, {2} = $FromAgent, {3} = $ToAgent, {4} = toString($Part), {5} = toString($Parts)), BusinessEvent = $Message);
+    set $Part = $Part + 1;
+  end while;
+end;
+
+/** Records a new task and sends it to the agent it is for. Called by the ask action in a transaction of its own. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_SendTask" ($TaskId: String, $ContextId: String, $FromAgent: String, $ToAgent: String, $Question: String)
+folder 'Agent bus'
+begin
+  $Task = create "ServiceDesk"."AgentTask" ("TaskId" = $TaskId, "ContextId" = $ContextId, "FromAgent" = $FromAgent, "ToAgent" = $ToAgent, "Question" = $Question, "Status" = ServiceDesk.ENUM_AgentTaskStatus.Submitted, "SubmittedAt" = [%CurrentDateTime%]) commit;
+  call microflow "ServiceDesk"."SUB_AgentBus_Publish" (TaskId = $TaskId, ContextId = $ContextId, FromAgent = $FromAgent, ToAgent = $ToAgent, Kind = 'task', Status = 'submitted', Text = $Question);
+end;
+
+/** Marks a task failed when its answer did not come in time. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_TimedOut" ($TaskId: String)
+folder 'Agent bus'
+begin
+  retrieve $Task from "ServiceDesk"."AgentTask" where [TaskId = $TaskId] first;
+  if $Task != empty and $Task/Status != ServiceDesk.ENUM_AgentTaskStatus.Completed then
+    change $Task ("Status" = ServiceDesk.ENUM_AgentTaskStatus.Failed, "Answer" = 'No answer in time.', "CompletedAt" = [%CurrentDateTime%]) commit;
+  end if;
+end;
+
+/** Asks another agent over the bus and waits for its answer (at most AgentBusTimeoutSeconds). Returns the answer, or why there is none. */
+create or modify java action "ServiceDesk"."JA_AgentBus_Ask" folder 'Agent bus' (
+  FromAgent: String,
+  ToAgent: String,
+  Question: String,
+  /** Groups the tasks of one conversation; empty starts a new one. */
+  ContextId: String,
+  TimeoutSeconds: Integer
+) returns String as $Answer
+not exposed
+as $$
+return servicedesk.agents.AgentBus.ask(this.FromAgent, this.ToAgent, this.Question, this.ContextId, this.TimeoutSeconds == null ? 90L : this.TimeoutSeconds.longValue());
+$$;
+
+-- ---- Answering -----------------------------------------------------------------
+
+/** Runs the local agent a task is for, and returns its answer, or empty when it could not answer. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_RunAgent" ($Task: "ServiceDesk"."AgentTask", $Card: "ServiceDesk"."AgentCard")
+returns String as $Answer
+folder 'Agent bus'
+begin
+  $Agent = call microflow "ServiceDesk"."SUB_GetAgent" (QualifiedName = $Card/AgentDocument);
+  if $Agent = empty then
+    return empty;
+  end if;
+  $Response = call java action AgentCommons.Agent_Call_WithoutHistory(Agent = $Agent, OptionalContextObject = $Task, OptionalRequest = empty, OptionalFileCollection = empty) on error without rollback begin
+    log error node 'ServiceDesk' 'Agent {1} failed on task {2}: {3}' with ({1} = $Card/Name, {2} = $Task/TaskId, {3} = $latestError/Message);
+    return empty;
+  end error;
+  if $Response = empty then
+    return empty;
+  end if;
+  return $Response/ResponseText;
+end;
+
+/** The task a message is about: the one this app sent, or a new one for a task from outside the app. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_TaskFor" ($Event: "ServiceDesk"."ConsumedAgentMessage", $Text: String)
+returns "ServiceDesk"."AgentTask" as $Task
+folder 'Agent bus'
+begin
+  retrieve $Existing from "ServiceDesk"."AgentTask" where [TaskId = $Event/TaskId] first;
+  if $Existing != empty then
+    return $Existing;
+  end if;
+  $New = create "ServiceDesk"."AgentTask" ("TaskId" = $Event/TaskId, "ContextId" = $Event/ContextId, "FromAgent" = $Event/FromAgent, "ToAgent" = $Event/ToAgent, "Question" = $Text, "SubmittedAt" = [%CurrentDateTime%]);
+  return $New;
+end;
+
+/** A task for an agent of this app: runs the agent and puts the result on the bus. Tasks for other agents are theirs to answer. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_OnTask" ($Event: "ServiceDesk"."ConsumedAgentMessage", $Text: String)
+folder 'Agent bus'
+begin
+  retrieve $Card from "ServiceDesk"."AgentCard" where [Name = $Event/ToAgent][IsLocal = true] first;
+  if $Card = empty then
+    return;
+  end if;
+  $Task = call microflow "ServiceDesk"."SUB_AgentBus_TaskFor" (Event = $Event, Text = $Text);
+  change $Task ("Status" = ServiceDesk.ENUM_AgentTaskStatus.Working) commit;
+  $Answer = call microflow "ServiceDesk"."SUB_AgentBus_RunAgent" (Task = $Task, Card = $Card);
+  declare $Done Boolean = $Answer != empty and trim($Answer) != '';
+  call microflow "ServiceDesk"."SUB_AgentBus_Publish" (TaskId = $Event/TaskId, ContextId = $Event/ContextId, FromAgent = $Card/Name, ToAgent = $Event/FromAgent, Kind = 'result', Status = (if $Done then 'completed' else 'failed'), Text = (if $Done then $Answer else $Card/Name + ' could not answer.'));
+end;
+
+/** A result for a task an agent of this app asked: stores the answer, which the waiting ask action picks up. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_OnResult" ($Event: "ServiceDesk"."ConsumedAgentMessage", $Text: String)
+folder 'Agent bus'
+begin
+  retrieve $Task from "ServiceDesk"."AgentTask" where [TaskId = $Event/TaskId] first;
+  if $Task = empty then
+    return;
+  end if;
+  change $Task (
+    "Answer" = $Text,
+    "Status" = (if $Event/Status = 'completed' then ServiceDesk.ENUM_AgentTaskStatus.Completed else ServiceDesk.ENUM_AgentTaskStatus.Failed),
+    "CompletedAt" = [%CurrentDateTime%]
+  ) commit;
+end;
+
+/** The whole text of a message whose last part has arrived: its parts joined in order. Empty when a part is missing. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_JoinParts" ($Event: "ServiceDesk"."ConsumedAgentMessage")
+returns String as $Text
+folder 'Agent bus'
+begin
+  retrieve $Parts from "ServiceDesk"."ConsumedAgentMessage" where [TaskId = $Event/TaskId][Kind = $Event/Kind] sort by Part asc;
+  declare $Joined String = '';
+  declare $Count Integer = 0;
+  loop $Piece in $Parts begin
+    set $Joined = $Joined + (if $Piece/Text = empty then '' else $Piece/Text);
+    set $Count = $Count + 1;
+  end loop;
+  if $Count < $Event/Parts then
+    log warning node 'ServiceDesk' 'Agent bus: {1} of {2} parts of a {3} for task {4}.' with ({1} = toString($Count), {2} = toString($Event/Parts), {3} = $Event/Kind, {4} = $Event/TaskId);
+    return empty;
+  end if;
+  return $Joined;
+end;
+
+/** Handles every message part from the agent bus: once the last part of a message is in, its text is joined and the message handled. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_OnMessage" ($Event: "ServiceDesk"."ConsumedAgentMessage")
+folder 'Agent bus'
+begin
+  if $Event/Part < $Event/Parts then
+    return;
+  end if;
+  $Text = call microflow "ServiceDesk"."SUB_AgentBus_JoinParts" (Event = $Event);
+  if $Text = empty then
+    return;
+  end if;
+  if $Event/Kind = 'task' then
+    call microflow "ServiceDesk"."SUB_AgentBus_OnTask" (Event = $Event, Text = $Text);
+  else
+    if $Event/Kind = 'result' then
+      call microflow "ServiceDesk"."SUB_AgentBus_OnResult" (Event = $Event, Text = $Text);
+    end if;
+  end if;
+end;
+
+-- ---- The bus -------------------------------------------------------------------
+
+/** The agent bus, sending side: the app's agents publish AgentMessage parts. */
+create or modify business event service "ServiceDesk"."AgentBus"
+(
+  ServiceName: 'AgentBus',
+  Folder: 'Agent bus',
+  EventNamePrefix: ''
+)
+{
+  message AgentMessage (TaskId: string, ContextId: string, FromAgent: string, ToAgent: string, Kind: string, Status: string, Part: integer, Parts: integer, Text: string) publish
+    entity "ServiceDesk"."PublishedAgentMessage";
+};
+
+/** The agent bus, receiving side: the same AgentMessage parts, from this app's agents and from agents outside it, on the same topic (BusinessEvents.ChannelName). */
+create or modify business event service "ServiceDesk"."AgentBusInbox"
+(
+  ServiceName: 'AgentBusInbox',
+  Folder: 'Agent bus',
+  EventNamePrefix: ''
+)
+{
+  message AgentMessage (TaskId: string, ContextId: string, FromAgent: string, ToAgent: string, Kind: string, Status: string, Part: integer, Parts: integer, Text: string) subscribe
+    entity "ServiceDesk"."ConsumedAgentMessage"
+    microflow "ServiceDesk"."SUB_AgentBus_OnMessage";
+};
+
+-- ---- Agents on the bus -------------------------------------------------------
+
+/** Answers questions about the product catalog for other agents: what fits what, where parts mount, known issues and recalls. */
+create or modify agent "ServiceDesk"."CatalogAgent" folder 'Agents' (
+  UsageType: Task,
+  Model: "ServiceDesk"."SupportModel",
+  SelectedModel: 'eu.anthropic.claude-haiku-5-5',
+  EnableBackendStreaming: false,
+  EnableUIStreaming: false,
+  Description: 'The catalog specialist on the agent bus. Answers other agents about products, compatibility, mount points, known issues and recalls, from the catalog graph.',
+  Entity: "ServiceDesk"."AgentTask",
+  Variables: ("Question": EntityAttribute, "FromAgent": EntityAttribute),
+  SystemPrompt: $$You are the catalog specialist of a bike shop. Other agents ask you about products: what fits what, where a part mounts, sizes, known issues and recalls.
+
+Answer from tool results only, in a few plain sentences or a short list, with SKUs. Say clearly when something does not fit and why (size, missing mount point). If the catalog does not say, say so. Do not address a customer: your answer goes to another agent, which words it for its user.$$,
+  UserPrompt: $$Question from {{FromAgent}}:
+{{Question}}$$
+)
+{
+  tool find_product (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_Find",
+    Enabled: true,
+    UserAccessApproval: HiddenForUser,
+    Description: 'Finds products by SKU or by words in the name (e.g. EB-200, battery, charger): SKU, name, type, price, warranty, supplier and, for bikes, the components it ships with. Input: Search.'
+  )
+
+  tool compatible_parts (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_CompatibleParts",
+    Enabled: true,
+    UserAccessApproval: HiddenForUser,
+    Description: 'For a bike: the parts and accessories that fit it. For a part or accessory: what it fits on or works with. Input: Sku, e.g. EB-200 or CHG-4A.'
+  )
+
+  tool known_issues (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_KnownIssues",
+    Enabled: true,
+    UserAccessApproval: HiddenForUser,
+    Description: 'Known issues and recalls for a product, including those on the components a bike ships with. A recall only applies to the production batch it names. Input: Sku.'
+  )
+
+  tool sparql_query (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_Product_Sparql",
+    Enabled: true,
+    UserAccessApproval: HiddenForUser,
+    Description: 'A read-only SPARQL SELECT or ASK on the product catalog graph; at most 50 rows. Prefixes shop:, rdf:, rdfs: and xsd: are predeclared. Product: shop:sku, rdfs:label, shop:compatibleWith, shop:hasComponent, shop:hasStandardPart, shop:seatPostDiameter, shop:rackMount; bikes shop:mountPoint and shop:seatTubeFitMm; parts shop:mountsAt and shop:fitDiameterMm. Input: Query.'
+  )
+};
+
+/** Seed helper: creates or updates one agent card. */
+create or modify microflow "ServiceDesk"."SUB_AgentCard_SeedOne" ($Name: String, $Description: String, $Skills: String, $IsLocal: Boolean, $AgentDocument: String)
+folder 'Agent bus'
+begin
+  retrieve $Card from "ServiceDesk"."AgentCard" where [Name = $Name] first;
+  if $Card = empty then
+    $New = create "ServiceDesk"."AgentCard" ("Name" = $Name, "Description" = $Description, "Skills" = $Skills, "IsLocal" = $IsLocal, "AgentDocument" = $AgentDocument) commit;
+    return;
+  end if;
+  change $Card ("Description" = $Description, "Skills" = $Skills, "IsLocal" = $IsLocal, "AgentDocument" = $AgentDocument) commit;
+end;
+
+/** The agents on the bus: the app's own, and their cards. */
+create or modify microflow "ServiceDesk"."SUB_AgentCards_Seed" ()
+folder 'Agent bus'
+begin
+  call microflow "ServiceDesk"."SUB_AgentCard_SeedOne" (Name = 'CatalogAgent', Description = 'The catalog specialist: products, compatibility, mount points, sizes, known issues and recalls.', Skills = 'what fits what; where a part mounts; seat post and tube sizes; known issues and recalls', IsLocal = true, AgentDocument = 'ServiceDesk.CatalogAgent');
+  call microflow "ServiceDesk"."SUB_AgentCard_SeedOne" (Name = 'SupportAgent', Description = 'The customer-facing service desk assistant: orders, tickets, returns, refunds and policies.', Skills = 'order status; tickets; returns and refunds; shop policies', IsLocal = false, AgentDocument = '');
+end;
+
+/** After startup: seeds the agent cards. The Business Events module connects to the broker by itself. */
+create or modify microflow "ServiceDesk"."SUB_AgentBus_Startup" ()
+folder 'Agent bus'
+begin
+  call microflow "ServiceDesk"."SUB_AgentCards_Seed" ();
+  log info node 'ServiceDesk' 'Agent bus: {1}.' with ({1} = (if @ServiceDesk.AgentBusEnabled then 'agents may ask each other' else 'off, agents answer alone'));
+end;
+
+-- ---- Tools for the support agent ---------------------------------------------
+
+/** Agent tool: the agents on the bus that can be asked, with what they know. */
+create or modify microflow "ServiceDesk"."Tool_AgentBus_ListAgents" ()
+returns String as $Result
+folder 'Agent bus'
+begin
+  retrieve $Cards from "ServiceDesk"."AgentCard" where [IsLocal = true or AgentDocument = ''] sort by Name asc;
+  declare $Text String = '';
+  loop $Card in $Cards begin
+    set $Text = $Text + '- ' + $Card/Name + ': ' + $Card/Description + ' Skills: ' + $Card/Skills + '
+';
+  end loop;
+  return (if $Text = '' then 'No agents are on the bus.' else $Text);
+end;
+
+/** Agent tool: asks another agent on the bus and returns its answer. */
+create or modify microflow "ServiceDesk"."Tool_AgentBus_Ask" ($Agent: String, $Question: String)
+returns String as $Result
+folder 'Agent bus'
+begin
+  if not(@ServiceDesk.AgentBusEnabled) then
+    return 'The agent bus is off, so other agents cannot be asked. Answer with your own tools.';
+  end if;
+  $Result = call java action "ServiceDesk"."JA_AgentBus_Ask" (FromAgent = 'SupportAgent', ToAgent = $Agent, Question = $Question, ContextId = empty, TimeoutSeconds = @ServiceDesk.AgentBusTimeoutSeconds) on error without rollback begin
+    log warning node 'ServiceDesk' 'Asking {1} over the agent bus failed: {2}' with ({1} = $Agent, {2} = $latestError/Message);
+    return 'The agent bus is not reachable right now. Answer with your own tools.';
+  end error;
+  return $Result;
+end;
+
+grant execute on microflow "ServiceDesk"."Tool_AgentBus_ListAgents" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+grant execute on microflow "ServiceDesk"."Tool_AgentBus_Ask" to "ServiceDesk"."Customer", "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";
+
+-- ---- Staff page ----------------------------------------------------------------
+
+/** Who asked whom what over the agent bus, and the answers: every A2A task, newest first, with the agents on the bus. */
+create or modify page "ServiceDesk"."AgentBus_Overview" folder 'Agent bus'
+(
+  title: 'Agent bus',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'agent-bus'
+)
+{
+  layoutgrid lgAgentBus {
+    row {
+      column (desktopwidth: 12) {
+        dynamictext txtAgentBusHeading (content: 'Agent bus', rendermode: H2)
+        dynamictext txtAgentBusHelp (content: 'Agents ask each other over Kafka, as A2A tasks: the assistant asks the catalog specialist, and agents outside the app can ask too. Every message is also a table in the broker, readable over SQL, SPARQL and MCP.', rendermode: Paragraph)
+      }
+    }
+    row {
+      column (desktopwidth: 7) {
+        datagrid dgAgentTasks (
+          datasource: database from "ServiceDesk"."AgentTask" sort by "SubmittedAt" desc,
+          Selection: Single,
+          itemSelectionMethod: rowClick,
+          PagingPosition: bottom,
+          designproperties: ('Hover': on, 'Striped': on)
+        ) {
+          column (attribute: "SubmittedAt", caption: 'Asked')
+          column (attribute: "FromAgent", caption: 'From') { textfilter tfTaskFrom }
+          column (attribute: "ToAgent", caption: 'To') { textfilter tfTaskTo }
+          column (attribute: "Status", caption: 'Status')
+          column (attribute: "Question", caption: 'Question')
+        }
+      }
+      column (desktopwidth: 5) {
+        dynamictext txtPickTask (content: 'Choose a task to read the conversation.', rendermode: Paragraph, class: 'text-muted')
+        dataview dvAgentTask (datasource: selection dgAgentTasks) {
+          dynamictext txtTaskHead (content: '{1} asked {2}', contentparams: ({1} = "FromAgent", {2} = "ToAgent"), rendermode: H4)
+          dynamictext txtTaskMeta (content: '{1} · task {2}', contentparams: ({1} = "Status", {2} = "TaskId"), rendermode: Paragraph, class: 'text-muted')
+          textarea taTaskQuestion (label: 'Question', attribute: "Question", editable: never, NumberOfLines: 4)
+          textarea taTaskAnswer (label: 'Answer', attribute: "Answer", editable: never, NumberOfLines: 12)
+        }
+        dynamictext txtCardsHead (content: 'Agents on the bus', rendermode: H4)
+        listview lvAgentCards (datasource: database from "ServiceDesk"."AgentCard" sort by "Name" asc) {
+          container ctAgentCard (class: 'catalog-row') {
+            dynamictext txtCardName (content: '{1}', contentparams: ({1} = "Name"), rendermode: H5)
+            dynamictext txtCardDescription (content: '{1}', contentparams: ({1} = "Description"), rendermode: Paragraph)
+            dynamictext txtCardSkills (content: 'Skills: {1}', contentparams: ({1} = "Skills"), rendermode: Paragraph, class: 'text-muted')
+          }
+        }
+      }
+    }
+  }
+};
+
+grant view on page "ServiceDesk"."AgentBus_Overview" to "ServiceDesk"."SupportAgent", "ServiceDesk"."Admin";

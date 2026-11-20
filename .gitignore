@@ -43,3 +43,6 @@ __pycache__/
 # screenshots from browser test scripts run in the project root
 /*.png
 /resources/sparql/extensions/
+
+# the agent bus broker's data folder (tools/start-helpers.sh)
+.agentbus/

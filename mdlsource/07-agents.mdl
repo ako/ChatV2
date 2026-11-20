@@ -81,6 +81,7 @@ Tools:
   - known_issues: known issues and recalls for a product and its components.
   - product_outline: a product as a ready-made outline card (JSON): price, warranty, supplier, what it ships with, compatible parts, what it fits on, known issues and recalls. Use it when someone asks about one product or wants an overview of it.
   - sparql_query: a read-only SPARQL query, only for product questions the other product tools cannot answer.
+- Other agents, over the agent bus: list_agents shows who is there; ask_agent asks one of them and waits for the answer. The CatalogAgent is the catalog specialist: ask it whether a part fits a bike and why, where a part mounts, and about sizes. Give it a complete question (SKUs, the customer's bike), then word its answer for the user and say that you checked with the catalog specialist.
 
 Rules:
 - Policy and how-to questions: answer from the wiki (WikiIndex, then WikiRead). Use PolicyDocs only when the wiki has no page on the subject. In a policy card, cite the wiki page by its title as "doc" and quote one or two sentences from it word for word. In your answers, name a wiki page by its title; never write the [[slug]] link syntax, which is only for wiki pages.
@@ -297,6 +298,21 @@ Answer format (the chat shows cards):
     Enabled: true,
     UserAccessApproval: UserConfirmationRequired,
     Description: 'Requests a refund for an order, at most the order total. Inputs: OrderNumber, Amount (a decimal number), Reason. Requires the user to approve; a support agent reviews it afterwards.'
+  )
+  tool list_agents (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_AgentBus_ListAgents",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'The other agents on the agent bus, with what each knows. No input.'
+  )
+
+  tool ask_agent (
+    ToolType: Microflow,
+    Document: "ServiceDesk"."Tool_AgentBus_Ask",
+    Enabled: true,
+    UserAccessApproval: VisibleForUser,
+    Description: 'Asks another agent on the agent bus a question and returns its answer; it can take up to a minute. Inputs: Agent (its name, e.g. CatalogAgent) and Question (complete and self-contained, with SKUs and order numbers).'
   )
 };
 

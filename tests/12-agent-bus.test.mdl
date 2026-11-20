@@ -1,0 +1,42 @@
+mdl 1;
+
+-- The agent bus (28-agent-bus.mdl): agent cards, message parts and results.
+-- Publishing and consuming need the broker and a model, so they are checked
+-- live (tools/agent-bus/ask.py), not here.
+
+/**
+ * @test The catalog specialist is on the bus as a local agent with its Agent Editor document, and the list tool names it
+ * @expect $Ok = true
+ */
+call microflow ServiceDesk.SUB_AgentCards_Seed();
+retrieve $Card from ServiceDesk.AgentCard where [Name = 'CatalogAgent'] first;
+$List = call microflow ServiceDesk.Tool_AgentBus_ListAgents();
+declare $Ok Boolean = $Card != empty and $Card/IsLocal and $Card/AgentDocument = 'ServiceDesk.CatalogAgent' and contains($List, 'CatalogAgent');
+/
+
+/**
+ * @test A message that came in two parts is joined in order once its last part is in, and a message with a part missing is not
+ * @expect $Ok = true
+ */
+$P2 = create ServiceDesk.ConsumedAgentMessage (TaskId = 'test-join-1', ContextId = 'c', FromAgent = 'A', ToAgent = 'B', Kind = 'result', Status = 'completed', Part = 2, Parts = 2, Text = 'second half.') commit;
+$P1 = create ServiceDesk.ConsumedAgentMessage (TaskId = 'test-join-1', ContextId = 'c', FromAgent = 'A', ToAgent = 'B', Kind = 'result', Status = 'completed', Part = 1, Parts = 2, Text = 'The first half, ') commit;
+$Joined = call microflow ServiceDesk.SUB_AgentBus_JoinParts(Event = $P2);
+$Lone = create ServiceDesk.ConsumedAgentMessage (TaskId = 'test-join-2', ContextId = 'c', FromAgent = 'A', ToAgent = 'B', Kind = 'result', Status = 'completed', Part = 3, Parts = 3, Text = 'only the last') commit;
+$Missing = call microflow ServiceDesk.SUB_AgentBus_JoinParts(Event = $Lone);
+declare $Ok Boolean = $Joined = 'The first half, second half.' and $Missing = empty;
+/
+
+/**
+ * @test A completed result for a task this app asked fills in the answer and completes the task; a failed one fails it
+ * @expect $Ok = true
+ */
+$Task = create ServiceDesk.AgentTask (TaskId = 'test-result-1', ContextId = 'c', FromAgent = 'SupportAgent', ToAgent = 'CatalogAgent', Question = 'Q', Status = ServiceDesk.ENUM_AgentTaskStatus.Submitted) commit;
+$Result = create ServiceDesk.ConsumedAgentMessage (TaskId = 'test-result-1', ContextId = 'c', FromAgent = 'CatalogAgent', ToAgent = 'SupportAgent', Kind = 'result', Status = 'completed', Part = 1, Parts = 1, Text = 'It fits.') commit;
+call microflow ServiceDesk.SUB_AgentBus_OnResult(Event = $Result, Text = 'It fits.');
+retrieve $Done from ServiceDesk.AgentTask where [TaskId = 'test-result-1'] first;
+$Task2 = create ServiceDesk.AgentTask (TaskId = 'test-result-2', ContextId = 'c', FromAgent = 'SupportAgent', ToAgent = 'CatalogAgent', Question = 'Q', Status = ServiceDesk.ENUM_AgentTaskStatus.Submitted) commit;
+$Fail = create ServiceDesk.ConsumedAgentMessage (TaskId = 'test-result-2', ContextId = 'c', FromAgent = 'CatalogAgent', ToAgent = 'SupportAgent', Kind = 'result', Status = 'failed', Part = 1, Parts = 1, Text = 'CatalogAgent could not answer.') commit;
+call microflow ServiceDesk.SUB_AgentBus_OnResult(Event = $Fail, Text = 'CatalogAgent could not answer.');
+retrieve $Failed from ServiceDesk.AgentTask where [TaskId = 'test-result-2'] first;
+declare $Ok Boolean = $Done/Status = ServiceDesk.ENUM_AgentTaskStatus.Completed and $Done/Answer = 'It fits.' and $Done/CompletedAt != empty and $Failed/Status = ServiceDesk.ENUM_AgentTaskStatus.Failed;
+/
