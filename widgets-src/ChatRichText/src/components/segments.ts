@@ -1,3 +1,5 @@
+import { parseA2ui } from "./a2ui";
+
 // Splits a chat message into markdown and card segments.
 //
 // A card block is a fenced code block whose info string is `card` (one card)
@@ -81,6 +83,7 @@ export type Segment =
     | { kind: "details"; summary: string; text: string }
     | { kind: "cards"; cards: Card[] }
     | { kind: "suggestions"; items: string[] }
+    | { kind: "a2ui"; messages: unknown[] }
     | { kind: "pending" };
 
 const TONES: Tone[] = ["neutral", "good", "warning", "critical", "info"];
@@ -95,6 +98,8 @@ const DETAILS = /^(~{3,}|`{3,})[ \t]*details(?:[ \t]+(.*))?$/i;
 // JSON array of short strings.
 const SUGGEST = /^(`{3,}|~{3,})[ \t]*suggestions[ \t]*$/i;
 const MAX_SUGGESTIONS = 4;
+// An A2UI surface (a2ui.ts): ```a2ui with A2UI messages, one per line or as a JSON array.
+const A2UI = /^(`{3,}|~{3,})[ \t]*a2ui[ \t]*$/i;
 
 function str(v: unknown): string | undefined {
     if (v === null || v === undefined) return undefined;
@@ -276,6 +281,19 @@ export function splitMessage(content: string): Segment[] {
                 const items = list(parsed, s => { const v = str(s)?.trim(); return v && v.length <= 120 ? v : undefined; }).slice(0, MAX_SUGGESTIONS);
                 if (items.length) out.push({ kind: "suggestions", items });
             } catch { /* not a list: leave it out */ }
+            i = j;
+            continue;
+        }
+        const a2 = A2UI.exec(lines[i].trim());
+        if (a2) {
+            let j = i + 1;
+            const body: string[] = [];
+            while (j < lines.length && !lines[j].trim().startsWith(a2[1].slice(0, 3))) { body.push(lines[j]); j++; }
+            flushMd();
+            if (j >= lines.length) { out.push({ kind: "pending" }); return out; }
+            const messages = parseA2ui(body.join("\n"));
+            if (messages) out.push({ kind: "a2ui", messages });
+            else md.push("```json", ...body, "```");
             i = j;
             continue;
         }

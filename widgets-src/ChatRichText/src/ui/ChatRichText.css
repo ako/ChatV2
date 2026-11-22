@@ -271,3 +271,46 @@
 
 /* Images in a message, e.g. a photo the customer added. */
 .crt-md img { display: block; max-width: min(100%, 420px); max-height: 320px; border-radius: 12px; border: 1px solid var(--crt-line); margin: 6px 0 10px; object-fit: cover; }
+
+/* ---- A2UI surfaces (components/A2uiView.tsx) ---- */
+.crt-a2 { display: flex; flex-direction: column; gap: 12px; margin: 8px 0; max-width: 640px; }
+.crt-a2-surface {
+    background: var(--crt-surface); color: var(--crt-ink);
+    border: 1px solid var(--crt-line); border-left: 4px solid var(--crt-accent);
+    border-radius: 10px; padding: 14px 16px;
+}
+.crt-a2-row, .crt-a2-column, .crt-a2-list { gap: 10px; min-width: 0; }
+.crt-a2-row { flex-wrap: wrap; }
+.crt-a2-heading { font-weight: 600; color: var(--crt-ink); margin: 0; }
+.crt-a2-h1 { font-size: 1.35em; } .crt-a2-h2 { font-size: 1.2em; } .crt-a2-h3, .crt-a2-h4, .crt-a2-h5 { font-size: 1.05em; }
+.crt-a2-text { margin: 0; line-height: 1.45; }
+.crt-a2-caption { color: var(--crt-muted); font-size: 0.85em; }
+.crt-a2-card { background: var(--crt-surface-alt); border: 1px solid var(--crt-line); border-radius: 8px; padding: 10px 12px; }
+.crt-a2-divider { border: 0; border-top: 1px solid var(--crt-line); margin: 4px 0; width: 100%; }
+.crt-a2-divider-v { border-top: 0; border-left: 1px solid var(--crt-line); width: 0; align-self: stretch; margin: 0 4px; }
+.crt-a2-icon { color: var(--crt-accent); }
+.crt-a2-img { max-width: 100%; border-radius: 6px; }
+.crt-a2-img-icon, .crt-a2-img-avatar { width: 40px; height: 40px; object-fit: cover; }
+.crt-a2-img-avatar { border-radius: 50%; }
+.crt-a2-img-smallFeature { max-width: 160px; }
+.crt-a2-media { max-width: 100%; }
+.crt-a2-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-weight: normal; }
+.crt-a2-field > span { font-size: 0.85em; color: var(--crt-muted); }
+.crt-a2-field .form-control { background: var(--crt-surface-alt); color: var(--crt-ink); border-color: var(--crt-line); }
+.crt-a2-check { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: normal; }
+.crt-a2-choices { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.crt-a2-choices legend { font-size: 0.85em; color: var(--crt-muted); border: 0; margin: 0 0 4px; }
+.crt-a2-choices label { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: normal; }
+.crt-a2-chips { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.crt-a2-chips input { display: none; }
+.crt-a2-chips label { border: 1px solid var(--crt-line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+.crt-a2-chips label.crt-a2-on { border-color: var(--crt-accent); color: var(--crt-accent); }
+.crt-a2-button { align-self: flex-start; }
+.crt-a2-borderless { background: transparent; border-color: transparent; color: var(--crt-accent); }
+.crt-a2-tablist { display: flex; gap: 4px; border-bottom: 1px solid var(--crt-line); margin-bottom: 10px; }
+.crt-a2-tablist button { background: none; border: 0; padding: 6px 10px; color: var(--crt-muted); border-bottom: 2px solid transparent; }
+.crt-a2-tablist button.crt-a2-on { color: var(--crt-ink); border-bottom-color: var(--crt-accent); }
+.crt-a2-modal-body { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--crt-line); border-radius: 8px; background: var(--crt-surface-alt); }
+.crt-a2-sdcard .crt-card { margin: 0; }
+/* A surface that is just one of the chat's own cards: no second frame around it. */
+.crt-a2-surface:has(> .crt-a2-sdcard:only-child) { border: 0; padding: 0; background: none; }

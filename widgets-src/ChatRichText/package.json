@@ -12,7 +12,7 @@
   "packagePath": "com.servicedesk.widgets",
   "scripts": {
     "build": "pluggable-widgets-tools release:web",
-    "test": "tsc src/components/segments.ts --outDir build-test --module es2022 --target es2020 --skipLibCheck && mv build-test/segments.js build-test/segments.mjs && node --test test/segments.test.mjs",
+    "test": "tsc src/components/segments.ts src/components/a2ui.ts --outDir build-test --module es2022 --target es2020 --skipLibCheck && mv build-test/segments.js build-test/segments.mjs && mv build-test/a2ui.js build-test/a2ui.mjs && sed -i 's#from \"./a2ui\"#from \"./a2ui.mjs\"#' build-test/segments.mjs && node --test test/segments.test.mjs test/a2ui.test.mjs",
     "prebuild": "rm -rf src/shared && cp -r ../shared src/shared"
   },
   "devDependencies": {

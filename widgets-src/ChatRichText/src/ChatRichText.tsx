@@ -3,6 +3,7 @@ import MarkdownIt from "markdown-it";
 import { ChatRichTextContainerProps } from "../typings/ChatRichTextProps";
 import { splitMessage } from "./components/segments";
 import { CardView } from "./components/CardView";
+import { A2uiView } from "./components/A2uiView";
 import { sendToChat } from "./components/chatInput";
 import "./ui/ChatRichText.css";
 
@@ -79,6 +80,9 @@ export function ChatRichText(props: ChatRichTextContainerProps): ReactElement | 
                 }
                 if (s.kind === "pending") {
                     return <div key={i} className="crt-card crt-pending" aria-busy="true">Preparing a card…</div>;
+                }
+                if (s.kind === "a2ui") {
+                    return <A2uiView key={i} messages={s.messages} />;
                 }
                 if (s.kind === "suggestions") {
                     return (
