@@ -308,6 +308,20 @@ cd widgets-src/ChatRichText && npm install && npm test && npm run build
 cp widgets-src/ChatRichText/dist/1.0.0/com.servicedesk.widgets.ChatRichText.mpk widgets/ && ./mxcli widget init -p ServiceDeskCopilot.mpr
 ```
 
+### A2UI surfaces in the chat
+
+Answers can also hold **A2UI** (Agent-to-User Interface): a ` ```a2ui ` block of A2UI 1.0 messages, one per line or as a JSON array. The 0.9.1 spellings are read too.
+
+- **The renderer** (`components/A2uiView.tsx`, with the data side in `a2ui.ts`) draws the basic catalog in the chat's style:
+  - Text, Image, Icon, Row, Column, List, Card, Tabs, Modal, Divider;
+  - Button, TextField, CheckBox, ChoicePicker, Slider, DateTimeInput.
+
+  It also draws this app's own catalog, whose one component, **ServiceDeskCard**, is any of the chat's cards: `{"id":"root","component":"ServiceDeskCard","card":{"type":"order",…}}`.
+- **Data binding.** Inputs write to the surface's data model in the browser, and bindings use `{"@path": …}`, relative inside templates.
+- **Buttons.** A button's event is sent as the user's next message: its `userMessage`, or its name, followed by the context values it names. That is how the agent that drew the form hears about it.
+- **Safety.** It is data, never markup: unknown components are left out, every value is shown as text, and media only come from the app itself or `data:` URLs.
+- **Who sends it.** UI comes from agents outside the app: the **BikeFitAgent** (`tools/agent-bus/fit_agent.py`, started by `tools/start-helpers.sh` with the broker) answers over the agent bus with a form, then with the size as a ServiceDeskCard. The SupportAgent copies such blocks into its answer unchanged, and never writes A2UI itself. Try "Which frame size do I need?".
+
 ## Delivery statistics, charts and product outlines in the chat
 
 Ask the assistant "On average, how long did my orders take to deliver?" or "Where is most time spent delivering my parcels?" and the answer is a **chart card**. Ask for "an overview of the EB-200" and it is a **product outline card**: a collapsible tree of what the product ships with, what fits it, what it fits on, and its known issues and recalls.

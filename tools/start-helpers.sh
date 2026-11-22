@@ -6,6 +6,7 @@
 #         Not in the repository: set DUCKGRAPHLAKE to the binary (default
 #         /opt/duckgraphlake/duckgraphlake, from the release archive with its
 #         extensions/ folder). Its data folder is .agentbus/ (git-ignored).
+#         With it: the BikeFitAgent, an outside agent on the bus that answers in A2UI.
 # The product graph needs no server: the runtime answers SPARQL itself
 # (mdlsource/25-sparql-in-runtime.mdl).
 # Logs go to /tmp/servicedesk-<name>.log. Run from the project root.
@@ -22,6 +23,12 @@ DGL="${DUCKGRAPHLAKE:-/opt/duckgraphlake/duckgraphlake}"
 if [ -x "$DGL" ]; then
   mkdir -p .agentbus
   start 9092 duckgraphlake "$DGL" .agentbus --pg-port 5433
+  # an agent from outside the app on the bus, answering with A2UI (tools/agent-bus/fit_agent.py)
+  if ! pgrep -f "tools/agent-bus/fit_agent.py" > /dev/null; then
+    (for i in $(seq 1 60); do up 9495 && break; sleep 1; done
+     setsid nohup python3 tools/agent-bus/fit_agent.py > /tmp/servicedesk-fit-agent.log 2>&1 &)
+    echo "fit-agent: starting"
+  fi
 else
   echo "duckgraphlake: not found at $DGL; the agent bus stays off"
 fi

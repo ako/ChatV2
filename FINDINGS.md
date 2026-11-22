@@ -1943,3 +1943,15 @@ Measured on Mendix 11.16.1, Business Events 3.12.2, duckgraphlake 7d6f97e (DuckD
   - `test`: 67/67, three new.
   - `lint`: 0 errors, 65 warnings (was 52; 9 of the 13 new ones are in the Business Events module).
   - `report`: 27/100 (was 36). The drop is mostly Architecture and Quality, from the module's entities and microflows.
+
+## A2UI cards in the chat
+
+- **Target and format.** The renderer targets A2UI 1.0 (`createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface`; bindings `{"@path"}`, functions `{"@call"}`) and also reads the 0.9.1 spellings (`path`, `call`).
+  - The spec gives no Markdown fence or MIME type for A2UI inside a text answer. Its inference-formats page uses `<a2ui>` tags that a server compiles to wire JSON. So the chat uses a ` ```a2ui ` fence like its other cards, holding the wire messages as JSONL or a JSON array.
+- **Actions.** In a chat there is no transport for A2UI's `action` message, so a button's event becomes the user's next chat message: its `userMessage`, or its name, then the context values. The assistant forwards it to the agent that drew the form.
+- **Media** are limited to the app's own relative URLs and `data:` URLs, which is stricter than the spec's http/https/data/relative, so a surface from another agent cannot make the browser call a third party.
+- **Proved live, as Ada:**
+  1. "Which frame size do I need for a new e-bike?" got the SupportAgent asking the BikeFitAgent over the bus (22 s). The BikeFitAgent is an outside agent using only duckgraphlake MCP. Its A2UI form was passed through unchanged and drawn with two number fields, chips and a button.
+  2. Height 182, inseam 84 and Trekking, then "Check my size", sent "Check my frame size with the BikeFitAgent — height: 182; inseam: 84; style: trekking".
+  3. The answer (14 s) was the size as a ServiceDeskCard inside an A2UI surface: Frame size L, about 56 cm.
+- **Gates:** widget tests 32/32 (7 new), `check` passes on every script, `exec` a second time writes nothing, `docker check` 0 errors, `test` 67/67, `lint` unchanged (65 warnings).
