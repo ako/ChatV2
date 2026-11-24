@@ -339,6 +339,7 @@ create or modify microflow "ServiceDesk"."SUB_AgentCards_Seed" ()
 folder 'Agent bus'
 begin
   call microflow "ServiceDesk"."SUB_AgentCard_SeedOne" (Name = 'CatalogAgent', Description = 'The catalog specialist: products, compatibility, mount points, sizes, known issues and recalls.', Skills = 'what fits what; where a part mounts; seat post and tube sizes; known issues and recalls', IsLocal = true, AgentDocument = 'ServiceDesk.CatalogAgent');
+  call microflow "ServiceDesk"."SUB_AgentCard_SeedOne" (Name = 'BikeFitAgent', Description = 'Outside the app (tools/agent-bus/fit_agent.py): works out the frame size that fits a rider. Answers with an A2UI form or result.', Skills = 'frame size from height, inseam and riding style', IsLocal = false, AgentDocument = '');
   call microflow "ServiceDesk"."SUB_AgentCard_SeedOne" (Name = 'SupportAgent', Description = 'The customer-facing service desk assistant: orders, tickets, returns, refunds and policies.', Skills = 'order status; tickets; returns and refunds; shop policies', IsLocal = false, AgentDocument = '');
 end;
 
