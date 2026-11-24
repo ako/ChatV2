@@ -430,6 +430,159 @@
    "settle": 2.5
   },
   {
+   "say": "She asks the catalog specialist whether a seat post fits her bike.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "Please ask the catalog specialist: does the SSP-31 seat post fit my EB-200 from order SO-10003?",
+    "at": 0.4,
+    "secs": 2.6
+   },
+   "send_at": 3.4
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "js": "__last().scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "check": {
+    "js": "/specialist/i.test(__last().innerText) && /27\\.2/.test(__last().innerText)",
+    "why": "the answer comes from the catalog specialist, with the seat tube size"
+   },
+   "say": "The assistant asks the CatalogAgent over the agent bus: an A 2 A task on Kafka, through Mendix Business Events. It words the specialist's answer for her.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last())"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "say": "Then she asks which frame size she needs.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ]
+   ],
+   "type": {
+    "sel": "textarea[placeholder]",
+    "text": "Which frame size do I need for a new e-bike? Please use the fit specialist.",
+    "at": 0.4,
+    "secs": 2.2
+   },
+   "send_at": 3.0
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "wait_js": "!!__last() && !!__last().querySelector('.crt-a2-surface .crt-a2-field input')",
+     "timeout": 90
+    },
+    {
+     "js": "__last().querySelector('.crt-a2-surface').scrollIntoView({block: 'center'})"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "check": {
+    "js": "__last().querySelectorAll('.crt-a2-field input').length === 2 && !!__last().querySelector('.crt-a2-button')",
+    "why": "the A2UI form has two fields and a button"
+   },
+   "say": "The answer comes from the BikeFitAgent, an agent outside the shop. It sends a form as A 2 U I, and the chat draws it with its own components.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-a2-surface'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "say": "She fills it in and sends it. The values go back to the agent as her next message.",
+   "do": [
+    [
+     0.2,
+     "__unspot()"
+    ],
+    [
+     0.5,
+     "__typeTo(__sel(__last().querySelectorAll('.crt-a2-field input')[0]), '1')"
+    ],
+    [
+     0.7,
+     "__typeTo(__sel(__last().querySelectorAll('.crt-a2-field input')[0]), '18')"
+    ],
+    [
+     0.9,
+     "__typeTo(__sel(__last().querySelectorAll('.crt-a2-field input')[0]), '182')"
+    ],
+    [
+     1.6,
+     "__typeTo(__sel(__last().querySelectorAll('.crt-a2-field input')[1]), '8')"
+    ],
+    [
+     1.8,
+     "__typeTo(__sel(__last().querySelectorAll('.crt-a2-field input')[1]), '84')"
+    ],
+    [
+     2.6,
+     "__click(__sel([...__last().querySelectorAll('.crt-a2-chips label')].find(l => /Trekking/.test(l.innerText))))"
+    ],
+    [
+     4.4,
+     "__click(__sel(__last().querySelector('.crt-a2-button')))"
+    ]
+   ],
+   "settle": 2.0
+  },
+  {
+   "prep": [
+    {
+     "wait_answer": true
+    },
+    {
+     "wait_js": "!!__last() && !!__last().querySelector('.crt-a2-sdcard .crt-card')",
+     "timeout": 90
+    },
+    {
+     "js": "__last().scrollIntoView({block: 'start'})"
+    },
+    {
+     "wait_ms": 1500
+    }
+   ],
+   "check": {
+    "js": "/Frame size/.test(__last().innerText) && /56 cm/.test(__last().innerText)",
+    "why": "the answer shows the frame size card"
+   },
+   "say": "Her frame size comes back as one of the shop's own cards, placed in the agent's A 2 U I layout.",
+   "do": [
+    [
+     0.6,
+     "__spot(__last().querySelector('.crt-a2-sdcard'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
    "say": "Now Ada wants to return a light set she never used.",
    "type": {
     "sel": "textarea[placeholder]",
@@ -938,6 +1091,36 @@
   {
    "prep": [
     {
+     "goto": "http://127.0.0.1:8080/p/agent-bus"
+    },
+    {
+     "wait_ms": 4000
+    },
+    {
+     "wait_js": "document.querySelectorAll('.mx-name-dgAgentTasks [role=row]').length > 2",
+     "timeout": 30
+    }
+   ],
+   "say": "Staff see every conversation between agents on the Agent bus page: who asked whom, and what was answered. Agents outside the app join through the broker's M C P server.",
+   "do": [
+    [
+     0.5,
+     "__spot(document.querySelector('.mx-name-dgAgentTasks'))"
+    ],
+    [
+     4.0,
+     "__unspot(); __click(__sel(document.querySelectorAll('.mx-name-dgAgentTasks [role=row]')[1].querySelector('.td')))"
+    ],
+    [
+     6.0,
+     "__spot(document.querySelector('.mx-name-dvAgentTask'))"
+    ]
+   ],
+   "settle": 2.5
+  },
+  {
+   "prep": [
+    {
      "goto": "http://127.0.0.1:8080/p/product-explorer"
     },
     {
@@ -1285,7 +1468,7 @@
    ]
   },
   {
-   "say": "Proactive notices, rich cards, graphs and 3D, agents in workflows, actions, photos, a person when it matters, a curated wiki, and a catalog that checks itself. All in one Mendix app, grounded in the shop's own data.",
+   "say": "Proactive notices, rich cards, graphs and 3D, agents that ask each other and draw their own forms, agents in workflows, actions, photos, a person when it matters, a curated wiki, and a catalog that checks itself. All in one Mendix app, grounded in the shop's own data.",
    "do": [
     [
      0.2,
